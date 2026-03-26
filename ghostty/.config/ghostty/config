@@ -1,0 +1,30 @@
+# ── Font ──────────────────────────────────────────────────────────────────────
+font-family = JetBrainsMonoNL Nerd Font
+font-size = 14
+font-thicken = true
+adjust-cell-height = 4
+
+# ── Theme (Catppuccin Mocha — matches tmux) ──────────────────────────────────
+theme = catppuccin-mocha
+
+# ── Window ───────────────────────────────────────────────────────────────────
+window-padding-x = 8
+window-padding-y = 4
+window-decoration = true
+macos-titlebar-style = tabs
+confirm-close-surface = false
+
+# ── Cursor ───────────────────────────────────────────────────────────────────
+cursor-style = block
+cursor-style-blink = false
+shell-integration-features = no-cursor
+
+# ── Clipboard ────────────────────────────────────────────────────────────────
+copy-on-select = clipboard
+clipboard-paste-protection = false
+
+# ── Mouse ────────────────────────────────────────────────────────────────────
+mouse-hide-while-typing = true
+
+# ── Performance ──────────────────────────────────────────────────────────────
+repaint-after-input = true
