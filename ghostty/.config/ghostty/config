@@ -5,13 +5,13 @@ font-thicken = true
 adjust-cell-height = 4
 
 # ── Theme (Catppuccin Mocha — matches tmux) ──────────────────────────────────
-theme = catppuccin-mocha
+theme = Catppuccin Mocha
 
 # ── Window ───────────────────────────────────────────────────────────────────
 window-padding-x = 8
 window-padding-y = 4
 window-decoration = true
-macos-titlebar-style = tabs
+macos-titlebar-style = hidden
 confirm-close-surface = false
 
 # ── Cursor ───────────────────────────────────────────────────────────────────
@@ -25,6 +25,3 @@ clipboard-paste-protection = false
 
 # ── Mouse ────────────────────────────────────────────────────────────────────
 mouse-hide-while-typing = true
-
-# ── Performance ──────────────────────────────────────────────────────────────
-repaint-after-input = true

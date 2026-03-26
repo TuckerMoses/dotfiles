@@ -1,0 +1,56 @@
+# ── General ───────────────────────────────────────────────────────────────────
+format = """$directory$git_branch$git_status$conda$nodejs$python$rust$golang$java$cmd_duration$line_break$character"""
+add_newline = false
+
+# ── Prompt character ─────────────────────────────────────────────────────────
+[character]
+success_symbol = "[❯](bold green)"
+error_symbol = "[❯](bold red)"
+
+# ── Directory ────────────────────────────────────────────────────────────────
+[directory]
+truncation_length = 3
+truncate_to_repo = true
+style = "bold blue"
+
+# ── Git ──────────────────────────────────────────────────────────────────────
+[git_branch]
+format = " [$branch]($style)"
+style = "bold purple"
+
+[git_status]
+format = "[$all_status$ahead_behind]($style) "
+style = "bold red"
+
+# ── Languages (only show when relevant files are present) ────────────────────
+[nodejs]
+format = " [$symbol$version]($style)"
+symbol = " "
+
+[python]
+format = " [$symbol$version]($style)"
+symbol = " "
+
+[rust]
+format = " [$symbol$version]($style)"
+symbol = " "
+
+[golang]
+format = " [$symbol$version]($style)"
+symbol = " "
+
+[java]
+format = " [$symbol$version]($style)"
+symbol = " "
+
+# ── Conda ────────────────────────────────────────────────────────────────────
+[conda]
+format = " [$symbol$environment]($style)"
+symbol = " "
+ignore_base = true
+
+# ── Command duration (show when > 3s) ────────────────────────────────────────
+[cmd_duration]
+min_time = 3000
+format = " [$duration]($style)"
+style = "bold yellow"
