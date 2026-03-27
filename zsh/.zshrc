@@ -17,17 +17,19 @@ function zvm_after_init() {
 }
 
 # ── Conda ────────────────────────────────────────────────────────────────────
-__conda_setup="$('$HOME/miniconda3/bin/conda' 'shell.zsh' 'hook' 2> /dev/null)"
-if [ $? -eq 0 ]; then
-    eval "$__conda_setup"
-else
-    if [ -f "$HOME/miniconda3/etc/profile.d/conda.sh" ]; then
-        . "$HOME/miniconda3/etc/profile.d/conda.sh"
+if [ -d "$HOME/miniconda3" ]; then
+    __conda_setup="$("$HOME/miniconda3/bin/conda" 'shell.zsh' 'hook' 2> /dev/null)"
+    if [ $? -eq 0 ]; then
+        eval "$__conda_setup"
     else
-        export PATH="$HOME/miniconda3/bin:$PATH"
+        if [ -f "$HOME/miniconda3/etc/profile.d/conda.sh" ]; then
+            . "$HOME/miniconda3/etc/profile.d/conda.sh"
+        else
+            export PATH="$HOME/miniconda3/bin:$PATH"
+        fi
     fi
+    unset __conda_setup
 fi
-unset __conda_setup
 
 # ── NVM ──────────────────────────────────────────────────────────────────────
 export NVM_DIR="$HOME/.nvm"
@@ -35,13 +37,22 @@ export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
 
 # ── Language paths ───────────────────────────────────────────────────────────
-export PATH="/opt/homebrew/opt/openjdk/bin:$PATH"
-eval $(opam env)
-PATH="$HOME/perl5/bin${PATH:+:${PATH}}"; export PATH;
-PERL5LIB="$HOME/perl5/lib/perl5${PERL5LIB:+:${PERL5LIB}}"; export PERL5LIB;
-PERL_LOCAL_LIB_ROOT="$HOME/perl5${PERL_LOCAL_LIB_ROOT:+:${PERL_LOCAL_LIB_ROOT}}"; export PERL_LOCAL_LIB_ROOT;
-PERL_MB_OPT="--install_base \"$HOME/perl5\""; export PERL_MB_OPT;
-PERL_MM_OPT="INSTALL_BASE=$HOME/perl5"; export PERL_MM_OPT;
+if [[ "$(uname)" == "Darwin" ]]; then
+    # Homebrew paths differ between Apple Silicon and Intel Macs
+    if [[ -d "/opt/homebrew/opt/openjdk/bin" ]]; then
+        export PATH="/opt/homebrew/opt/openjdk/bin:$PATH"
+    elif [[ -d "/usr/local/opt/openjdk/bin" ]]; then
+        export PATH="/usr/local/opt/openjdk/bin:$PATH"
+    fi
+fi
+command -v opam &>/dev/null && eval $(opam env)
+if [[ -d "$HOME/perl5" ]]; then
+    PATH="$HOME/perl5/bin${PATH:+:${PATH}}"; export PATH;
+    PERL5LIB="$HOME/perl5/lib/perl5${PERL5LIB:+:${PERL5LIB}}"; export PERL5LIB;
+    PERL_LOCAL_LIB_ROOT="$HOME/perl5${PERL_LOCAL_LIB_ROOT:+:${PERL_LOCAL_LIB_ROOT}}"; export PERL_LOCAL_LIB_ROOT;
+    PERL_MB_OPT="--install_base \"$HOME/perl5\""; export PERL_MB_OPT;
+    PERL_MM_OPT="INSTALL_BASE=$HOME/perl5"; export PERL_MM_OPT;
+fi
 export PATH="$HOME/.local/bin:$PATH"
 
 # ── Aliases ──────────────────────────────────────────────────────────────────
