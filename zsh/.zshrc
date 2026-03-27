@@ -4,14 +4,17 @@ ZSH_THEME=""  # disabled — using Starship instead
 plugins=(git wd zsh-autosuggestions zsh-syntax-highlighting)
 source $ZSH/oh-my-zsh.sh
 
+# ── zsh-vi-mode (must be after oh-my-zsh, before fzf) ────────────────────────
+source $(brew --prefix)/opt/zsh-vi-mode/share/zsh-vi-mode/zsh-vi-mode.plugin.zsh
+
 # ── Starship prompt ──────────────────────────────────────────────────────────
 eval "$(starship init zsh)"
 
 # ── fzf (fuzzy finder) ──────────────────────────────────────────────────────
-source <(fzf --zsh)
-
-# ── zoxide (smarter cd) ─────────────────────────────────────────────────────
-eval "$(zoxide init zsh --cmd cd)"
+# zsh-vi-mode overrides keybindings, so fzf must be re-sourced in its callback
+function zvm_after_init() {
+  source <(fzf --zsh)
+}
 
 # ── Conda ────────────────────────────────────────────────────────────────────
 __conda_setup="$('$HOME/miniconda3/bin/conda' 'shell.zsh' 'hook' 2> /dev/null)"
@@ -44,3 +47,6 @@ export PATH="$HOME/.local/bin:$PATH"
 # ── Aliases ──────────────────────────────────────────────────────────────────
 alias vim='nvim'
 alias v='vim .'
+
+# ── zoxide (smarter cd) — must be last ──────────────────────────────────────
+eval "$(zoxide init zsh --cmd cd)"
