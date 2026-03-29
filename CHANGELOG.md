@@ -12,6 +12,7 @@ All notable changes to this dotfiles setup.
 
 ### Added
 - Implementation plans for agent notifications and neovim sync
+- Custom Claude Code agents (plan-executor, terminal-brainstorm)
 - zsh-vi-mode plugin
 
 ### Changed
@@ -28,6 +29,9 @@ All notable changes to this dotfiles setup.
 - zsh config: Starship prompt, fzf, zoxide, autosuggestions, syntax-highlighting
 - Bootstrap script for one-command setup on new machines
 - CLAUDE.md project instructions and refine-terminal skill
+
+### Changed
+- Enhanced refine-terminal skill with suggest/research modes and agentic workflow focus
 
 ### Fixed
 - Ghostty theme name (spaces not dashes)
