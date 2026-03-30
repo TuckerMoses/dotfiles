@@ -9,6 +9,14 @@ All notable changes to this dotfiles setup.
 - Neovim ↔ Claude Code sync ([plan](docs/plans/neovim-claude-sync.md))
 - tmux session persistence ([plan](docs/plans/tmux-session-persistence.md))
 
+## [2026-03-29]
+
+### Added
+- tmux session persistence plan
+
+### Fixed
+- Suppress zoxide false positive in non-interactive shells
+
 ## [2026-03-27]
 
 ### Added
