@@ -24,4 +24,5 @@ alias vim='nvim'
 alias v='vim .'
 
 # ── zoxide (smarter cd) — must be last ──────────────────────────────────────
+export _ZO_DOCTOR=0  # suppress false positive in non-interactive shells (e.g. Claude Code)
 eval "$(zoxide init zsh --cmd cd)"
