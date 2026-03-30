@@ -26,6 +26,7 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          model: claude-sonnet-4-6
           prompt: |
             A reviewer has requested changes on this PR. Read all unresolved review
             comments, implement the requested changes, and reply to each comment
