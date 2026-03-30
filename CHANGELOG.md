@@ -13,10 +13,13 @@ All notable changes to this dotfiles setup.
 
 ### Added
 - Implementation plans for agent notifications and neovim sync
+- Custom Claude Code agents (plan-executor, terminal-brainstorm)
+- zsh-vi-mode plugin
 
 ### Changed
 - Moved zoxide init to end of .zshrc (fixes config warning)
 - Merged system-agnostic dotfiles PR (portable paths, platform guards)
+- Moved machine-specific config to `~/.zshrc.local`
 
 ## [2026-03-26]
 
@@ -26,6 +29,10 @@ All notable changes to this dotfiles setup.
 - tmux config: Catppuccin status bar, vim-tmux-navigator, vi copy mode
 - zsh config: Starship prompt, fzf, zoxide, autosuggestions, syntax-highlighting
 - Bootstrap script for one-command setup on new machines
+- CLAUDE.md project instructions and refine-terminal skill
+
+### Changed
+- Enhanced refine-terminal skill with suggest/research modes and agentic workflow focus
 
 ### Fixed
 - Ghostty theme name (spaces not dashes)
