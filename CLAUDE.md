@@ -6,6 +6,7 @@ This repository manages personal dotfiles using [GNU Stow](https://www.gnu.org/s
 
 ```
 dotfile-setup/
+├── .github/workflows/claude-pr-review.yml  # Claude Code Action for PR reviews
 ├── bootstrap.sh                     # One-command setup (idempotent)
 ├── ghostty/.config/ghostty/config   # Terminal emulator config
 ├── tmux/.tmux.conf                  # Terminal multiplexer config
@@ -79,6 +80,12 @@ Edit files in this repo (not in `~`), then changes apply immediately via symlink
 ```bash
 ./bootstrap.sh
 ```
+
+## CI / GitHub Actions
+
+A GitHub Actions workflow (`.github/workflows/claude-pr-review.yml`) runs the `anthropics/claude-code-action@v1` action. It triggers when a reviewer submits "changes requested" on a PR whose branch starts with `claude/`. Claude reads the review comments, implements the requested changes (following this file's conventions), and replies to each comment.
+
+**Requirements**: The Claude GitHub App must be installed on this repo, and an `ANTHROPIC_API_KEY` repository secret must be set.
 
 ## Rules for AI Assistants
 

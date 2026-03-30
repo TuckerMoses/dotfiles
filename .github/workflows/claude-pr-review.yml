@@ -1,0 +1,40 @@
+name: Claude PR Review Response
+
+on:
+  pull_request_review:
+    types: [submitted]
+
+jobs:
+  respond-to-review:
+    # Only run when changes are requested on a claude/* branch
+    if: >
+      github.event.review.state == 'changes_requested' &&
+      startsWith(github.event.pull_request.head.ref, 'claude/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+
+      - name: Respond to review feedback
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            A reviewer has requested changes on this PR. Read all unresolved review
+            comments, implement the requested changes, and reply to each comment
+            explaining what you did.
+
+            Rules:
+            - Follow the conventions in CLAUDE.md.
+            - If a requested change conflicts with repo conventions, do not make it.
+              Reply explaining the conflict.
+            - If a change is out of scope for this PR, reply suggesting it be handled
+              separately.
+            - Commit with a message like "fix: address review feedback".

@@ -7,6 +7,7 @@ All notable changes to this dotfiles setup.
 ### Planned
 - tmux agent completion notifications ([plan](docs/plans/tmux-agent-notifications.md))
 - Neovim ↔ Claude Code sync ([plan](docs/plans/neovim-claude-sync.md))
+- tmux session persistence ([plan](docs/plans/tmux-session-persistence.md))
 
 ## [2026-03-27]
 
