@@ -1,15 +1,15 @@
 name: Claude PR Review Response
 
 on:
-  pull_request_review:
-    types: [submitted]
+  issue_comment:
+    types: [created]
 
 jobs:
   respond-to-review:
-    # Only run when changes are requested on a claude/* branch
+    # Only run on PR comments that mention @claude on a claude/* branch
     if: >
-      github.event.review.state == 'changes_requested' &&
-      startsWith(github.event.pull_request.head.ref, 'claude/')
+      github.event.issue.pull_request &&
+      contains(github.event.comment.body, '@claude')
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -28,9 +28,9 @@ jobs:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           model: claude-sonnet-4-6
           prompt: |
-            A reviewer has requested changes on this PR. Read all unresolved review
-            comments, implement the requested changes, and reply to each comment
-            explaining what you did.
+            A reviewer has commented on this PR mentioning @claude. Read the
+            comment, implement any requested changes, and reply explaining
+            what you did.
 
             Rules:
             - Follow the conventions in CLAUDE.md.
