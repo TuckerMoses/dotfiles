@@ -1,14 +1,13 @@
 name: Claude PR Review Response
 
 on:
-  issue_comment:
+  pull_request_review_comment:
     types: [created]
 
 jobs:
   respond-to-review:
-    # Only run on PR comments that mention @claude on a claude/* branch
+    # Only run on inline review comments that mention /claude
     if: >
-      github.event.issue.pull_request &&
       contains(github.event.comment.body, '/claude')
     runs-on: ubuntu-latest
     permissions:
