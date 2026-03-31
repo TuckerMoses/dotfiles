@@ -1,7 +1,7 @@
 ---
-status: pending
+status: in-progress
 created: 2026-03-30
-updated: 2026-03-30
+updated: 2026-03-31
 ---
 
 # Plan: Claude Context Management via Stow

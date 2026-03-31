@@ -7,9 +7,11 @@ All notable changes to this dotfiles setup.
 ### Planned
 - tmux agent completion notifications ([plan](docs/plans/tmux-agent-notifications.md))
 - Neovim ↔ Claude Code sync ([plan](docs/plans/neovim-claude-sync.md))
-- tmux session persistence ([plan](docs/plans/tmux-session-persistence.md))
-- Claude context management via Stow ([plan](docs/plans/claude-context-management.md))
 - Jujutsu adoption for lock-free agent workflows ([plan](docs/plans/jujutsu-adoption.md))
+
+### In Progress
+- tmux session persistence ([PR #6](https://github.com/TuckerMoses/dotfile-setup/pull/6), [plan](docs/plans/tmux-session-persistence.md))
+- Claude context management via Stow ([PR #7](https://github.com/TuckerMoses/dotfile-setup/pull/7), [plan](docs/plans/claude-context-management.md))
 
 ## [2026-03-30]
 
@@ -17,6 +19,10 @@ All notable changes to this dotfiles setup.
 - Claude context management plan
 - Jujutsu adoption plan for lock-free agent workflows
 - Claude Code Action workflow for PR reviews (`.github/workflows/claude-pr-review.yml`)
+- Git worktree session workflow guidelines in CLAUDE.md
+
+### Changed
+- Refined Claude Code Action workflow configuration (permissions, triggers)
 
 ## [2026-03-29]
 

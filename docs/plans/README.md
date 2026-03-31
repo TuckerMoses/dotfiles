@@ -8,8 +8,8 @@ Implementation plans for terminal/workflow improvements. Each plan is self-conta
 |------|--------|-------------|
 | [tmux-agent-notifications](tmux-agent-notifications.md) | `pending` | macOS desktop notifications when Claude Code finishes, click to switch pane |
 | [neovim-claude-sync](neovim-claude-sync.md) | `pending` | Keep Neovim in sync with Claude Code file changes (3 tiers) |
-| [tmux-session-persistence](tmux-session-persistence.md) | `pending` | Persist tmux sessions across reboots with resurrect + continuum |
-| [claude-context-management](claude-context-management.md) | `pending` | Global CLAUDE.md via Stow so every Claude Code session has context |
+| [tmux-session-persistence](tmux-session-persistence.md) | `in-progress` | Persist tmux sessions across reboots with resurrect + continuum |
+| [claude-context-management](claude-context-management.md) | `in-progress` | Global CLAUDE.md via Stow so every Claude Code session has context |
 | [jujutsu-adoption](jujutsu-adoption.md) | `pending` | Migrate to Jujutsu (jj) for lock-free concurrent agent workflows |
 
 ## Statuses
