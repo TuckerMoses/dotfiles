@@ -9,7 +9,7 @@ jobs:
     # Only run on PR comments that mention @claude on a claude/* branch
     if: >
       github.event.issue.pull_request &&
-      contains(github.event.comment.body, '@claude')
+      contains(github.event.comment.body, '/claude')
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -28,7 +28,7 @@ jobs:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           model: claude-sonnet-4-6
           prompt: |
-            A reviewer has commented on this PR mentioning @claude. Read the
+            A reviewer has commented on this PR mentioning /claude. Read the
             comment, implement any requested changes, and reply explaining
             what you did.
 
