@@ -87,6 +87,24 @@ A GitHub Actions workflow (`.github/workflows/claude-pr-review.yml`) runs the `a
 
 **Requirements**: The Claude GitHub App must be installed on this repo, and an `ANTHROPIC_API_KEY` repository secret must be set.
 
+## Git Workflow for Sessions
+
+Each Claude session should follow this workflow at the start:
+
+1. **Check for unstaged/uncommitted changes.** If the tree is dirty, flag it before doing anything — it likely means a previous session or manual edit left things in a bad state.
+2. **Check the current branch.** If it clearly matches the task (e.g., you're on `feat/tmux-keybinds` and the user asks to tweak tmux keybinds), stay on it. Otherwise, switch to `master`.
+3. **Determine if the task modifies files.** If read-only (explaining code, answering questions), no further setup needed. If changes are required, propose a branch name and use `EnterWorktree` to isolate the work.
+4. **Assume a clean git tree.** Each task should start from a clean state on its branch or on `master`. If it's not clean, ask — the user may have made a mistake.
+
+### Branch naming
+
+- **Local sessions**: use plain descriptive names — `feat/add-nvim-config`, `fix/zsh-path-order`. Do **not** prefix with `claude/`.
+- **`claude/` prefix** is reserved for automated and scheduled branches (GitHub Actions, Claude Code Actions).
+
+### Worktree cleanup
+
+`EnterWorktree` prompts on session exit whether to keep or remove the worktree. Remove it if the work has been merged or abandoned. Keep it if changes are on a branch awaiting review.
+
 ## Rules for AI Assistants
 
 - **Never hardcode usernames or home directory paths** in configs — use `$HOME` or `~` where possible. (Exception: conda/nvm blocks that are auto-generated.)
