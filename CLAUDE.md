@@ -101,6 +101,19 @@ Each Claude session should follow this workflow at the start:
 - **Local sessions**: use plain descriptive names — `feat/add-nvim-config`, `fix/zsh-path-order`. Do **not** prefix with `claude/`.
 - **`claude/` prefix** is reserved for automated and scheduled branches (GitHub Actions, Claude Code Actions).
 
+### Worktree testing
+
+Stow symlinks point to absolute paths in the main repo directory. **Never run `stow` or `bootstrap.sh` from a worktree** — it will repoint symlinks to the worktree, and they'll break when the worktree is cleaned up.
+
+To test changes made in a worktree:
+
+1. Commit and push the branch from the worktree.
+2. In the main repo (`~/dotfiles`), check out the branch: `git checkout feat/branch-name`.
+3. Symlinks now serve the branch's version of configs — test live.
+4. If changes need fixing, switch back to `master` in the main repo and continue working in the worktree.
+
+Similarly, `source`-testing a worktree's `.zshrc` gives false confidence — all paths in `.zshrc` are absolute (`$HOME/.oh-my-zsh`, brew prefix, etc.), so it loads the live system's plugins regardless of which copy of `.zshrc` was sourced.
+
 ### Worktree cleanup
 
 `EnterWorktree` prompts on session exit whether to keep or remove the worktree. Remove it if the work has been merged or abandoned. Keep it if changes are on a branch awaiting review.
