@@ -18,16 +18,32 @@ if [[ "$(uname)" == "Darwin" ]]; then
     fi
 
     echo "==> Installing brew packages..."
-    brew install stow tmux neovim starship fzf zoxide
-    brew install --cask font-jetbrains-mono-nerd-font
+    # cmd:formula pairs (cmd=formula when they match)
+    for pair in stow tmux neovim:nvim starship fzf zoxide; do
+        formula="${pair%%:*}"
+        cmd="${pair#*:}"
+        command -v "$cmd" &>/dev/null || brew install "$formula"
+    done
+
+    if ! brew list --cask font-jetbrains-mono-nerd-font &>/dev/null 2>&1; then
+        brew install --cask font-jetbrains-mono-nerd-font
+    fi
 fi
 
 # ── Linux: install packages ──────────────────────────────────────────────────
 if [[ "$(uname)" == "Linux" ]]; then
-    if command -v apt &>/dev/null; then
-        sudo apt update && sudo apt install -y stow tmux neovim fzf zoxide
-    elif command -v dnf &>/dev/null; then
-        sudo dnf install -y stow tmux neovim fzf zoxide
+    missing=()
+    for pair in stow tmux neovim:nvim fzf zoxide; do
+        cmd="${pair#*:}"
+        command -v "$cmd" &>/dev/null || missing+=("${pair%%:*}")
+    done
+
+    if [[ ${#missing[@]} -gt 0 ]]; then
+        if command -v apt &>/dev/null; then
+            sudo apt update && sudo apt install -y "${missing[@]}"
+        elif command -v dnf &>/dev/null; then
+            sudo dnf install -y "${missing[@]}"
+        fi
     fi
 
     # Starship (cross-platform installer)
@@ -61,6 +77,25 @@ for pkg in tmux zsh ghostty starship; do
         stow -d "$DOTFILES_DIR" -t "$HOME" --restow "$pkg"
     fi
 done
+
+# ── TPM (Tmux Plugin Manager) ───────────────────────────────────────────────
+TPM_DIR="$HOME/.tmux/plugins/tpm"
+if [[ ! -d "$TPM_DIR" ]]; then
+    echo "==> Installing TPM..."
+    git clone https://github.com/tmux-plugins/tpm "$TPM_DIR"
+fi
+
+# Install/update TPM plugins (non-interactive equivalent of prefix + I)
+if [[ -x "$TPM_DIR/bin/install_plugins" ]]; then
+    echo "==> Installing tmux plugins..."
+    "$TPM_DIR/bin/install_plugins"
+fi
+
+# ── Reload tmux config (if server is running) ───────────────────────────────
+if command -v tmux &>/dev/null && tmux list-sessions &>/dev/null 2>&1; then
+    echo "==> Reloading tmux config..."
+    tmux source-file ~/.tmux.conf || true
+fi
 
 echo ""
 echo "==> Done! Restart your terminal for changes to take effect."
