@@ -1,7 +1,8 @@
 # ── Oh My Zsh ────────────────────────────────────────────────────────────────
 export ZSH="$HOME/.oh-my-zsh"
 ZSH_THEME=""  # disabled — using Starship instead
-plugins=(git wd zsh-autosuggestions zsh-syntax-highlighting)
+ZSH_AUTOSUGGEST_STRATEGY=(history completion)
+plugins=(git wd fzf-tab zsh-autosuggestions zsh-syntax-highlighting)
 source $ZSH/oh-my-zsh.sh
 
 # ── zsh-vi-mode (must be after oh-my-zsh, before fzf) ────────────────────────
