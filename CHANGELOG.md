@@ -6,12 +6,17 @@ All notable changes to this dotfiles setup.
 
 ### Planned
 - tmux agent completion notifications ([plan](docs/plans/tmux-agent-notifications.md))
-- Neovim ↔ Claude Code sync ([plan](docs/plans/neovim-claude-sync.md))
 - Jujutsu adoption for lock-free agent workflows ([plan](docs/plans/jujutsu-adoption.md))
 
 ### In Progress
-- tmux session persistence ([PR #6](https://github.com/TuckerMoses/dotfile-setup/pull/6), [plan](docs/plans/tmux-session-persistence.md))
 - Claude context management via Stow ([PR #7](https://github.com/TuckerMoses/dotfile-setup/pull/7), [plan](docs/plans/claude-context-management.md))
+
+## [2026-03-31]
+
+### Added
+- Neovim stow package with Claude Code sync plugins (auto-reload, diffview.nvim, claudecode.nvim) ([PR #8](https://github.com/TuckerMoses/dotfile-setup/pull/8), [plan](docs/plans/neovim-claude-sync.md))
+- tmux session persistence with resurrect + continuum ([PR #6](https://github.com/TuckerMoses/dotfile-setup/pull/6), [plan](docs/plans/tmux-session-persistence.md))
+- `.worktrees/` added to `.gitignore`
 
 ## [2026-03-30]
 
