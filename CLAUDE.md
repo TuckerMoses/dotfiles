@@ -101,9 +101,23 @@ Each Claude session should follow this workflow at the start:
 - **Local sessions**: use plain descriptive names — `feat/add-nvim-config`, `fix/zsh-path-order`. Do **not** prefix with `claude/`.
 - **`claude/` prefix** is reserved for automated and scheduled branches (GitHub Actions, Claude Code Actions).
 
+### Worktree testing
+
+Stow symlinks point to absolute paths in the main repo directory. **Never run `stow` or `bootstrap.sh` from a worktree** — it will repoint symlinks to the worktree, and they'll break when the worktree is cleaned up.
+
+To test changes made in a worktree:
+
+1. Commit and push the branch from the worktree.
+2. Remove the worktree (`git worktree remove .worktrees/<name>`) — git won't allow checking out a branch that's active in another worktree.
+3. In the main repo, check out the branch and pull (`git checkout <branch> && git pull`). **Claude should do this automatically** — don't make the user type the branch name.
+4. Symlinks now serve the branch's version of configs — prompt the user with testing instructions.
+5. If changes need fixing, check out `master` in the main repo and create a new worktree for further work.
+
+Similarly, `source`-testing a worktree's `.zshrc` gives false confidence — all paths in `.zshrc` are absolute (`$HOME/.oh-my-zsh`, brew prefix, etc.), so it loads the live system's plugins regardless of which copy of `.zshrc` was sourced.
+
 ### Worktree cleanup
 
-`EnterWorktree` prompts on session exit whether to keep or remove the worktree. Remove it if the work has been merged or abandoned. Keep it if changes are on a branch awaiting review.
+Worktrees should be removed before testing (see above). In general, remove a worktree once its branch has been pushed — there's no reason to keep it around.
 
 ## Rules for AI Assistants
 
