@@ -11,10 +11,11 @@ source $(brew --prefix)/opt/zsh-vi-mode/share/zsh-vi-mode/zsh-vi-mode.plugin.zsh
 # ── Starship prompt ──────────────────────────────────────────────────────────
 eval "$(starship init zsh)"
 
-# ── fzf (fuzzy finder) ──────────────────────────────────────────────────────
-# zsh-vi-mode overrides keybindings, so fzf must be re-sourced in its callback
+# ── fzf (fuzzy finder) & atuin (shell history) ──────────────────────────────
+# zsh-vi-mode overrides keybindings, so these must be re-sourced in its callback
 function zvm_after_init() {
   source <(fzf --zsh)
+  command -v atuin &>/dev/null && eval "$(atuin init zsh)"
 }
 
 # ── Local overrides (machine-specific paths, tools, aliases) ────────────────
