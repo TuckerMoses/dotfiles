@@ -19,7 +19,7 @@ if [[ "$(uname)" == "Darwin" ]]; then
 
     echo "==> Installing brew packages..."
     # cmd:formula pairs (cmd=formula when they match)
-    for pair in stow tmux neovim:nvim starship fzf zoxide; do
+    for pair in stow tmux neovim:nvim starship fzf zoxide atuin; do
         formula="${pair%%:*}"
         cmd="${pair#*:}"
         command -v "$cmd" &>/dev/null || brew install "$formula"
@@ -50,6 +50,12 @@ if [[ "$(uname)" == "Linux" ]]; then
     if ! command -v starship &>/dev/null; then
         curl -sS https://starship.rs/install.sh | sh
     fi
+
+    # Atuin (shell history)
+    if ! command -v atuin &>/dev/null; then
+        echo "==> Installing atuin..."
+        curl --proto '=https' --tlsv1.2 -LsSf https://setup.atuin.sh | sh
+    fi
 fi
 
 # ── Oh My Zsh ────────────────────────────────────────────────────────────────
@@ -74,7 +80,7 @@ ZSH_CUSTOM="${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}"
 echo "==> Stowing dotfiles..."
 mkdir -p "$HOME/.config"
 
-for pkg in tmux zsh ghostty starship nvim; do
+for pkg in tmux zsh ghostty starship nvim atuin; do
     if [[ -d "$DOTFILES_DIR/$pkg" ]]; then
         echo "    stowing $pkg"
         stow -d "$DOTFILES_DIR" -t "$HOME" --restow "$pkg"
@@ -98,6 +104,10 @@ fi
 if command -v tmux &>/dev/null && tmux list-sessions &>/dev/null 2>&1; then
     echo "==> Reloading tmux config..."
     tmux source-file ~/.tmux.conf || true
+fi
+
+if command -v atuin &>/dev/null; then
+    echo "==> Tip: Run 'atuin import auto' to import your existing shell history"
 fi
 
 echo ""

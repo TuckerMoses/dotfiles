@@ -1,0 +1,33 @@
+# ── Atuin shell history ──────────────────────────────────────────────────────
+
+# Search mode: fuzzy (default), prefix, fulltext, or skim
+search_mode = "fuzzy"
+
+# Filter mode when pressing Ctrl+R: global, host, session, or directory
+filter_mode = "global"
+
+# Filter mode for up-arrow: directory-scoped (most useful)
+filter_mode_shell_up_key_binding = "directory"
+
+# Style: auto picks compact for small terminals, full otherwise
+style = "auto"
+
+# Show preview of full command
+show_preview = true
+
+# Inline height (0 = fullscreen overlay)
+inline_height = 0
+
+# Disable sync by default (enable manually with: atuin login)
+sync_address = ""
+
+# Store duration and exit code
+store_failed = true
+
+# Vim keybindings in search UI (auto detects from shell, but force vim-normal)
+keymap_mode = "vim-normal"
+
+# Cursor shape per mode
+[keymap_cursor]
+vim_insert = "blink-bar"
+vim_normal = "steady-block"

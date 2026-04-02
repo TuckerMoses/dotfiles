@@ -12,6 +12,7 @@ dotfile-setup/
 ├── tmux/.tmux.conf                  # Terminal multiplexer config
 ├── zsh/.zshrc                       # Shell configuration
 ├── starship/.config/starship.toml   # Prompt engine config
+├── atuin/.config/atuin/config.toml  # Shell history config
 ├── CLAUDE.md                        # This file
 └── README.md                        # User-facing docs
 ```
@@ -34,13 +35,14 @@ To add a new tool's config:
 | **tmux** | `.tmux.conf` | Tmux multiplexer (vim-tmux-navigator, Catppuccin status bar, TPM plugins) |
 | **zsh** | `.zshrc` | Zsh shell via Oh My Zsh (plugins: git, wd, autosuggestions, syntax-highlighting) |
 | **starship** | `.config/starship.toml` | Starship cross-shell prompt (minimal single-line, language detection) |
+| **atuin** | `.config/atuin/config.toml` | Atuin shell history (SQLite-backed, fuzzy search, per-directory filtering) |
 
 ### Auto-installed dependencies (via bootstrap.sh)
 
 - **Homebrew** (macOS) / **apt**/**dnf** (Linux) for system packages
 - **GNU Stow** for symlink management
 - **Oh My Zsh** with custom plugins (zsh-autosuggestions, zsh-syntax-highlighting)
-- **Neovim**, **fzf**, **zoxide**, **Starship**
+- **Neovim**, **fzf**, **zoxide**, **Starship**, **Atuin**
 
 ## Design Conventions
 
@@ -60,7 +62,8 @@ To add a new tool's config:
 - **Splits**: `prefix + |` (horizontal), `prefix + -` (vertical)
 - **Resize**: `prefix + Shift+H/J/K/L`
 - **Reload tmux config**: `prefix + r`
-- **fzf**: `Ctrl+R` (history), `Ctrl+T` (files)
+- **atuin**: `Ctrl+R` (shell history search), Up arrow (per-directory history)
+- **fzf**: `Ctrl+T` (files)
 - **zoxide**: `cd` is aliased to zoxide's smart directory jumper
 
 ## Common Tasks
