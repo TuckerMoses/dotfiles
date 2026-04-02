@@ -23,11 +23,3 @@ sync_address = ""
 
 # Store duration and exit code
 store_failed = true
-
-# Vim keybindings in search UI (auto detects from shell, but force vim-normal)
-keymap_mode = "vim-normal"
-
-# Cursor shape per mode
-[keymap_cursor]
-vim_insert = "blink-bar"
-vim_normal = "steady-block"
