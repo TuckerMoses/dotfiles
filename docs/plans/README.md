@@ -6,7 +6,7 @@ Implementation plans for terminal/workflow improvements. Each plan is self-conta
 
 | Plan | Status | Description |
 |------|--------|-------------|
-| [tmux-agent-notifications](tmux-agent-notifications.md) | `pending` | macOS desktop notifications when Claude Code finishes, click to switch pane |
+| [tmux-agent-notifications](tmux-agent-notifications.md) | `done` | macOS desktop notifications when Claude Code finishes, click to switch pane |
 | [neovim-claude-sync](neovim-claude-sync.md) | `done` | Keep Neovim in sync with Claude Code file changes (3 tiers) |
 | [tmux-session-persistence](tmux-session-persistence.md) | `done` | Persist tmux sessions across reboots with resurrect + continuum |
 | [claude-context-management](claude-context-management.md) | `in-progress` | Global CLAUDE.md via Stow so every Claude Code session has context |

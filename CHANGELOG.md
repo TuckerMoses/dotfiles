@@ -5,11 +5,18 @@ All notable changes to this dotfiles setup.
 ## [Unreleased]
 
 ### Planned
-- tmux agent completion notifications ([plan](docs/plans/tmux-agent-notifications.md))
 - Jujutsu adoption for lock-free agent workflows ([plan](docs/plans/jujutsu-adoption.md))
 
 ### In Progress
 - Claude context management via Stow ([PR #7](https://github.com/TuckerMoses/dotfile-setup/pull/7), [plan](docs/plans/claude-context-management.md))
+
+## [2026-04-02]
+
+### Added
+- Claude Code notification system with custom game sound pack ([PR #11](https://github.com/TuckerMoses/dotfile-setup/pull/11), [plan](docs/plans/tmux-agent-notifications.md))
+  - Desktop banners via claude-notifications-go plugin (click-to-focus tmux pane switching)
+  - Game sound effects via game-sounds plugin with curated `notification-sounds/` pack
+  - Bootstrap installs both plugins and configures custom sound pack
 
 ## [2026-04-01]
 

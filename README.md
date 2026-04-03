@@ -18,6 +18,7 @@ Each top-level directory is a Stow package that mirrors `$HOME`:
 dotfiles/
 ├── atuin/.config/atuin/config.toml   → ~/.config/atuin/config.toml
 ├── ghostty/.config/ghostty/config    → ~/.config/ghostty/config
+├── notification-sounds/              — custom game sound pack for Claude Code
 ├── nvim/.config/nvim/                → ~/.config/nvim/
 ├── starship/.config/starship.toml    → ~/.config/starship.toml
 ├── tmux/.tmux.conf                   → ~/.tmux.conf
@@ -35,6 +36,7 @@ dotfiles/
 |---------|---------|
 | **atuin** | Shell history with fuzzy search and per-directory filtering |
 | **ghostty** | Ghostty terminal emulator (Catppuccin Mocha theme, JetBrains Mono NF) |
+| **notification-sounds** | Custom game sound pack for Claude Code event notifications |
 | **nvim** | Neovim with Claude Code sync plugins (auto-reload, diffview.nvim, claudecode.nvim) |
 | **starship** | Cross-shell prompt (minimal single-line, language detection) |
 | **tmux** | Terminal multiplexer (vim-tmux-navigator, Catppuccin status bar, session persistence) |
