@@ -1,13 +1,13 @@
 ---
-status: pending
+status: complete
 created: 2026-03-27
-updated: 2026-03-27
+updated: 2026-04-02
 ---
 
 # Plan: tmux Agent Completion Notifications
 
 ## Goal
-When Claude Code finishes in any tmux pane, send a macOS desktop notification that identifies the session. Clicking the notification switches to that pane.
+When Claude Code finishes in any tmux pane, send a macOS desktop notification that identifies the session. Clicking the notification switches to that pane. Play game sound effects on Claude Code lifecycle events.
 
 ## Context
 - macOS, Ghostty 1.3.1, tmux 3.6a
@@ -16,102 +16,52 @@ When Claude Code finishes in any tmux pane, send a macOS desktop notification th
 
 ## Architecture
 
+Two Claude Code plugins split responsibilities:
+
 ```
-Claude Code finishes
-  → Stop hook fires (shell script)
-    → Script captures $TMUX_PANE, session name, window index
-    → Sends notification via `alerter` with pane metadata
-    → If user clicks "Switch" → runs tmux select-window + select-pane
-    → If user dismisses → no-op
+claude-notifications-go     → desktop banners + click-to-focus (sounds OFF)
+game-sounds                 → sound effects per event (custom pack from dotfiles)
 ```
 
-## Implementation Steps
-
-### 1. Install alerter
-```bash
-brew install vjeantet/tap/alerter
 ```
-`alerter` is the only macOS CLI notification tool that supports clickable action buttons with stdout callbacks. `terminal-notifier` dropped action support in v2.0+. `osascript` notifications have no click callback.
-
-### 2. Create the notification script
-Create `~/dotfiles/scripts/claude-notify.sh`:
-
-```bash
-#!/usr/bin/env bash
-# Called by Claude Code's Stop hook when a response completes.
-# Sends a macOS notification; clicking "Switch" jumps to the source tmux pane.
-
-# Skip if not in tmux
-[[ -z "$TMUX" ]] && exit 0
-
-# Gather tmux context
-PANE_ID="$TMUX_PANE"
-SESSION=$(tmux display-message -t "$PANE_ID" -p "#{session_name}")
-WINDOW=$(tmux display-message -t "$PANE_ID" -p "#{window_index}")
-PANE_INDEX=$(tmux display-message -t "$PANE_ID" -p "#{pane_index}")
-WINDOW_NAME=$(tmux display-message -t "$PANE_ID" -p "#{window_name}")
-
-# Send notification with alerter (runs in background so hook doesn't block)
-(
-  ACTION=$(alerter \
-    -title "Claude Code" \
-    -subtitle "$SESSION:$WINDOW.$PANE_INDEX" \
-    -message "Finished in $WINDOW_NAME" \
-    -actions "Switch" \
-    -closeLabel "Dismiss" \
-    -timeout 30 \
-    -appIcon "/Applications/Ghostty.app/Contents/Resources/AppIcon.icns" \
-    2>/dev/null)
-
-  if [[ "$ACTION" == "Switch" ]]; then
-    tmux select-window -t "$SESSION:$WINDOW"
-    tmux select-pane -t "$PANE_ID"
-    # Bring Ghostty to front
-    osascript -e 'tell application "Ghostty" to activate'
-  fi
-) &
+Claude Code event fires
+  → claude-notifications-go: sends macOS notification with pane metadata
+    → User clicks → tmux select-pane + Ghostty activate
+  → game-sounds: plays random sound from notification-sounds/<event>/
 ```
 
-### 3. Add the Stop hook to Claude Code settings
-In `~/.claude/settings.json`, add:
+## What Was Built
 
-```json
-{
-  "hooks": {
-    "Stop": [
-      {
-        "type": "command",
-        "command": "bash ~/dotfiles/scripts/claude-notify.sh"
-      }
-    ]
-  }
-}
-```
+### 1. claude-notifications-go plugin
+- Desktop notifications with session/pane identification
+- Click-to-focus: switches to correct tmux pane and brings Ghostty to front
+- Sounds disabled (handled by game-sounds instead)
+- Config written by bootstrap to `~/.claude/claude-notifications-go/config.json`
 
-Note: If there's already a Stop hook (e.g., ralph-loop), add this as another entry in the array. Multiple hooks can coexist.
+### 2. game-sounds plugin with custom pack
+- `notification-sounds/` directory in dotfiles contains curated sounds from:
+  Metal Gear Solid, Mario, Zelda, Batman, Mortal Kombat, Top Gun,
+  Silent Hill, Final Fantasy, Scooby-Doo, Star Trek
+- Bootstrap symlinks `notification-sounds/` into the plugin's sounds dir as `custom` pack
+- Random sound selection per event (built into game-sounds)
 
-### 4. Stow the scripts package
-Add `scripts/` as a new stow package or keep it as a plain directory in the dotfiles repo (since scripts don't need to be symlinked to `$HOME`). The hook references it by absolute path.
+### 3. bootstrap.sh additions
+- Installs both plugin marketplaces and plugins via `claude plugin` CLI
+- Writes claude-notifications-go config (idempotent — skips if exists)
+- Symlinks custom sound pack into game-sounds plugin (`ln -sfn`)
+- Sets `active_pack: "custom"` in game-sounds config
 
-### 5. Test
-- Open two tmux panes, run `claude` in both
-- Ask Claude something in one pane, switch to the other
-- When the first finishes, you should get a notification
-- Click "Switch" and verify it jumps to the right pane
+## Known Limitation
+The symlink into game-sounds breaks on plugin version updates (cache dir is versioned).
+Re-running `bootstrap.sh` fixes it. Symptom: sounds stop playing silently.
+Upstream feature request: support a `custom_sounds_dir` config field.
 
-## Edge Cases to Handle
-- **Not in tmux**: Script exits early if `$TMUX` is unset
-- **Multiple rapid completions**: Each notification is independent (background subshell)
-- **Notification timeout**: 30 seconds before auto-dismiss (configurable)
-- **Ghostty not focused**: The `osascript` activate call brings it to front on click
+## Events Covered
 
-## Optional Enhancements
-- Add a sound: `alerter -sound default`
-- Filter out short responses (only notify if response took >5s) by checking `$CLAUDE_RESPONSE_DURATION` if available
-- Add the pane's working directory to the notification message
-- Use `alerter -json` for structured output parsing instead of string matching
-
-## Dependencies
-- `alerter` (brew tap: vjeantet/tap/alerter)
-- tmux 3.2+ (for `display-message -t` with pane ID)
-- macOS (alerter is macOS-only; on Linux, substitute `notify-send` without click support)
+| Event | Notification | Sound |
+|-------|-------------|-------|
+| Stop (task complete) | Desktop banner + click-to-focus | Random from `task-complete/` |
+| Notification (permission) | Desktop banner + click-to-focus | Random from `permission/` |
+| SessionStart | — | Random from `session-start/` |
+| UserPromptSubmit | — | Random from `task-acknowledge/` |
+| Error | Desktop banner | Random from `error/` |

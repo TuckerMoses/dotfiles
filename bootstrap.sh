@@ -110,5 +110,81 @@ if command -v atuin &>/dev/null; then
     echo "==> Tip: Run 'atuin import auto' to import your existing shell history"
 fi
 
+# ── Claude Code plugins (macOS only) ────────────────────────────────────────
+if command -v claude &>/dev/null; then
+    echo "==> Setting up Claude Code plugins..."
+
+    # Add marketplaces
+    claude plugin marketplace add 777genius/claude-notifications-go 2>/dev/null || true
+    claude plugin marketplace add Citedy/game-sounds 2>/dev/null || true
+
+    # Install plugins
+    claude plugin install claude-notifications-go@claude-notifications-go 2>/dev/null || true
+    claude plugin install game-sounds@game-sounds 2>/dev/null || true
+
+    # claude-notifications-go: write config (desktop banners + click-to-focus, sounds off)
+    NOTIFY_CONFIG_DIR="$HOME/.claude/claude-notifications-go"
+    mkdir -p "$NOTIFY_CONFIG_DIR"
+    if [[ ! -f "$NOTIFY_CONFIG_DIR/config.json" ]]; then
+        echo "    writing claude-notifications-go config"
+        cat > "$NOTIFY_CONFIG_DIR/config.json" << 'EOF'
+{
+  "notifications": {
+    "desktop": {
+      "enabled": true,
+      "sound": false,
+      "volume": 1.0,
+      "appIcon": "${CLAUDE_PLUGIN_ROOT}/claude_icon.png",
+      "clickToFocus": true,
+      "terminalBundleId": ""
+    },
+    "webhook": {
+      "enabled": false,
+      "preset": "custom",
+      "url": "",
+      "chat_id": "",
+      "format": "json",
+      "headers": {}
+    },
+    "suppressQuestionAfterTaskCompleteSeconds": 12,
+    "suppressQuestionAfterAnyNotificationSeconds": 7,
+    "suppressForSubagents": true,
+    "suppressFilters": []
+  },
+  "statuses": {
+    "task_complete": { "title": "✅ Completed", "sound": "" },
+    "review_complete": { "title": "🔍 Review", "sound": "" },
+    "question": { "title": "❓ Question", "sound": "" },
+    "plan_ready": { "title": "📋 Plan", "sound": "" },
+    "session_limit_reached": { "title": "⏱️ Session Limit Reached", "sound": "" },
+    "api_error": { "title": "🔴 API Error", "sound": "" },
+    "api_error_overloaded": { "title": "🔴 API Error", "sound": "" }
+  }
+}
+EOF
+    fi
+
+    # game-sounds: symlink custom sound pack into plugin
+    GS_SOUNDS_DIR=$(find "$HOME/.claude/plugins/cache/citedy/game-sounds" -maxdepth 2 -type d -name "sounds" 2>/dev/null | head -1)
+    if [[ -n "$GS_SOUNDS_DIR" ]] && [[ -d "$DOTFILES_DIR/notification-sounds" ]]; then
+        echo "    linking custom notification sound pack"
+        ln -sfn "$DOTFILES_DIR/notification-sounds" "$GS_SOUNDS_DIR/custom"
+    fi
+
+    # game-sounds: set custom pack as active
+    GS_CONFIG=$(find "$HOME/.claude/plugins/cache/citedy/game-sounds" -maxdepth 2 -name "config.json" 2>/dev/null | head -1)
+    if [[ -n "$GS_CONFIG" ]]; then
+        python3 -c "
+import json
+with open('$GS_CONFIG') as f:
+    c = json.load(f)
+c['active_pack'] = 'custom'
+with open('$GS_CONFIG', 'w') as f:
+    json.dump(c, f, indent=2)
+    f.write('\n')
+" 2>/dev/null || true
+    fi
+fi
+
 echo ""
 echo "==> Done! Restart your terminal for changes to take effect."

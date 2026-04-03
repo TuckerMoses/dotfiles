@@ -13,6 +13,7 @@ dotfile-setup/
 ├── zsh/.zshrc                       # Shell configuration
 ├── starship/.config/starship.toml   # Prompt engine config
 ├── atuin/.config/atuin/config.toml  # Shell history config
+├── notification-sounds/             # Custom game sound pack for Claude Code notifications
 ├── CLAUDE.md                        # This file
 └── README.md                        # User-facing docs
 ```
@@ -36,6 +37,14 @@ To add a new tool's config:
 | **zsh** | `.zshrc` | Zsh shell via Oh My Zsh (plugins: git, wd, autosuggestions, syntax-highlighting) |
 | **starship** | `.config/starship.toml` | Starship cross-shell prompt (minimal single-line, language detection) |
 | **atuin** | `.config/atuin/config.toml` | Atuin shell history (SQLite-backed, fuzzy search, per-directory filtering) |
+| **notification-sounds** | `notification-sounds/` | Custom game sound pack for Claude Code event notifications |
+
+### Claude Code Plugins (via bootstrap.sh)
+
+| Plugin | Purpose |
+|--------|---------|
+| **claude-notifications-go** | Desktop banners with click-to-focus tmux pane switching (sounds disabled) |
+| **game-sounds** | Game sound effects on Claude Code events (uses custom pack from `notification-sounds/`) |
 
 ### Auto-installed dependencies (via bootstrap.sh)
 
