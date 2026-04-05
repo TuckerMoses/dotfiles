@@ -18,7 +18,7 @@ Each top-level directory is a Stow package that mirrors `$HOME`:
 dotfiles/
 ├── atuin/.config/atuin/config.toml   → ~/.config/atuin/config.toml
 ├── ghostty/.config/ghostty/config    → ~/.config/ghostty/config
-├── notification-sounds/              — custom game sound pack for Claude Code
+├── notification-sounds/               — custom game sound pack for Claude Code notifications
 ├── nvim/.config/nvim/                → ~/.config/nvim/
 ├── starship/.config/starship.toml    → ~/.config/starship.toml
 ├── tmux/.tmux.conf                   → ~/.tmux.conf
