@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: pending
 created: 2026-03-30
 updated: 2026-03-31
 ---

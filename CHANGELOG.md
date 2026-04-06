@@ -6,9 +6,7 @@ All notable changes to this dotfiles setup.
 
 ### Planned
 - Jujutsu adoption for lock-free agent workflows ([plan](docs/plans/jujutsu-adoption.md))
-
-### In Progress
-- Claude context management via Stow ([PR #7](https://github.com/TuckerMoses/dotfile-setup/pull/7), [plan](docs/plans/claude-context-management.md))
+- Claude context management via Stow ([plan](docs/plans/claude-context-management.md))
 
 ## [2026-04-02]
 
