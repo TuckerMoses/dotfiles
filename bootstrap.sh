@@ -179,6 +179,13 @@ import json
 with open('$GS_CONFIG') as f:
     c = json.load(f)
 c['active_pack'] = 'custom'
+c['enabled_events'] = {
+    'session-start': False,
+    'task-acknowledge': False,
+    'task-complete': True,
+    'error': False,
+    'permission': True,
+}
 with open('$GS_CONFIG', 'w') as f:
     json.dump(c, f, indent=2)
     f.write('\n')
