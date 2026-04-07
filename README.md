@@ -42,6 +42,8 @@ dotfiles/
 | **tmux** | Terminal multiplexer (vim-tmux-navigator, Catppuccin status bar, session persistence) |
 | **zsh** | Zsh shell via Oh My Zsh (fzf-tab, autosuggestions, syntax-highlighting) |
 
+Bootstrap also installs two Claude Code plugins: **claude-notifications-go** (desktop banners with click-to-focus tmux pane switching) and **game-sounds** (event sound effects, sourced from `notification-sounds/`).
+
 ## Adding a new config
 
 ```bash
