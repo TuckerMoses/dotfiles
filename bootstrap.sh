@@ -251,10 +251,10 @@ with open('$GS_CONFIG') as f:
     c = json.load(f)
 c['active_pack'] = 'custom'
 c['enabled_events'] = {
-    'session-start': False,
-    'task-acknowledge': False,
+    'session-start': True,
+    'task-acknowledge': True,
     'task-complete': True,
-    'error': False,
+    'error': True,
     'permission': True,
 }
 with open('$GS_CONFIG', 'w') as f:
