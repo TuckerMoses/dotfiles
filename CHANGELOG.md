@@ -8,6 +8,14 @@ All notable changes to this dotfiles setup.
 - Jujutsu adoption for lock-free agent workflows ([plan](docs/plans/jujutsu-adoption.md))
 - Claude context management via Stow ([plan](docs/plans/claude-context-management.md))
 
+## [2026-04-06]
+
+### Changed
+- Limit game-sounds plugin to `task-complete` and `permission` events only; disabled `session-start`, `task-acknowledge`, and `error` so notifications only fire when Claude is waiting for user input ([PR #16](https://github.com/TuckerMoses/dotfile-setup/pull/16))
+
+### Fixed
+- Claude Code plugin marketplace and config path issues in `bootstrap.sh`: use `Citedy/claude-plugins` marketplace, correct `game-sounds@citedy` install syntax, write notifications config to the plugin's actual cache path, and bump `find` maxdepth to match versioned cache directories ([PR #15](https://github.com/TuckerMoses/dotfile-setup/pull/15))
+
 ## [2026-04-02]
 
 ### Added
