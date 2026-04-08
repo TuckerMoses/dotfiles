@@ -206,8 +206,10 @@ EOF
     fi
 
     # game-sounds: build a "custom" pack from selected notification-sounds themes.
-    # Each <source>/<hook>/file.mp3 is linked as custom/<hook>/<source>__<file>.mp3
-    # so multiple themes can coexist without filename collisions.
+    # Each <source>/<hook>/file.mp3 is hardlinked as custom/<hook>/<source>__<file>.mp3
+    # so multiple themes coexist without filename collisions. Hardlinks (not
+    # symlinks) because the plugin's play-sound.sh uses `find -type f`, which
+    # under BSD find won't match symlinks — they appear as type 'l'.
     GS_SOUNDS_DIR=$(find "$HOME/.claude/plugins/cache/citedy/game-sounds" -maxdepth 3 -type d -name "sounds" 2>/dev/null | head -1)
     if [[ -n "$GS_SOUNDS_DIR" ]] && [[ -d "$DOTFILES_DIR/notification-sounds" ]]; then
         if (( SOUND_ALL )); then
@@ -233,7 +235,7 @@ EOF
                 mkdir -p "$CUSTOM_DIR/$hook"
                 for f in "$hook_dir"*.mp3; do
                     [[ -f "$f" ]] || continue
-                    ln -sf "$f" "$CUSTOM_DIR/$hook/${theme}__$(basename "$f")"
+                    ln -f "$f" "$CUSTOM_DIR/$hook/${theme}__$(basename "$f")"
                 done
             done
         done
