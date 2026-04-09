@@ -8,6 +8,19 @@ All notable changes to this dotfiles setup.
 - Jujutsu adoption for lock-free agent workflows ([plan](docs/plans/jujutsu-adoption.md))
 - Claude context management via Stow ([plan](docs/plans/claude-context-management.md))
 
+## [2026-04-08]
+
+### Added
+- Expanded Top Gun sound pack with ~50 new clips across all event types ([PR #17](https://github.com/TuckerMoses/dotfile-setup/pull/17))
+
+### Changed
+- Reorganized notification-sounds into franchise subdirectories (`batman/`, `mario/`, `metal-gear-solid/`, `top-gun/`, etc.) — previously flat `<event>/` structure ([PR #17](https://github.com/TuckerMoses/dotfile-setup/pull/17))
+- Bootstrap builds custom sound pack from selected themes via `--sounds=` flag, with `--all` as default and `--list-sounds` to enumerate available themes ([PR #17](https://github.com/TuckerMoses/dotfile-setup/pull/17))
+- Re-enabled all event sounds (session-start, task-acknowledge, error) — reverting the limit from PR #16 ([PR #17](https://github.com/TuckerMoses/dotfile-setup/pull/17))
+
+### Fixed
+- Use hardlinks instead of symlinks for custom sound pack (BSD `find -type f` skips symlinks) ([PR #17](https://github.com/TuckerMoses/dotfile-setup/pull/17))
+
 ## [2026-04-06]
 
 ### Changed
