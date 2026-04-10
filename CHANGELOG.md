@@ -6,7 +6,22 @@ All notable changes to this dotfiles setup.
 
 ### Planned
 - Jujutsu adoption for lock-free agent workflows ([plan](docs/plans/jujutsu-adoption.md))
-- Claude context management via Stow ([plan](docs/plans/claude-context-management.md))
+
+## [2026-04-09]
+
+### Added
+- `claude-config` stow package: migrated `~/.claude` authored config (agents, skills, kinds, settings) into version-controlled dotfiles ([PR #18](https://github.com/TuckerMoses/dotfile-setup/pull/18), [plan](docs/plans/claude-context-management.md))
+  - Global CLAUDE.md with interaction contract and layered system philosophy
+  - 7 custom agents (architect, debugger, expert, house-cleaner, house-wrecker, researcher, teacher)
+  - 20+ skills (consult, disco, kind-bootstrapper, level-up, project-manager, skill-creator, and more)
+  - Kind system (`kinds/index.md`, `workspace.md`, `project.md`) for organizing work artifacts
+  - Global settings.json with permission and tool policies
+- Global BACKLOG.md and CHANGELOG.md at `~/.claude` for cross-session tracking
+- Backlog and Changelog as container-scoped kinds in the kind system
+
+### Changed
+- Bootstrap stows `claude-config` with `--no-folding` to create file-level symlinks inside `~/.claude/` (preserves Claude Code's skill discovery and sandbox)
+- Removed old `.claude/agents/` and `.claude/skills/` files (replaced by `claude-config` package)
 
 ## [2026-04-08]
 

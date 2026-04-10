@@ -8,12 +8,15 @@ This repository manages personal dotfiles using [GNU Stow](https://www.gnu.org/s
 dotfile-setup/
 ├── .github/workflows/claude-pr-review.yml  # Claude Code Action for PR reviews
 ├── bootstrap.sh                     # One-command setup (idempotent)
+├── atuin/.config/atuin/config.toml  # Shell history config
+├── claude-config/.claude/           # Global Claude Code config (agents, skills, kinds, settings)
 ├── ghostty/.config/ghostty/config   # Terminal emulator config
+├── notification-sounds/             # Custom game sound pack for Claude Code notifications
+├── nvim/.config/nvim/               # Neovim config with Claude Code sync
+├── starship/.config/starship.toml   # Prompt engine config
 ├── tmux/.tmux.conf                  # Terminal multiplexer config
 ├── zsh/.zshrc                       # Shell configuration
-├── starship/.config/starship.toml   # Prompt engine config
-├── atuin/.config/atuin/config.toml  # Shell history config
-├── notification-sounds/             # Custom game sound pack for Claude Code notifications
+├── docs/plans/                      # Implementation plans
 ├── CLAUDE.md                        # This file
 └── README.md                        # User-facing docs
 ```
@@ -32,12 +35,14 @@ To add a new tool's config:
 
 | Package | Config File | Purpose |
 |---------|------------|---------|
-| **ghostty** | `.config/ghostty/config` | Ghostty terminal emulator (Catppuccin Mocha theme, JetBrains Mono NF) |
-| **tmux** | `.tmux.conf` | Tmux multiplexer (vim-tmux-navigator, Catppuccin status bar, TPM plugins) |
-| **zsh** | `.zshrc` | Zsh shell via Oh My Zsh (plugins: git, wd, autosuggestions, syntax-highlighting) |
-| **starship** | `.config/starship.toml` | Starship cross-shell prompt (minimal single-line, language detection) |
 | **atuin** | `.config/atuin/config.toml` | Atuin shell history (SQLite-backed, fuzzy search, per-directory filtering) |
+| **claude-config** | `.claude/` | Global Claude Code config (agents, skills, kinds, settings) — stowed with `--no-folding` |
+| **ghostty** | `.config/ghostty/config` | Ghostty terminal emulator (Catppuccin Mocha theme, JetBrains Mono NF) |
 | **notification-sounds** | `notification-sounds/` | Custom game sound pack for Claude Code event notifications |
+| **nvim** | `.config/nvim/` | Neovim with Claude Code sync (auto-reload, diffview.nvim, claudecode.nvim) |
+| **starship** | `.config/starship.toml` | Starship cross-shell prompt (minimal single-line, language detection) |
+| **tmux** | `.tmux.conf` | Tmux multiplexer (vim-tmux-navigator, Catppuccin status bar, TPM plugins) |
+| **zsh** | `.zshrc` | Zsh shell via Oh My Zsh (plugins: git, wd, fzf-tab, autosuggestions, syntax-highlighting) |
 
 ### Claude Code Plugins (via bootstrap.sh)
 
