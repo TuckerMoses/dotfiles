@@ -3,3 +3,4 @@
 *.swo
 *~
 .worktrees/
+claude-config/.claude/settings.local.json
