@@ -105,7 +105,7 @@ Each Claude session should follow this workflow at the start:
 
 1. **Check for unstaged/uncommitted changes.** If the tree is dirty, flag it before doing anything — it likely means a previous session or manual edit left things in a bad state.
 2. **Check the current branch.** If it clearly matches the task (e.g., you're on `feat/tmux-keybinds` and the user asks to tweak tmux keybinds), stay on it. Otherwise, switch to `master`.
-3. **Determine if the task modifies files.** If read-only (explaining code, answering questions), no further setup needed. If changes are required, propose a branch name and use `EnterWorktree` to isolate the work.
+3. **Determine if the task modifies files.** If read-only (explaining code, answering questions), no further setup needed. If changes are required, propose a branch name and use `EnterWorktree` to isolate the work. **Exception:** light Claude config changes (skill edits, CLAUDE.md tweaks, agent updates, settings changes) can bypass the worktree process and commit/push directly to master. These are small, low-risk config updates that don't warrant branch isolation.
 4. **Assume a clean git tree.** Each task should start from a clean state on its branch or on `master`. If it's not clean, ask — the user may have made a mistake.
 
 ### Branch naming
