@@ -22,6 +22,7 @@ All notable changes to this dotfiles setup.
 ### Changed
 - Bootstrap stows `claude-config` with `--no-folding` to create file-level symlinks inside `~/.claude/` (preserves Claude Code's skill discovery and sandbox)
 - Removed old `.claude/agents/` and `.claude/skills/` files (replaced by `claude-config` package)
+- CLAUDE.md: light Claude config changes (skill/agent/settings edits) can bypass the worktree workflow and commit directly to `master`
 
 ## [2026-04-08]
 
