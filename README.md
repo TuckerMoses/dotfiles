@@ -16,6 +16,8 @@ Each top-level directory is a Stow package that mirrors `$HOME`:
 
 ```
 dotfiles/
+├── .claude/                          — Claude Code agents and skills for this repo
+├── .github/workflows/                — CI (Claude Code Action for PR reviews)
 ├── atuin/.config/atuin/config.toml   → ~/.config/atuin/config.toml
 ├── claude-config/.claude/            → ~/.claude/ (agents, skills, kinds, settings)
 ├── ghostty/.config/ghostty/config    → ~/.config/ghostty/config

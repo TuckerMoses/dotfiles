@@ -6,6 +6,7 @@ This repository manages personal dotfiles using [GNU Stow](https://www.gnu.org/s
 
 ```
 dotfile-setup/
+├── .claude/                         # Claude Code agents and skills for this repo
 ├── .github/workflows/claude-pr-review.yml  # Claude Code Action for PR reviews
 ├── bootstrap.sh                     # One-command setup (idempotent)
 ├── atuin/.config/atuin/config.toml  # Shell history config
