@@ -7,6 +7,16 @@ All notable changes to this dotfiles setup.
 ### Planned
 - Jujutsu adoption for lock-free agent workflows ([plan](docs/plans/jujutsu-adoption.md))
 
+## [2026-04-12]
+
+### Added
+- adversarial-review skill for multi-reviewer plan verification with iterative refinement loops
+- Structured discussion mode and stuck protocol in global interaction contract
+- DOM pattern documentation for telescopius-research skill
+
+### Fixed
+- Triage agent: prospective precondition evaluation when gate is blocked
+
 ## [2026-04-09]
 
 ### Added
