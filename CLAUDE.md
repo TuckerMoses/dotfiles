@@ -18,6 +18,7 @@ dotfile-setup/
 ├── tmux/.tmux.conf                  # Terminal multiplexer config
 ├── zsh/.zshrc                       # Shell configuration
 ├── docs/plans/                      # Implementation plans
+├── CHANGELOG.md                     # Project changelog
 ├── CLAUDE.md                        # This file
 └── README.md                        # User-facing docs
 ```
