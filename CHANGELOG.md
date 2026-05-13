@@ -7,6 +7,11 @@ All notable changes to this dotfiles setup.
 ### Planned
 - Jujutsu adoption for lock-free agent workflows ([plan](docs/plans/jujutsu-adoption.md))
 
+## [2026-04-14]
+
+### Fixed
+- Removed stale `.claude/` directory references from CLAUDE.md and README.md structure trees (replaced by `claude-config` stow package in PR #18)
+
 ## [2026-04-12]
 
 ### Added
@@ -28,6 +33,7 @@ All notable changes to this dotfiles setup.
   - Global settings.json with permission and tool policies
 - Global BACKLOG.md and CHANGELOG.md at `~/.claude` for cross-session tracking
 - Backlog and Changelog as container-scoped kinds in the kind system
+- Adversarial verify loop in workspace-manager and project-manager facelift subcommands
 
 ### Changed
 - Bootstrap stows `claude-config` with `--no-folding` to create file-level symlinks inside `~/.claude/` (preserves Claude Code's skill discovery and sandbox)
