@@ -9,7 +9,7 @@ dotfile-setup/
 ├── .github/workflows/claude-pr-review.yml  # Claude Code Action for PR reviews
 ├── bootstrap.sh                     # One-command setup (idempotent)
 ├── atuin/.config/atuin/config.toml  # Shell history config
-├── claude-config/.claude/           # Global Claude Code config (agents, skills, kinds, settings)
+├── claude-config/.claude/           # Global Claude Code config (agents, skills, kinds, plans, settings)
 ├── ghostty/.config/ghostty/config   # Terminal emulator config
 ├── notification-sounds/             # Custom game sound pack for Claude Code notifications
 ├── nvim/.config/nvim/               # Neovim config with Claude Code sync
@@ -37,7 +37,7 @@ To add a new tool's config:
 | Package | Config File | Purpose |
 |---------|------------|---------|
 | **atuin** | `.config/atuin/config.toml` | Atuin shell history (SQLite-backed, fuzzy search, per-directory filtering) |
-| **claude-config** | `.claude/` | Global Claude Code config (agents, skills, kinds, settings) — stowed with `--no-folding` |
+| **claude-config** | `.claude/` | Global Claude Code config (agents, skills, kinds, plans, settings) — stowed with `--no-folding` |
 | **ghostty** | `.config/ghostty/config` | Ghostty terminal emulator (Catppuccin Mocha theme, JetBrains Mono NF) |
 | **notification-sounds** | `notification-sounds/` | Custom game sound pack for Claude Code event notifications |
 | **nvim** | `.config/nvim/` | Neovim with Claude Code sync (auto-reload, diffview.nvim, claudecode.nvim) |
