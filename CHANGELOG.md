@@ -7,6 +7,11 @@ All notable changes to this dotfiles setup.
 ### Planned
 - Jujutsu adoption for lock-free agent workflows ([plan](docs/plans/jujutsu-adoption.md))
 
+## [2026-05-17]
+
+### Changed
+- Updated CLAUDE.md and README.md structure descriptions to include `plans/` in the `claude-config` stow package listing
+
 ## [2026-04-14]
 
 ### Fixed
