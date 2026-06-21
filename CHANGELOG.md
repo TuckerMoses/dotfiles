@@ -7,6 +7,11 @@ All notable changes to this dotfiles setup.
 ### Planned
 - Jujutsu adoption for lock-free agent workflows ([plan](docs/plans/jujutsu-adoption.md))
 
+## [2026-06-20]
+
+### Changed
+- Removed `claude-config` stow package from dotfiles — Claude Code config migrated to a standalone private repo (`~/claude-config`). Bootstrap no longer stows claude-config.
+
 ## [2026-05-17]
 
 ### Changed

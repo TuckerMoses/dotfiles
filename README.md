@@ -18,7 +18,6 @@ Each top-level directory is a Stow package that mirrors `$HOME`:
 dotfiles/
 ├── .github/workflows/                — CI (Claude Code Action for PR reviews)
 ├── atuin/.config/atuin/config.toml   → ~/.config/atuin/config.toml
-├── claude-config/.claude/            → ~/.claude/ (agents, skills, kinds, plans, settings)
 ├── ghostty/.config/ghostty/config    → ~/.config/ghostty/config
 ├── notification-sounds/               — custom game sound pack for Claude Code notifications
 ├── nvim/.config/nvim/                → ~/.config/nvim/
@@ -37,7 +36,6 @@ dotfiles/
 | Package | Purpose |
 |---------|---------|
 | **atuin** | Shell history with fuzzy search and per-directory filtering |
-| **claude-config** | Claude Code global config (agents, skills, kinds, plans, settings) stowed to `~/.claude/` |
 | **ghostty** | Ghostty terminal emulator (Catppuccin Mocha theme, JetBrains Mono NF) |
 | **notification-sounds** | Custom game sound pack for Claude Code event notifications |
 | **nvim** | Neovim with Claude Code sync plugins (auto-reload, diffview.nvim, claudecode.nvim) |
