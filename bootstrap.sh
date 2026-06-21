@@ -128,14 +128,13 @@ for pkg in tmux zsh ghostty starship nvim atuin; do
   fi
 done
 
-# claude-config needs --no-folding to create file-level symlinks inside a real
-# ~/.claude/ directory. Without this, Stow would replace ~/.claude/ with a single
-# directory symlink, breaking Claude Code's skill discovery and sandbox.
-# See: anthropics/claude-code#764, #3575, #25367, #40133
-if [[ -d "$DOTFILES_DIR/claude-config" ]]; then
-  echo "    stowing claude-config (--no-folding)"
-  stow -d "$DOTFILES_DIR" -t "$HOME" --no-folding --restow claude-config
-fi
+# Disabled 2026-04-26: claude config moved to private ~/claude-config repo.
+# Re-enabling this would clobber the live ~/.claude/ symlinks with a stale copy.
+# Phase 3 of env-migration removes claude-config/ from this repo entirely.
+# if [[ -d "$DOTFILES_DIR/claude-config" ]]; then
+#   echo "    stowing claude-config (--no-folding)"
+#   stow -d "$DOTFILES_DIR" -t "$HOME" --no-folding --restow claude-config
+# fi
 
 # ── TPM (Tmux Plugin Manager) ───────────────────────────────────────────────
 TPM_DIR="$HOME/.tmux/plugins/tpm"
