@@ -128,14 +128,6 @@ for pkg in tmux zsh ghostty starship nvim atuin; do
   fi
 done
 
-# Disabled 2026-04-26: claude config moved to private ~/claude-config repo.
-# Re-enabling this would clobber the live ~/.claude/ symlinks with a stale copy.
-# Phase 3 of env-migration removes claude-config/ from this repo entirely.
-# if [[ -d "$DOTFILES_DIR/claude-config" ]]; then
-#   echo "    stowing claude-config (--no-folding)"
-#   stow -d "$DOTFILES_DIR" -t "$HOME" --no-folding --restow claude-config
-# fi
-
 # ── TPM (Tmux Plugin Manager) ───────────────────────────────────────────────
 TPM_DIR="$HOME/.tmux/plugins/tpm"
 if [[ ! -d "$TPM_DIR" ]]; then
