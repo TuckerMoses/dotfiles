@@ -7,6 +7,16 @@ All notable changes to this dotfiles setup.
 ### Planned
 - Jujutsu adoption for lock-free agent workflows ([plan](docs/plans/jujutsu-adoption.md))
 
+## [2026-06-24]
+
+### Fixed
+- Removed stale `claude-config` references from `.gitignore` and `bootstrap.sh` (leftover from the package removal)
+
+## [2026-06-23]
+
+### Fixed
+- Corrected README description of game-sounds plugin — bootstrap configures the custom sound pack but doesn't install the plugin itself
+
 ## [2026-06-20]
 
 ### Changed
