@@ -2,17 +2,16 @@ return {
   -- Seamless navigation between nvim splits and tmux panes with Ctrl+h/j/k/l
   {
     "christoomey/vim-tmux-navigator",
+    -- Mappings are owned by plugins/herdr.lua (vim-herdr-navigation), which calls
+    -- TmuxNavigate* itself when under tmux; keep only the commands here.
+    init = function()
+      vim.g.tmux_navigator_no_mappings = 1
+    end,
     cmd = {
       "TmuxNavigateLeft",
       "TmuxNavigateDown",
       "TmuxNavigateUp",
       "TmuxNavigateRight",
-    },
-    keys = {
-      { "<C-h>", "<cmd>TmuxNavigateLeft<CR>",  desc = "Navigate left (nvim/tmux)" },
-      { "<C-j>", "<cmd>TmuxNavigateDown<CR>",  desc = "Navigate down (nvim/tmux)" },
-      { "<C-k>", "<cmd>TmuxNavigateUp<CR>",    desc = "Navigate up (nvim/tmux)" },
-      { "<C-l>", "<cmd>TmuxNavigateRight<CR>", desc = "Navigate right (nvim/tmux)" },
     },
   },
 }

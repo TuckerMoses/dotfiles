@@ -1,0 +1,74 @@
+# herdr configuration — stowed from ~/dotfiles/herdr (no-folding: the directory also holds sockets and logs)
+# Reload: prefix+shift+r, or `herdr server reload-config`. Validate: `herdr config check`.
+
+onboarding = false
+
+[ui.toast]
+delivery = "herdr"
+
+[theme]
+name = "solarized"
+auto_switch = false
+
+# ── Keys: tmux/nvim muscle memory ─────────────────────────────────────────────
+# Defaults kept as-is: prefix ctrl+b, prefix h/j/k/l focus, prefix - stacked split, prefix v side-by-side,
+# prefix c new tab, prefix 1..9 switch tab, prefix z zoom, prefix x close pane, prefix [ copy mode (vi keys),
+# prefix r resize mode (tmux's prefix r = reload is prefix+shift+r here, on purpose), prefix q detach.
+[keys]
+prefix = "ctrl+b"
+
+# Splits: tmux defaults (% and ") plus the | from .tmux.conf
+split_vertical   = ["prefix+v", "prefix+percent", "prefix+|"]
+split_horizontal = ['prefix+minus', 'prefix+"']
+
+# Zoom: prefix z (default) and a direct ctrl+z (costs shell job-suspend inside herdr panes)
+zoom = ["prefix+z", "ctrl+z"]
+
+# Tabs = tmux windows: prefix n is NEW tab (tucker's habit); next/previous move to ctrl+n / ctrl+p
+new_tab      = ["prefix+c", "prefix+n"]
+next_tab     = "prefix+ctrl+n"
+previous_tab = "prefix+ctrl+p"
+rename_tab   = ["prefix+shift+t", "prefix+comma"]
+close_tab    = ["prefix+shift+x", "prefix+ampersand"]
+
+# Workspaces = tmux sessions: prefix s and a direct ctrl+s open the picker; settings moves to shift+s
+workspace_picker = ["prefix+w", "prefix+s", "ctrl+s"]
+settings         = "prefix+shift+s"
+switch_workspace = "prefix+shift+1..9"
+detach           = ["prefix+q", "prefix+d"]
+
+# Resize on prefix H/J/K/L (tmux .conf); swap moves to shift+arrows
+resize_pane_left  = "prefix+shift+h"
+resize_pane_down  = "prefix+shift+j"
+resize_pane_up    = "prefix+shift+k"
+resize_pane_right = "prefix+shift+l"
+swap_pane_left  = "prefix+shift+left"
+swap_pane_down  = "prefix+shift+down"
+swap_pane_up    = "prefix+shift+up"
+swap_pane_right = "prefix+shift+right"
+
+# ctrl+l alone now navigates (plugin below), so clear lives behind the prefix
+clear_pane = "prefix+ctrl+l"
+
+# ── vim-herdr-navigation: ctrl+h/j/k/l across panes, vim-split-aware (port of vim-tmux-navigator) ──
+# Install: herdr plugin install paulbkim-dev/vim-herdr-navigation --yes   (needs jq)
+# Same trade-off as the tmux setup: ctrl+l (clear) and ctrl+k (kill-line) no longer reach non-vim shells.
+[[keys.command]]
+key = "ctrl+h"
+type = "plugin_action"
+command = "vim-herdr-navigation.left"
+
+[[keys.command]]
+key = "ctrl+j"
+type = "plugin_action"
+command = "vim-herdr-navigation.down"
+
+[[keys.command]]
+key = "ctrl+k"
+type = "plugin_action"
+command = "vim-herdr-navigation.up"
+
+[[keys.command]]
+key = "ctrl+l"
+type = "plugin_action"
+command = "vim-herdr-navigation.right"

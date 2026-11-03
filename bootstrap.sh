@@ -60,7 +60,7 @@ if [[ "$(uname)" == "Darwin" ]]; then
 
   echo "==> Installing brew packages..."
   # cmd:formula pairs (cmd=formula when they match)
-  for pair in stow tmux neovim:nvim starship fzf zoxide atuin; do
+  for pair in stow tmux neovim:nvim starship fzf zoxide atuin jq; do
     formula="${pair%%:*}"
     cmd="${pair#*:}"
     command -v "$cmd" &>/dev/null || brew install "$formula"
@@ -74,7 +74,7 @@ fi
 # ── Linux: install packages ──────────────────────────────────────────────────
 if [[ "$(uname)" == "Linux" ]]; then
   missing=()
-  for pair in stow tmux neovim:nvim fzf zoxide; do
+  for pair in stow tmux neovim:nvim fzf zoxide jq; do
     cmd="${pair#*:}"
     command -v "$cmd" &>/dev/null || missing+=("${pair%%:*}")
   done
@@ -127,6 +127,23 @@ for pkg in tmux zsh ghostty starship nvim atuin; do
     stow -d "$DOTFILES_DIR" -t "$HOME" --restow "$pkg"
   fi
 done
+
+# herdr: --no-folding because ~/.config/herdr also holds sockets, logs and session state
+# that must stay real files, so only config.toml is linked.
+if [[ -d "$DOTFILES_DIR/herdr" ]]; then
+  echo "    stowing herdr (--no-folding)"
+  mkdir -p "$HOME/.config/herdr"
+  stow -d "$DOTFILES_DIR" -t "$HOME" --no-folding --restow herdr
+fi
+
+# ── Herdr plugins ────────────────────────────────────────────────────────────
+# vim-herdr-navigation: ctrl+h/j/k/l across panes, vim-split-aware (needs jq)
+if command -v herdr >/dev/null 2>&1; then
+  if ! herdr plugin list 2>/dev/null | grep -q vim-herdr-navigation; then
+    echo "==> Installing herdr plugin vim-herdr-navigation"
+    herdr plugin install paulbkim-dev/vim-herdr-navigation --yes || echo "    (herdr server not running; install later)"
+  fi
+fi
 
 # Disabled 2026-04-26: claude config moved to private ~/claude-config repo.
 # Re-enabling this would clobber the live ~/.claude/ symlinks with a stale copy.
