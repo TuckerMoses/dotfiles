@@ -39,18 +39,18 @@ To add a new tool's config:
 | **atuin** | `.config/atuin/config.toml` | Atuin shell history (SQLite-backed, fuzzy search, per-directory filtering) |
 | **claude-config** | `.claude/` | Global Claude Code config (agents, skills, kinds, plans, settings) — stowed with `--no-folding` |
 | **ghostty** | `.config/ghostty/config` | Ghostty terminal emulator (Catppuccin Mocha theme, JetBrains Mono NF) |
-| **notification-sounds** | `notification-sounds/` | Custom game sound pack for Claude Code event notifications |
+| **notification-sounds** | `notification-sounds/` | Game sound pack; Herdr plays selected files for agent done / needs-attention |
 | **nvim** | `.config/nvim/` | Neovim with Claude Code sync (auto-reload, diffview.nvim, claudecode.nvim) |
 | **starship** | `.config/starship.toml` | Starship cross-shell prompt (minimal single-line, language detection) |
 | **tmux** | `.tmux.conf` | Tmux multiplexer (vim-tmux-navigator, Catppuccin status bar, TPM plugins) |
+| **herdr** | `.config/herdr/config.toml` | Herdr terminal workspace manager (tmux-style keys, vim-herdr-navigation, sounds) — stowed with `--no-folding` |
 | **zsh** | `.zshrc` | Zsh shell via Oh My Zsh (plugins: git, wd, fzf-tab, autosuggestions, syntax-highlighting) |
 
-### Claude Code Plugins (via bootstrap.sh)
+### Notifications
 
-| Plugin | Purpose |
-|--------|---------|
-| **claude-notifications-go** | Desktop banners with click-to-focus tmux pane switching (sounds disabled) |
-| **game-sounds** | Game sound effects on Claude Code events (uses custom pack from `notification-sounds/`) |
+Claude Code notifications and sounds are handled by **Herdr** (toasts, `prefix+o` jump-to-agent, and
+`[ui.sound]` in `herdr/.config/herdr/config.toml`, which plays files from `notification-sounds/`). The
+former claude-notifications-go and game-sounds plugins were removed on 2026-11-03.
 
 ### Auto-installed dependencies (via bootstrap.sh)
 
