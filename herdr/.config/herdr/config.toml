@@ -18,8 +18,8 @@ auto_switch = false
 prefix = "ctrl+b"
 
 # Splits: tmux defaults (% and ") plus the | from .tmux.conf
-split_vertical   = ["prefix+v", "prefix+percent", "prefix+|"]
-split_horizontal = ['prefix+minus', 'prefix+"']
+split_vertical   = ["prefix+v", "prefix+percent", "prefix+|", "prefix+shift+backslash"]
+split_horizontal = ['prefix+minus', 'prefix+"', 'prefix+shift+quote']
 
 # Zoom: prefix z (default) and a direct ctrl+z (costs shell job-suspend inside herdr panes)
 zoom = ["prefix+z", "ctrl+z"]
