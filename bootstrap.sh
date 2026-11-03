@@ -30,7 +30,7 @@ if [[ "$(uname)" == "Darwin" ]]; then
 
   echo "==> Installing brew packages..."
   # cmd:formula pairs (cmd=formula when they match)
-  for pair in stow tmux neovim:nvim starship fzf zoxide atuin jq lazygit; do
+  for pair in stow tmux neovim:nvim starship fzf zoxide atuin jq lazygit lazyjj; do
     formula="${pair%%:*}"
     cmd="${pair#*:}"
     command -v "$cmd" &>/dev/null || brew install "$formula"

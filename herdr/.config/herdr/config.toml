@@ -102,3 +102,12 @@ command = "lazygit"
 description = "lazygit"
 width = "85%"
 height = "85%"
+
+# lazyjj for the jj repos (vault, life, lib); lazygit above covers the git ones
+[[keys.command]]
+key = "prefix+alt+j"
+type = "popup"
+command = "lazyjj"
+description = "lazyjj"
+width = "85%"
+height = "85%"
