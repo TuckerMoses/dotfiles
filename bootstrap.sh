@@ -60,7 +60,7 @@ if [[ "$(uname)" == "Darwin" ]]; then
 
   echo "==> Installing brew packages..."
   # cmd:formula pairs (cmd=formula when they match)
-  for pair in stow tmux neovim:nvim starship fzf zoxide atuin jq; do
+  for pair in stow tmux neovim:nvim starship fzf zoxide atuin jq lazygit; do
     formula="${pair%%:*}"
     cmd="${pair#*:}"
     command -v "$cmd" &>/dev/null || brew install "$formula"
@@ -74,7 +74,7 @@ fi
 # ── Linux: install packages ──────────────────────────────────────────────────
 if [[ "$(uname)" == "Linux" ]]; then
   missing=()
-  for pair in stow tmux neovim:nvim fzf zoxide jq; do
+  for pair in stow tmux neovim:nvim fzf zoxide jq lazygit; do
     cmd="${pair#*:}"
     command -v "$cmd" &>/dev/null || missing+=("${pair%%:*}")
   done
@@ -142,6 +142,16 @@ if command -v herdr >/dev/null 2>&1; then
   if ! herdr plugin list 2>/dev/null | grep -q vim-herdr-navigation; then
     echo "==> Installing herdr plugin vim-herdr-navigation"
     herdr plugin install paulbkim-dev/vim-herdr-navigation --yes || echo "    (herdr server not running; install later)"
+  fi
+  # herdr-plus: per-worktree layouts and quick actions
+  if ! herdr plugin list 2>/dev/null | grep -q herdr-plus; then
+    echo "==> Installing herdr plugin herdr-plus"
+    herdr plugin install cloudmanic/herdr-plus --yes || echo "    (herdr server not running; install later)"
+  fi
+  # Claude Code integration: agent state + session refs via hook (re-run after herdr upgrades)
+  if ! herdr integration status 2>/dev/null | grep -i "claude" | grep -qiv "not installed"; then
+    echo "==> Installing herdr Claude integration"
+    herdr integration install claude || echo "    (install later: herdr integration install claude)"
   fi
 fi
 

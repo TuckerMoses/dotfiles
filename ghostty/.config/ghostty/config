@@ -25,3 +25,7 @@ clipboard-paste-protection = false
 
 # ── Mouse ────────────────────────────────────────────────────────────────────
 mouse-hide-while-typing = true
+
+# ── Keyboard ─────────────────────────────────────────────────────────────────
+# Send Option as Alt so alt+key chords reach herdr/tmux/nvim (needed for prefix+alt+g etc.)
+macos-option-as-alt = true
