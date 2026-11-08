@@ -125,13 +125,12 @@ width = "85%"
 height = "85%"
 
 # ── herdr-summarizer tokens ─────────────────────────────────────────────────
-# $heat (age since the transcript changed), $ball (whose move: decide / go / ->agent),
-# $summary (pane or space label). Written by herdr-summarize; empty tokens render nothing.
-# Default agent rows end with ["agent"] (the agent kind, e.g. "claude"); dropped here
-# since nearly every agent is Claude. Add it back as a third row to restore it.
+# $summary (pane or space label), $attn (● when the session needs you), $stale (untouched a
+# week longer than your newest session), $heat (now / <1h / today / Nd). Written by
+# herdr-summarize; empty tokens render nothing. Status detail lives in the prefix+a picker.
 [ui.sidebar.agents]
-rows = [["state_icon", "machine", "$heat", { token = "$ball", fg = "#fab387", bold = true }, "workspace", "tab"], [{ token = "$summary", dim = true }]]
+rows = [["state_icon", "$summary"], [{ token = "$attn", fg = "#fab387", bold = true }, { token = "$stale", fg = "#f38ba8", bold = true }, { token = "$heat", dim = true }, { token = "tab", dim = true }]]
 
 [ui.sidebar.spaces]
-rows = [["state_icon", "workspace"], ["branch", "git_status"], [{ token = "$summary", dim = true }]]
+rows = [["state_icon", "workspace", { token = "branch", dim = true }, { token = "git_status", dim = true }], [{ token = "$summary", dim = true }]]
 

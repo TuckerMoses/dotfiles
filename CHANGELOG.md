@@ -10,6 +10,7 @@ All notable changes to this dotfiles setup.
 ## [2026-11-08]
 
 ### Added
+- herdr-summarize v2: summaries change only after a turn ends with new conversation, and only when the model judges the change material; statuses (needs-you, working, idle, done) plus stale (untouched a week longer than the newest session) with a one-time Opus review of each stale session; links resolve through remembered and transcript-harvested agent names, so moved or renamed agents stay nested
 - herdr pane descriptions: `herdr-summarize` writes a label, heat (time since the transcript changed), whose move it is, and a full description for each Claude pane and space, from transcripts on disk via Haiku; nothing is sent to running agents
 - `prefix+a` recent-sessions popup (`herdr-recent`, fzf): decisions first, then hottest, with the description previewed; sessions an orchestrator drives by name are nested under it
 - `herdr-summarizer/install.sh`: opt-in launchd job (every 5 min), idempotent, `--uninstall`; deliberately not run by `bootstrap.sh`
