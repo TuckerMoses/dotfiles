@@ -4,6 +4,7 @@
 onboarding = false
 
 [ui]
+sidebar_width = 34                # room for herdr-summarizer labels (default 26)
 agent_panel_sort = "priority"      # sidebar as an attention queue: blocked agents first
 pane_outer_borders = false         # tmux-style internal splitters, no outer frame
 tab_bar_right = [{ type = "hostname" }, { type = "datetime", format = "%H:%M  %d %b" }]
@@ -93,6 +94,17 @@ key = "ctrl+l"
 type = "plugin_action"
 command = "vim-herdr-navigation.right"
 
+# Recent agent sessions: decisions first, then hottest, with full descriptions
+# (herdr-recent + herdr-summarize from this package; descriptions need the opt-in
+# launchd job in ~/dotfiles/herdr-summarizer/install.sh)
+[[keys.command]]
+key = "prefix+a"
+type = "popup"
+command = "$HOME/.local/bin/herdr-recent"
+description = "recent agents"
+width = "80%"
+height = "80%"
+
 # ── Popups ──────────────────────────────────────────────────────────────────
 # lazygit over the current layout (alt needs ghostty macos-option-as-alt = true)
 [[keys.command]]
@@ -111,3 +123,15 @@ command = "lazyjj"
 description = "lazyjj"
 width = "85%"
 height = "85%"
+
+# ── herdr-summarizer tokens ─────────────────────────────────────────────────
+# $heat (age since the transcript changed), $ball (whose move: decide / go / ->agent),
+# $summary (pane or space label). Written by herdr-summarize; empty tokens render nothing.
+# Default agent rows end with ["agent"] (the agent kind, e.g. "claude"); dropped here
+# since nearly every agent is Claude. Add it back as a third row to restore it.
+[ui.sidebar.agents]
+rows = [["state_icon", "machine", "$heat", { token = "$ball", fg = "#fab387", bold = true }, "workspace", "tab"], [{ token = "$summary", dim = true }]]
+
+[ui.sidebar.spaces]
+rows = [["state_icon", "workspace"], ["branch", "git_status"], [{ token = "$summary", dim = true }]]
+

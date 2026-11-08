@@ -1,0 +1,474 @@
+#!/usr/bin/python3
+"""Keep a running description and a heat age on each herdr agent pane and workspace.
+
+Each pass:
+  1. lists herdr agents; for each Claude pane whose transcript changed since the
+     last pass, asks a small model to *revise* the previous description;
+  2. rolls the pane labels of each changed workspace up into a workspace label;
+  3. re-reports every cached label plus a fresh `heat` age to herdr, so tokens
+     survive a herdr restart and ages stay current.
+
+Nothing is sent to the running agents: transcripts are read from disk and the
+only writes are herdr metadata and this tool's state directory.
+
+Usage:
+  herdr-summarize            one pass (what launchd runs)
+  herdr-summarize list       TSV of agent panes, hottest first (for the picker)
+  herdr-summarize show ID    full description for a pane
+
+Environment (for testing against a sandbox session):
+  HERDR_SUMMARIZER_HERDR   herdr command to use (default: herdr on PATH)
+  HERDR_SUMMARIZER_STATE   state directory (default ~/.local/state/herdr-summarizer)
+  HERDR_SUMMARIZER_DRY     if set, skip model calls (labels say "(dry run)")
+"""
+import glob
+import hashlib
+import json
+import os
+import re
+import fcntl
+import shlex
+import subprocess
+import sys
+import tempfile
+import time
+
+HOME = os.path.expanduser("~")
+STATE_DIR = os.environ.get("HERDR_SUMMARIZER_STATE") or os.path.join(HOME, ".local", "state", "herdr-summarizer")
+STATE_FILE = os.path.join(STATE_DIR, "state.json")
+TRANSCRIPTS = os.path.join(HOME, ".claude", "projects")
+SOURCE = "herdr-summarizer"
+LINE_MAX = 28            # fits sidebar_width = 34 after the row indent
+TRANSCRIPT_TAIL = 24000  # characters of recent conversation sent to the model
+GOAL_HEAD = 2000         # characters of the opening prompt, to anchor the goal
+MODEL = "haiku"
+
+# launchd starts jobs with a bare PATH; find tools explicitly.
+SEARCH_PATH = ["/opt/homebrew/bin", "/usr/local/bin", os.path.join(HOME, ".local", "bin"), "/usr/bin", "/bin"]
+
+
+def which(name):
+    for d in SEARCH_PATH:
+        p = os.path.join(d, name)
+        if os.access(p, os.X_OK):
+            return p
+    return None
+
+
+HERDR = shlex.split(os.environ["HERDR_SUMMARIZER_HERDR"]) if os.environ.get("HERDR_SUMMARIZER_HERDR") else [which("herdr")]
+CLAUDE = which("claude")
+DRY = bool(os.environ.get("HERDR_SUMMARIZER_DRY"))
+
+
+def log(msg):
+    sys.stderr.write(time.strftime("%Y-%m-%d %H:%M:%S ") + msg + "\n")
+
+
+# ── state ────────────────────────────────────────────────────────────────────
+
+PRUNE_AFTER = 30 * 86400  # forget sessions whose transcript has been idle this long
+
+
+def load_state():
+    try:
+        with open(STATE_FILE) as f:
+            state = json.load(f)
+    except (OSError, ValueError):
+        state = {}
+    if not isinstance(state, dict):
+        state = {}
+    for key in ("sessions", "workspaces"):
+        if not isinstance(state.get(key), dict):
+            state[key] = {}
+    return state
+
+
+def save_state(state):
+    os.makedirs(STATE_DIR, exist_ok=True)
+    now = time.time()
+    state["sessions"] = {k: v for k, v in state["sessions"].items()
+                         if now - (v.get("active") or now) < PRUNE_AFTER}
+    fd, tmp = tempfile.mkstemp(dir=STATE_DIR, prefix=".state.")
+    with os.fdopen(fd, "w") as f:
+        json.dump(state, f, indent=1)
+    os.replace(tmp, STATE_FILE)
+
+
+# ── herdr ────────────────────────────────────────────────────────────────────
+
+def herdr(*args):
+    out = subprocess.run(HERDR + list(args), capture_output=True, text=True, timeout=30)
+    if out.returncode != 0:
+        raise RuntimeError("herdr %s: %s" % (" ".join(args[:2]), (out.stderr or out.stdout).strip()))
+    return json.loads(out.stdout) if out.stdout.strip() else {}
+
+
+def report(kind, target, tokens):
+    args = [kind, "report-metadata", target, "--source", SOURCE]
+    for k, v in tokens.items():
+        args += ["--token", "%s=%s" % (k, v)] if v else ["--clear-token", k]
+    # --seq keeps a late write from overwriting a newer one.
+    herdr(*(args + ["--seq", str(int(time.time() * 1000))]))
+
+
+def session_of(agent):
+    return (agent.get("agent_session") or {}).get("value")
+
+
+# ── transcripts ──────────────────────────────────────────────────────────────
+
+def transcript_path(session_id):
+    hits = glob.glob(os.path.join(TRANSCRIPTS, "*", session_id + ".jsonl"))
+    return max(hits, key=os.path.getmtime) if hits else None
+
+
+def text_of(content):
+    if isinstance(content, str):
+        return content
+    return "\n".join(b.get("text", "") for b in content or []
+                     if isinstance(b, dict) and b.get("type") == "text")
+
+
+AGENT_CMD = re.compile(r"\bherdr(?:\s+--\S+(?:\s+\S+)?)*\s+agent\s+(?:prompt|start|wait|read|send-keys|get|focus)\s+([a-z][a-z0-9_-]{0,31})\b")
+
+
+def conversation(path):
+    """Return (opening prompt, recent conversation, linked agent names)."""
+    turns, links = [], []
+    with open(path) as f:
+        for raw in f:
+            try:
+                d = json.loads(raw)
+            except ValueError:
+                continue
+            if d.get("type") not in ("user", "assistant") or d.get("isMeta"):
+                continue
+            content = (d.get("message") or {}).get("content")
+            # Links: other herdr agents this session drives through the CLI.
+            for b in content if isinstance(content, list) else []:
+                if isinstance(b, dict) and b.get("type") == "tool_use":
+                    for name in AGENT_CMD.findall(json.dumps(b.get("input") or {})):
+                        if name not in links:
+                            links.append(name)
+            text = text_of(content).strip()
+            if not text or text.startswith("<"):  # tool results and injected tags
+                continue
+            turns.append("%s: %s" % (d["type"].upper(), text))
+    if not turns:
+        return "", "", links
+    return turns[0][:GOAL_HEAD], "\n\n".join(turns)[-TRANSCRIPT_TAIL:], links
+
+
+def age(seconds):
+    if seconds < 300:
+        return "now"
+    for unit, size in (("d", 86400), ("h", 3600), ("m", 60)):
+        if seconds >= size:
+            return "%d%s" % (seconds // size, unit)
+    return "now"
+
+
+# ── model ────────────────────────────────────────────────────────────────────
+
+PANE_PROMPT = """You maintain a description of one coding-agent session so its owner can
+come back to it later and know where things stand.
+
+Reply with only a JSON object, no code fence, with four keys:
+  "label": at most {n} characters, what the session is doing right now,
+           e.g. "ctw spec: awaiting review". No trailing period.
+  "description": 2 to 4 sentences of plain prose: the goal, what is done,
+           what is open or blocked, and the next step.
+  "ball": whose move it is, judged from how the conversation ends:
+           "you:decide"   the agent needs a decision, information, or an action
+                          only the owner can take (a choice, a sudo command, a
+                          review) before anything else can happen
+           "you:go"       the agent only needs a go-ahead: it offered to do the
+                          next step itself and is waiting for a yes
+           "agent:NAME"   the agent is waiting on another herdr agent it drives;
+                          NAME must be one of: {agents}
+           "agent"        the agent itself is mid-task or was asked to continue
+           "none"         the work is wrapped up and nothing is pending
+  "your_move": one sentence, addressed to the owner as "you", saying exactly what
+           to do next in this session (or "Nothing; waiting on NAME" /
+           "Nothing pending").
+
+Revise the previous description rather than rewriting from scratch: keep the
+goal stable unless the conversation clearly changed it.
+
+PREVIOUS DESCRIPTION:
+{prev}
+
+OPENING PROMPT:
+{goal}
+
+RECENT CONVERSATION:
+{recent}
+"""
+
+WORKSPACE_PROMPT = """Below are labels for the agent sessions in one terminal workspace, plus the
+titles of its other panes. Write a single label of at most {n} characters
+describing what the workspace as a whole is for. Reply with only the label:
+no quotes, no prefix, no explanation.
+
+{items}
+"""
+
+
+def ask(prompt):
+    if DRY:
+        return '{"label": "(dry run)", "description": "(dry run)", "ball": "none", "your_move": "(dry run)"}'
+    cmd = [CLAUDE, "-p", "--model", MODEL, "--no-session-persistence",
+           "--strict-mcp-config", "--tools", "",
+           "--settings", json.dumps({"disableAllHooks": True})]
+    out = subprocess.run(cmd, input=prompt, capture_output=True, text=True,
+                         timeout=180, cwd=STATE_DIR)
+    if out.returncode != 0:
+        raise RuntimeError("claude -p failed: %s" % (out.stderr.strip() or out.stdout.strip())[:300])
+    return out.stdout.strip()
+
+
+def parse_reply(reply):
+    """Pull the JSON object out of a model reply, tolerating a code fence or preamble."""
+    start, end = reply.find("{"), reply.rfind("}")
+    if start < 0 or end < start:
+        raise ValueError(reply)
+    d = json.loads(reply[start:end + 1])
+    if not isinstance(d.get("label"), str) or not isinstance(d.get("description"), str):
+        raise ValueError(reply)
+    ball = str(d.get("ball") or "agent").strip().lower()
+    if ball == "you":
+        ball = "you:decide"
+    if ball not in ("you:decide", "you:go", "agent", "none") and not ball.startswith("agent:"):
+        ball = "agent"
+    d["ball"] = ball
+    d["your_move"] = str(d.get("your_move") or "").strip()
+    return d
+
+
+def clip(line):
+    line = " ".join(line.split()).strip("\"' ")
+    return line if len(line) <= LINE_MAX else line[:LINE_MAX - 1] + "…"
+
+
+# ── passes ───────────────────────────────────────────────────────────────────
+
+def summarize_panes(state, agents):
+    """Revise sessions whose transcript changed. Returns workspace IDs touched."""
+    changed = set()
+    for a in agents:
+        try:  # one bad pane (closed mid-pass, odd transcript, model error) must not stop the pass
+            if summarize_pane(state, a):
+                changed.add(a["workspace_id"])
+        except Exception as e:
+            log("pane %s: %s" % (a.get("pane_id"), e))
+    return changed
+
+
+def summarize_pane(state, a):
+    """Revise one session if its transcript changed. Returns True when its label changed."""
+    sess = session_of(a)
+    if a.get("agent") != "claude" or not sess:
+        return False
+    path = transcript_path(sess)
+    if not path:
+        return False
+    mtime = os.path.getmtime(path)
+    entry = state["sessions"].setdefault(sess, {})
+    entry["active"] = mtime  # heat: refreshed every pass, free
+    if entry.get("mtime") == mtime:
+        return False
+    goal, recent, links = conversation(path)
+    if not recent:
+        return False
+    entry["links"] = links
+    reply = ask(PANE_PROMPT.format(n=LINE_MAX, prev=entry.get("description") or "(none yet)",
+                                   agents=", ".join(links) or "(none)", goal=goal, recent=recent))
+    try:
+        parsed = parse_reply(reply)
+    except ValueError:
+        raise RuntimeError("unparseable reply: %s" % reply[:200])
+    entry.update({"mtime": mtime, "line": clip(parsed["label"]), "description": parsed["description"],
+                  "ball": parsed["ball"], "your_move": parsed["your_move"],
+                  "updated": time.strftime("%Y-%m-%d %H:%M")})
+    return True
+
+
+def summarize_workspaces(state, agents, panes_by_ws, ws_ids):
+    """Key every workspace on its current contents each pass, so a label can never
+    stick to a reused workspace ID; the model runs only when a key changes."""
+    for ws in ws_ids:
+        items = ["agent: " + state["sessions"][session_of(a)]["line"] for a in agents
+                 if a.get("workspace_id") == ws and state["sessions"].get(session_of(a), {}).get("line")]
+        items += ["pane: " + p["terminal_title_stripped"] for p in panes_by_ws.get(ws, [])
+                  if not p.get("agent") and p.get("terminal_title_stripped")]
+        if not any(i.startswith("agent: ") for i in items):
+            state["workspaces"].pop(ws, None)  # no agents: no label (publish clears the token)
+            continue
+        key = hashlib.sha1("\n".join(sorted(items)).encode()).hexdigest()
+        if state["workspaces"].get(ws, {}).get("key") == key:
+            continue
+        try:
+            reply = ask(WORKSPACE_PROMPT.format(n=LINE_MAX, items="\n".join(items)))
+            line = re.sub(r"^\w+:\s*", "", (reply.splitlines() or [""])[0])  # drop a "Workspace:" preamble
+        except Exception as e:
+            log("workspace %s: %s" % (ws, e))
+            continue
+        state["workspaces"][ws] = {"key": key, "line": clip(line)}
+
+
+def publish(state, agents, ws_ids):
+    """Re-report every token. Idempotent; restores tokens after a herdr restart and
+    clears tokens that no longer apply. A pane that vanishes mid-pass is skipped."""
+    now = time.time()
+    targets = []
+    for a in agents:
+        entry = state["sessions"].get(session_of(a), {})
+        targets.append(("pane", a["pane_id"], {
+            "heat": age(now - entry["active"]) if entry.get("active") else "",
+            "summary": entry.get("line", ""),
+            "ball": ball_mark(entry, now) if entry.get("line") else "",
+        }))
+    for ws in ws_ids:
+        targets.append(("workspace", ws, {"summary": state["workspaces"].get(ws, {}).get("line", "")}))
+    for kind, target, tokens in targets:
+        try:
+            report(kind, target, tokens)
+        except Exception as e:
+            log("%s %s: %s" % (kind, target, e))
+
+
+STALE = 2 * 3600  # an agent that has "the ball" but has been silent this long is probably dead
+
+
+def ball_mark(entry, now):
+    """Short sidebar/picker mark for whose move it is. Empty when nothing is pending."""
+    ball = entry.get("ball") or ""
+    if ball == "you:decide":
+        return "decide"
+    if ball == "you:go":
+        return "go"
+    if ball.startswith("agent"):
+        who = "→" + ball[6:] if ball.startswith("agent:") else "agent"
+        stale = entry.get("active") and now - entry["active"] > STALE
+        return who + ("?" if stale else "")
+    return ""
+
+
+def snapshot():
+    agents = herdr("agent", "list")["result"]["agents"]
+    workspaces = herdr("workspace", "list")["result"]["workspaces"]
+    return agents, workspaces
+
+
+def run_pass():
+    if not HERDR[0] or not (CLAUDE or DRY):
+        log("herdr or claude not found on %s; skipping" % ":".join(SEARCH_PATH))
+        return 0
+    os.makedirs(STATE_DIR, exist_ok=True)
+    try:
+        agents, workspaces = snapshot()
+    except Exception as e:  # herdr not running: nothing to describe
+        log("herdr unavailable: %s" % e)
+        return 0
+    # One pass at a time: a manual run during a launchd pass waits instead of racing on state.
+    lock = open(os.path.join(STATE_DIR, ".lock"), "w")
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        log("another pass is running; skipping")
+        return 0
+    ws_ids = [w["workspace_id"] for w in workspaces]
+    panes_by_ws = {}
+    for ws in ws_ids:
+        try:
+            panes_by_ws[ws] = herdr("pane", "list", "--workspace", ws)["result"]["panes"]
+        except Exception as e:
+            log("workspace %s: %s" % (ws, e))
+    state = load_state()
+    summarize_panes(state, agents)
+    summarize_workspaces(state, agents, panes_by_ws, ws_ids)
+    save_state(state)
+    publish(state, agents, ws_ids)
+    return 0
+
+
+def list_rows():
+    """TSV: pane_id, heat, workspace, ball, label — your move first, then hottest.
+
+    A session that drives other herdr agents (by name) is a root; the agents it
+    drives are listed under it, indented, so a chain reads as one unit.
+    """
+    agents, workspaces = snapshot()
+    ws_names = {w["workspace_id"]: w.get("label") or w["workspace_id"] for w in workspaces}
+    state, now = load_state(), time.time()
+    by_name = {a["name"]: a for a in agents if a.get("name")}
+    children = {}
+    for a in agents:
+        for name in state["sessions"].get(session_of(a), {}).get("links", []):
+            child = by_name.get(name)
+            if child and child is not a:
+                children.setdefault(a["pane_id"], []).append(child)
+    child_ids = {c["pane_id"] for cs in children.values() for c in cs}
+
+    def row(a, depth):
+        entry = state["sessions"].get(session_of(a), {})
+        active = entry.get("active", 0)
+        label = entry.get("line", "")
+        if depth:
+            label = "└ %s: %s" % (a.get("name"), label)
+        return [a["pane_id"], age(now - active) if active else "?",
+                ws_names.get(a["workspace_id"], ""), ball_mark(entry, now), label]
+
+    ORDER = {"you:decide": 0, "you:go": 1}
+
+    def rank(a):  # decisions first, then go-aheads, then everything else; hottest within each
+        entry = state["sessions"].get(session_of(a), {})
+        return (ORDER.get(entry.get("ball"), 2), -(entry.get("active") or 0))
+
+    seen = set()
+
+    def emit(a, depth):
+        if a["pane_id"] in seen:  # each agent appears once, even with cyclic links
+            return
+        seen.add(a["pane_id"])
+        print("\t".join(row(a, depth)))
+        for c in sorted(children.get(a["pane_id"], []), key=rank):
+            emit(c, depth + 1)
+
+    for a in sorted((a for a in agents if a["pane_id"] not in child_ids), key=rank):
+        emit(a, 0)
+    for a in sorted(agents, key=rank):  # agents only reachable through a cycle
+        emit(a, 0)
+    return 0
+
+
+def show(pane_id):
+    pane = herdr("pane", "get", pane_id)["result"]["pane"]
+    entry = load_state()["sessions"].get(session_of(pane))
+    if not entry or not entry.get("description"):
+        print("No description yet for %s." % pane_id)
+        return 0
+    mark = ball_mark(entry, time.time())
+    head = {"decide": "YOUR DECISION", "go": "YOUR GO-AHEAD", "": "NOTHING PENDING"}.get(
+        mark, "WAITING ON " + mark.lstrip("→").upper())
+    out = ["%s  ·  %s  ·  updated %s" % (entry["line"], head, entry["updated"]), ""]
+    if entry.get("your_move"):
+        out += [entry["your_move"], ""]
+    out.append(entry["description"])
+    print("\n".join(out))
+    return 0
+
+
+def main(argv):
+    cmd = argv[1] if len(argv) > 1 else "run"
+    if cmd == "run":
+        return run_pass()
+    if cmd == "list":
+        return list_rows()
+    if cmd == "show" and len(argv) > 2:
+        return show(argv[2])
+    sys.exit(__doc__)
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

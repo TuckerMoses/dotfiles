@@ -7,6 +7,17 @@ All notable changes to this dotfiles setup.
 ### Planned
 - Jujutsu adoption for lock-free agent workflows ([plan](docs/plans/jujutsu-adoption.md))
 
+## [2026-11-08]
+
+### Added
+- herdr pane descriptions: `herdr-summarize` writes a label, heat (time since the transcript changed), whose move it is, and a full description for each Claude pane and space, from transcripts on disk via Haiku; nothing is sent to running agents
+- `prefix+a` recent-sessions popup (`herdr-recent`, fzf): decisions first, then hottest, with the description previewed; sessions an orchestrator drives by name are nested under it
+- `herdr-summarizer/install.sh`: opt-in launchd job (every 5 min), idempotent, `--uninstall`; deliberately not run by `bootstrap.sh`
+
+### Changed
+- herdr sidebar: width 26 → 34; agent rows show heat and whose-move with the label below (agent-kind row dropped); space rows add a summary row
+- ghostty: `macos-non-native-fullscreen = visible-menu`, so the menu-bar reveal no longer swallows clicks on the herdr tab row
+
 ## [2026-05-17]
 
 ### Changed
