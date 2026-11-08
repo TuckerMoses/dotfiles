@@ -29,3 +29,7 @@ mouse-hide-while-typing = true
 # ── Keyboard ─────────────────────────────────────────────────────────────────
 # Left Option acts as Alt (alt+key chords for herdr/tmux/nvim); right Option still types é, —, • etc.
 macos-option-as-alt = left
+
+# Fullscreen without a native Space: menu bar stays visible, window starts below it,
+# so the menu-bar reveal strip no longer swallows clicks on the herdr tab row.
+macos-non-native-fullscreen = visible-menu
