@@ -24,6 +24,7 @@ function zvm_after_init() {
 # ── Aliases ──────────────────────────────────────────────────────────────────
 alias vim='nvim'
 alias v='vim .'
+alias claude-jobs="launchctl list | awk 'NR==1 || /com\\.tuckermoses\\./'"  # launchd jobs Claude registered
 
 # ── zoxide (smarter cd) — must be last ──────────────────────────────────────
 export _ZO_DOCTOR=0  # suppress false positive in non-interactive shells (e.g. Claude Code)
