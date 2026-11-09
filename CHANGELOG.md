@@ -7,6 +7,12 @@ All notable changes to this dotfiles setup.
 ### Planned
 - Jujutsu adoption for lock-free agent workflows ([plan](docs/plans/jujutsu-adoption.md))
 
+## [2026-11-09]
+
+### Added
+- `validate.sh`: read-only check that every stowed file links back to this checkout, bootstrap's tools are installed, configs parse (tmux via a throwaway server, ghostty, starship, atuin, nvim, zsh), herdr plugins and the Claude integration are healthy, and the herdr-summarizer has no failed hook runs; lists come from `bootstrap.sh`
+- `validate.sh` checks what programs actually load: shadow config files on tmux's built-in search path and Ghostty's Application Support config, redirecting environment variables, config-like files in nvim's `site` dir, zsh startup files outside the repo, and tmux servers, nvim instances, Ghostty and herdr still running a config from before the last change
+
 ## [2026-11-08]
 
 ### Added
