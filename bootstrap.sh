@@ -5,44 +5,14 @@ set -euo pipefail
 # Clone this repo to ~/dotfiles, then run: ./bootstrap.sh
 # Idempotent — safe to re-run on updates.
 #
-# Sound theme selection (controls which notification-sounds/<source>/ dirs
-# get linked into the game-sounds plugin):
-#   ./bootstrap.sh                            # default: --all
-#   ./bootstrap.sh --all
-#   ./bootstrap.sh --sounds=top-gun,zelda
-#   ./bootstrap.sh -s top-gun zelda batman
-
 DOTFILES_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$DOTFILES_DIR"
 
 # ── Parse args ──────────────────────────────────────────────────────────────
-SOUND_THEMES=()
-SOUND_ALL=1
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --all)
-            SOUND_ALL=1; SOUND_THEMES=(); shift ;;
-        --sounds=*)
-            SOUND_ALL=0
-            IFS=',' read -r -a SOUND_THEMES <<< "${1#--sounds=}"
-            shift ;;
-        -s|--sounds)
-            SOUND_ALL=0; shift
-            while [[ $# -gt 0 && "$1" != -* ]]; do
-                SOUND_THEMES+=("$1"); shift
-            done ;;
-        -l|--list-sounds)
-            echo "Available sound themes:"
-            for d in "$DOTFILES_DIR/notification-sounds"/*/; do
-                [[ -d "$d" ]] || continue
-                theme="$(basename "$d")"
-                count=$(find "$d" -name '*.mp3' | wc -l | tr -d ' ')
-                printf "  %-20s %s sounds\n" "$theme" "$count"
-            done
-            exit 0 ;;
         -h|--help)
-            sed -n '4,15p' "$0"
-            echo "  ./bootstrap.sh --list-sounds              # list available themes"
+            sed -n '4,6p' "$0"
             exit 0 ;;
         *)
             echo "Unknown arg: $1" >&2; exit 1 ;;
@@ -60,7 +30,7 @@ if [[ "$(uname)" == "Darwin" ]]; then
 
   echo "==> Installing brew packages..."
   # cmd:formula pairs (cmd=formula when they match)
-  for pair in stow tmux neovim:nvim starship fzf zoxide atuin; do
+  for pair in stow tmux neovim:nvim starship fzf zoxide atuin jq lazygit lazyjj; do
     formula="${pair%%:*}"
     cmd="${pair#*:}"
     command -v "$cmd" &>/dev/null || brew install "$formula"
@@ -74,7 +44,7 @@ fi
 # ── Linux: install packages ──────────────────────────────────────────────────
 if [[ "$(uname)" == "Linux" ]]; then
   missing=()
-  for pair in stow tmux neovim:nvim fzf zoxide; do
+  for pair in stow tmux neovim:nvim fzf zoxide jq lazygit; do
     cmd="${pair#*:}"
     command -v "$cmd" &>/dev/null || missing+=("${pair%%:*}")
   done
@@ -128,6 +98,33 @@ for pkg in tmux zsh ghostty starship nvim atuin; do
   fi
 done
 
+# herdr: --no-folding because ~/.config/herdr also holds sockets, logs and session state
+# that must stay real files, so only config.toml is linked.
+if [[ -d "$DOTFILES_DIR/herdr" ]]; then
+  echo "    stowing herdr (--no-folding)"
+  mkdir -p "$HOME/.config/herdr"
+  stow -d "$DOTFILES_DIR" -t "$HOME" --no-folding --restow herdr
+fi
+
+# ── Herdr plugins ────────────────────────────────────────────────────────────
+# vim-herdr-navigation: ctrl+h/j/k/l across panes, vim-split-aware (needs jq)
+if command -v herdr >/dev/null 2>&1; then
+  if ! herdr plugin list 2>/dev/null | grep -q vim-herdr-navigation; then
+    echo "==> Installing herdr plugin vim-herdr-navigation"
+    herdr plugin install paulbkim-dev/vim-herdr-navigation --yes || echo "    (herdr server not running; install later)"
+  fi
+  # herdr-plus: per-worktree layouts and quick actions
+  if ! herdr plugin list 2>/dev/null | grep -q herdr-plus; then
+    echo "==> Installing herdr plugin herdr-plus"
+    herdr plugin install cloudmanic/herdr-plus --yes || echo "    (herdr server not running; install later)"
+  fi
+  # Claude Code integration: agent state + session refs via hook (re-run after herdr upgrades)
+  if ! herdr integration status 2>/dev/null | grep -i "claude" | grep -qiv "not installed"; then
+    echo "==> Installing herdr Claude integration"
+    herdr integration install claude || echo "    (install later: herdr integration install claude)"
+  fi
+fi
+
 # ── TPM (Tmux Plugin Manager) ───────────────────────────────────────────────
 TPM_DIR="$HOME/.tmux/plugins/tpm"
 if [[ ! -d "$TPM_DIR" ]]; then
@@ -151,118 +148,10 @@ if command -v atuin &>/dev/null; then
   echo "==> Tip: Run 'atuin import auto' to import your existing shell history"
 fi
 
-# ── Claude Code plugins ─────────────────────────────────────────────────────
-if command -v claude &>/dev/null; then
-  echo "==> Setting up Claude Code plugins..."
-
-  # Add marketplaces (game-sounds lives in the Citedy/claude-plugins marketplace)
-  claude plugin marketplace add 777genius/claude-notifications-go 2>/dev/null || true
-  claude plugin marketplace add Citedy/claude-plugins 2>/dev/null || true
-
-  # Install plugins (plugin@marketplace-name)
-  claude plugin install claude-notifications-go@claude-notifications-go 2>/dev/null || true
-  # claude plugin install game-sounds@citedy 2>/dev/null || true
-
-  # claude-notifications-go: write config (desktop banners + click-to-focus, sounds off)
-  # Config lives inside the plugin's cache directory alongside its binary
-  NOTIFY_CONFIG=$(find "$HOME/.claude/plugins/cache/claude-notifications-go" -maxdepth 4 -path "*/config/config.json" 2>/dev/null | head -1)
-  if [[ -n "$NOTIFY_CONFIG" ]]; then
-    echo "    writing claude-notifications-go config"
-    cat >"$NOTIFY_CONFIG" <<'EOF'
-{
-  "notifications": {
-    "desktop": {
-      "enabled": true,
-      "sound": false,
-      "volume": 1.0,
-      "appIcon": "${CLAUDE_PLUGIN_ROOT}/claude_icon.png",
-      "clickToFocus": true,
-      "terminalBundleId": ""
-    },
-    "webhook": {
-      "enabled": false,
-      "preset": "custom",
-      "url": "",
-      "chat_id": "",
-      "format": "json",
-      "headers": {}
-    },
-    "suppressQuestionAfterTaskCompleteSeconds": 12,
-    "suppressQuestionAfterAnyNotificationSeconds": 7,
-    "suppressForSubagents": true,
-    "suppressFilters": []
-  },
-  "statuses": {
-    "task_complete": { "title": "✅ Completed", "sound": "" },
-    "review_complete": { "title": "🔍 Review", "sound": "" },
-    "question": { "title": "❓ Question", "sound": "" },
-    "plan_ready": { "title": "📋 Plan", "sound": "" },
-    "session_limit_reached": { "title": "⏱️ Session Limit Reached", "sound": "" },
-    "api_error": { "title": "🔴 API Error", "sound": "" },
-    "api_error_overloaded": { "title": "🔴 API Error", "sound": "" }
-  }
-}
-EOF
-  fi
-
-  # game-sounds: build a "custom" pack from selected notification-sounds themes.
-  # Each <source>/<hook>/file.mp3 is hardlinked as custom/<hook>/<source>__<file>.mp3
-  # so multiple themes coexist without filename collisions. Hardlinks (not
-  # symlinks) because the plugin's play-sound.sh uses `find -type f`, which
-  # under BSD find won't match symlinks — they appear as type 'l'.
-  GS_SOUNDS_DIR=$(find "$HOME/.claude/plugins/cache/citedy/game-sounds" -maxdepth 3 -type d -name "sounds" 2>/dev/null | head -1)
-  if [[ -n "$GS_SOUNDS_DIR" ]] && [[ -d "$DOTFILES_DIR/notification-sounds" ]]; then
-    if (( SOUND_ALL )); then
-      SOUND_THEMES=()
-      for d in "$DOTFILES_DIR/notification-sounds"/*/; do
-        [[ -d "$d" ]] && SOUND_THEMES+=("$(basename "$d")")
-      done
-    fi
-    echo "    building custom sound pack from: ${SOUND_THEMES[*]}"
-    CUSTOM_DIR="$GS_SOUNDS_DIR/custom"
-    rm -rf "$CUSTOM_DIR"
-    mkdir -p "$CUSTOM_DIR"
-    shopt -s nullglob
-    for theme in "${SOUND_THEMES[@]}"; do
-      theme_dir="$DOTFILES_DIR/notification-sounds/$theme"
-      if [[ ! -d "$theme_dir" ]]; then
-        echo "    warning: theme '$theme' not found, skipping" >&2
-        continue
-      fi
-      for hook_dir in "$theme_dir"/*/; do
-        [[ -d "$hook_dir" ]] || continue
-        hook="$(basename "$hook_dir")"
-        mkdir -p "$CUSTOM_DIR/$hook"
-        for f in "$hook_dir"*.mp3; do
-          [[ -f "$f" ]] || continue
-          ln -f "$f" "$CUSTOM_DIR/$hook/${theme}__$(basename "$f")"
-        done
-      done
-    done
-    shopt -u nullglob
-  fi
-
-  # game-sounds: set custom pack as active
-  GS_CONFIG=$(find "$HOME/.claude/plugins/cache/citedy/game-sounds" -maxdepth 3 -name "config.json" 2>/dev/null | head -1)
-  if [[ -n "$GS_CONFIG" ]]; then
-    python3 -c "
-import json
-with open('$GS_CONFIG') as f:
-    c = json.load(f)
-c['active_pack'] = 'custom'
-c['enabled_events'] = {
-    'session-start': True,
-    'task-acknowledge': True,
-    'task-complete': True,
-    'error': True,
-    'permission': True,
-}
-with open('$GS_CONFIG', 'w') as f:
-    json.dump(c, f, indent=2)
-    f.write('\n')
-" 2>/dev/null || true
-  fi
-fi
+# ── Claude Code notifications ───────────────────────────────────────────────
+# Removed 2026-11-03: claude-notifications-go (banners + tmux click-to-focus) and game-sounds
+# (notification-sounds pack) are replaced by Herdr's own toasts, prefix+o and [ui.sound] in
+# herdr/.config/herdr/config.toml. notification-sounds/ stays as the source of those mp3s.
 
 echo ""
 echo "==> Done! Restart your terminal for changes to take effect."

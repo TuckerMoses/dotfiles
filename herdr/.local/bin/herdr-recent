@@ -1,0 +1,16 @@
+#!/bin/sh
+# Jump to an agent session: stale first, then needs-you, working, idle, done;
+# hottest within each. The selected session's description is previewed below;
+# ? swaps the preview for a guide to the statuses and columns.
+# Needs fzf and herdr-summarize on PATH (or alongside this script).
+here=$(cd "$(dirname "$0")" && pwd)
+hs="$here/herdr-summarize"; [ -x "$hs" ] || hs=herdr-summarize
+pick=$("$hs" list 2>/dev/null | awk -F'\t' '{ printf "%s\t%-14s %-5s %-10s %s\n", $1, $2, $3, substr($4,1,10), $5 }' | fzf \
+  --delimiter '\t' --with-nth 2 \
+  --header "$(printf '%-14s %-5s %-10s %-34s %s' status heat space label 'enter jump · ? guide · esc close')" \
+  --preview "$hs show {1} | fold -s -w \$FZF_PREVIEW_COLUMNS" --preview-window 'down,45%' \
+  --bind "?:change-preview-window(down,90%)+preview($hs help)" \
+  --bind "focus:change-preview-window(down,45%)" \
+  --layout reverse --info inline-right --prompt 'recent › ' \
+  --color 'header:#6c7086,pointer:#f5c2e7,hl:#f9e2af') || exit 0
+herdr agent focus "$(printf '%s' "$pick" | cut -f1)" >/dev/null

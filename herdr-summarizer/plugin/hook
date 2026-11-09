@@ -1,0 +1,5 @@
+#!/bin/sh
+# herdr runs this from the plugin root on each subscribed event. It resolves the
+# stowed script through the repo, so it does not depend on PATH or $HOME.
+here=$(cd "$(dirname "$0")" && pwd)
+exec /usr/bin/python3 "$here/../../herdr/.local/bin/herdr-summarize" event
