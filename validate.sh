@@ -111,6 +111,114 @@ if have nvim; then
   else warn "nvim: plugins not installed yet; open nvim once, then re-run"; fi
 fi
 
+# ── what programs actually load ──────────────────────────────────────────────
+# A stowed file can be correct and still not be what a program uses: another
+# file it also reads can override it, an environment variable can point it
+# elsewhere, or a long-running process can still hold an older version.
+section "What programs actually load"
+mtime() { /usr/bin/python3 -c 'import os,sys; print(int(os.path.getmtime(os.path.realpath(sys.argv[1]))))' "$1" 2>/dev/null || echo 0; }
+when()  { /usr/bin/python3 -c 'import sys,time; print(time.strftime("%Y-%m-%d %H:%M", time.localtime(int(sys.argv[1]))))' "$1"; }
+
+# Environment variables that silently redirect a program to another config.
+for var in ZDOTDIR XDG_CONFIG_HOME STARSHIP_CONFIG ATUIN_CONFIG_DIR NVIM_APPNAME HERDR_CONFIG_PATH; do
+  val="${!var:-}"; [[ -z "$val" ]] && continue
+  case "$var" in
+    ZDOTDIR)         [[ "$(real "$val")" == "$(real "$HOME")" ]] && continue ;;
+    XDG_CONFIG_HOME) [[ "$(real "$val")" == "$(real "$HOME/.config")" ]] && continue ;;
+  esac
+  fail "$var=$val redirects a program away from the dotfiles config"
+done
+
+# tmux: it loads every file in its built-in search list, so any other existing
+# file adds to (and can override) the dotfiles one. The list comes from the binary.
+if have tmux; then
+  tmux_conf="$(real "$DOTFILES_DIR/tmux/.tmux.conf")"
+  search="$(strings "$(command -v tmux)" 2>/dev/null | grep -m1 -E '^[^ ]*tmux\.conf(:[^ ]*tmux\.conf)+$' || echo "/etc/tmux.conf:~/.tmux.conf:\$XDG_CONFIG_HOME/tmux/tmux.conf:~/.config/tmux/tmux.conf")"
+  shadow=0; seen=" "
+  IFS=':' read -r -a candidates <<<"$search"
+  for c in "${candidates[@]}"; do
+    c="${c/#\~/$HOME}"; c="${c/\$XDG_CONFIG_HOME/${XDG_CONFIG_HOME:-$HOME/.config}}"
+    [[ -e "$c" ]] || continue
+    r="$(real "$c")"; [[ "$seen" == *" $r "* ]] && continue; seen="$seen$r "
+    [[ "$r" == "$tmux_conf" ]] && continue
+    fail "tmux also loads $c, which is not the dotfiles config"; shadow=1
+  done
+  (( shadow )) || pass "tmux: no other config file on its search path"
+  # Running servers keep the config they loaded until it is re-sourced.
+  conf_t="$(mtime "$HOME/.tmux.conf")"; servers=0
+  sockdir="$(real "${TMUX_TMPDIR:-/tmp}/tmux-$(id -u)")"
+  for sock in "$sockdir"/*; do
+    [[ -S "$sock" ]] || continue
+    start="$(tmux -S "$sock" display -p '#{start_time}' 2>/dev/null)" || continue
+    servers=$((servers+1))
+    if (( start < conf_t )); then
+      warn "tmux server $(basename "$sock") started $(when "$start"), before ~/.tmux.conf changed $(when "$conf_t"): run tmux source-file ~/.tmux.conf"
+    else pass "tmux server $(basename "$sock") started after the last config change"; fi
+  done
+  (( servers )) || info "no tmux server running"
+fi
+
+# Ghostty on macOS also reads its Application Support config, after the XDG one,
+# so anything in it overrides the dotfiles config.
+if [[ "$OS" == "Darwin" ]]; then
+  for f in "$HOME/Library/Application Support/com.mitchellh.ghostty/config" \
+           "$HOME/Library/Application Support/com.mitchellh.ghostty/config.ghostty"; do
+    [[ -e "$f" ]] || continue
+    if [[ -s "$f" ]]; then fail "ghostty also loads ${f/#$HOME/~} after the dotfiles config, overriding it"
+    else info "ghostty: ${f/#$HOME/~} exists but is empty (harmless; anything added there overrides the dotfiles config)"; fi
+  done
+  gpid="$(pgrep -f 'Ghostty.app/Contents/MacOS/ghostty' | head -1)"
+  if [[ -n "$gpid" ]]; then
+    gstart="$(/usr/bin/python3 -c 'import sys,time; print(int(time.mktime(time.strptime(sys.argv[1].strip(), "%a %b %d %H:%M:%S %Y"))))' "$(ps -o lstart= -p "$gpid")" 2>/dev/null || echo 0)"
+    gconf="$(mtime "$HOME/.config/ghostty/config")"
+    if (( gstart < gconf )); then warn "ghostty started before its config changed $(when "$gconf"): reload it (cmd+shift+,) unless you already have"
+    else pass "ghostty started after the last config change"; fi
+  fi
+fi
+
+# nvim: its config dir comes from the repo, but it also loads plugin, ftplugin,
+# after and lua files from its data "site" dir, and a running nvim keeps the
+# config it started with.
+if have nvim; then
+  site="$HOME/.local/share/nvim/site"; extra=""
+  for d in plugin ftplugin after lua init.lua init.vim; do [[ -e "$site/$d" ]] && extra="$extra $d"; done
+  if [[ -n "$extra" ]]; then warn "nvim also loads config from ${site/#$HOME/~} (${extra# }), which is not in dotfiles"
+  else pass "nvim: nothing config-like outside the dotfiles config dir"; fi
+  nconf="$(find "$DOTFILES_DIR/nvim" -type f -exec stat -f '%m' {} + 2>/dev/null | sort -n | tail -1)"
+  [[ -n "$nconf" ]] || nconf="$(find "$DOTFILES_DIR/nvim" -type f -printf '%T@\n' 2>/dev/null | cut -d. -f1 | sort -n | tail -1)"
+  stale=0; running=0
+  for p in $(pgrep -x nvim); do
+    running=$((running+1))
+    pstart="$(/usr/bin/python3 -c 'import sys,time; print(int(time.mktime(time.strptime(sys.argv[1].strip(), "%a %b %d %H:%M:%S %Y"))))' "$(ps -o lstart= -p "$p")" 2>/dev/null || echo 0)"
+    if (( pstart < ${nconf:-0} )); then
+      stale=$((stale+1))
+      warn "nvim (pid $p, in $(lsof -a -p "$p" -d cwd -Fn 2>/dev/null | sed -n 's/^n//p' | sed "s#^$HOME#~#")) started $(when "$pstart"), before its config changed $(when "$nconf"): restart it"
+    fi
+  done
+  if (( running && !stale )); then pass "all $running running nvim instances started after the last config change"; fi
+  (( running )) || info "no nvim running"
+fi
+
+# zsh: startup files it loads that the repo does not manage.
+for f in .zshenv .zprofile .zlogin .zlogout .zshrc.local; do
+  [[ -e "$HOME/$f" ]] || continue
+  [[ "$(real "$HOME/$f")" == "$DOTFILES_DIR"/* ]] && continue
+  warn "zsh loads ~/$f, which is not in dotfiles"
+done
+
+# herdr keeps the config it loaded until a reload; its log records both.
+if have herdr && [[ -f "$HOME/.config/herdr/herdr-server.log" ]]; then
+  hconf="$(mtime "$HOME/.config/herdr/config.toml")"
+  hload="$( { grep 'herdr server started' "$HOME/.config/herdr/herdr-server.log"
+              grep 'api.request.complete' "$HOME/.config/herdr/herdr-server.log" | grep 'outcome="ok"' | grep 'method="server.reload_config"'
+            } | cut -c1-19 | sort | tail -1)"
+  if [[ -n "$hload" ]]; then
+    hload_t="$(/usr/bin/python3 -c 'import sys,calendar,time; print(calendar.timegm(time.strptime(sys.argv[1], "%Y-%m-%dT%H:%M:%S")))' "$hload")"
+    if (( hload_t < hconf )); then warn "herdr last loaded its config $(when "$hload_t"), before it changed $(when "$hconf"): run herdr server reload-config"
+    else pass "herdr loaded its config after the last change"; fi
+  fi
+fi
+
 # ── herdr ────────────────────────────────────────────────────────────────────
 section "herdr"
 if have herdr; then

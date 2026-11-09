@@ -104,7 +104,12 @@ Edit files in this repo (not in `~`), then changes apply immediately via symlink
 `./validate.sh` (or `-q` for warnings and failures only) checks that every stowed file links back
 to this checkout, bootstrap's tools are installed, each config parses (tmux, ghostty, starship, atuin,
 nvim and zsh, using throwaway instances where needed), herdr's plugins and Claude integration are healthy,
-and the opt-in herdr-summarizer has no failed hook runs. It reads package, tool and plugin lists from
+and the opt-in herdr-summarizer has no failed hook runs. It also checks what programs *actually* load, since
+a correctly stowed file can still not be live: another file on a program's search path (tmux reads every
+file in the list built into its binary; Ghostty also reads its Application Support config), an environment
+variable pointing elsewhere (`ZDOTDIR`, `STARSHIP_CONFIG`, `NVIM_APPNAME`, ...), config-like files in nvim's
+`site` dir, zsh startup files outside the repo, or a running tmux server, nvim, Ghostty or herdr that loaded
+its config before the last change (with the command to fix it). It reads package, tool and plugin lists from
 `bootstrap.sh`, so new packages are covered automatically. Run it after any change; it exits 1 on failure.
 
 ## CI / GitHub Actions
