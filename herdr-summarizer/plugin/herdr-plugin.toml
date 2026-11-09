@@ -1,0 +1,25 @@
+# herdr-summarizer: keeps pane labels, status and descriptions current from herdr's
+# own events instead of a timer. Each hook only marks the session dirty and starts a
+# detached worker (herdr-summarize work), so herdr never waits on a model call.
+id = "herdr-summarizer"
+name = "Herdr Summarizer"
+version = "0.2.0"
+min_herdr_version = "0.9.0"
+description = "Pane and space descriptions, whose-move status and stale reviews, updated when agent turns end."
+platforms = ["macos", "linux"]
+
+[[events]]
+on = "pane.agent_status_changed"   # a turn started or ended: the only time a summary can change
+command = ["./hook"]
+
+[[events]]
+on = "pane.agent_detected"         # a new agent: record its name and session
+command = ["./hook"]
+
+[[events]]
+on = "pane.moved"                  # pane IDs change on move; refresh tokens on the new ID
+command = ["./hook"]
+
+[[events]]
+on = "pane.focused"                # you are looking: refresh heat and stale marks
+command = ["./hook"]

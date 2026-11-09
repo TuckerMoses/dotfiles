@@ -15,10 +15,18 @@ stronger model reviews each stale session once against the rest of the setup.
 Nothing is sent to running agents: transcripts are read from disk, and the only
 writes are herdr metadata tokens and this tool's state directory.
 
+Triggers: the herdr-summarizer plugin (~/dotfiles/herdr-summarizer) calls
+`event` on herdr events (turn ended, agent detected, pane moved or focused). The
+hook only marks the session dirty and starts a detached `work` process, so herdr
+never waits on a model call. Nothing runs on a timer.
+
 Usage:
-  herdr-summarize            one pass (what launchd runs)
+  herdr-summarize            one pass by hand
+  herdr-summarize event      plugin hook (reads HERDR_PLUGIN_EVENT_JSON)
+  herdr-summarize work       detached worker: passes until no new events arrived
   herdr-summarize list       TSV for the picker: stale, needs-you, working, idle, done
   herdr-summarize show ID    full description for a pane
+  herdr-summarize help       guide shown by ? in the picker
 
 Environment (for testing against a sandbox session):
   HERDR_SUMMARIZER_HERDR       herdr command to use (default: herdr on PATH)
@@ -39,7 +47,12 @@ import tempfile
 import time
 
 HOME = os.path.expanduser("~")
-STATE_DIR = os.environ.get("HERDR_SUMMARIZER_STATE") or os.path.join(HOME, ".local", "state", "herdr-summarizer")
+STATE_BASE = os.path.join(HOME, ".local", "state", "herdr-summarizer")
+_SESSION = re.search(r"/sessions/([^/]+)/", os.environ.get("HERDR_SOCKET_PATH", ""))
+# Each named herdr session is a separate server with its own pane IDs, so it gets
+# its own state; the default session keeps the base directory.
+STATE_DIR = (os.environ.get("HERDR_SUMMARIZER_STATE")
+             or (os.path.join(STATE_BASE, "sessions", _SESSION.group(1)) if _SESSION else STATE_BASE))
 STATE_FILE = os.path.join(STATE_DIR, "state.json")
 TRANSCRIPTS = os.path.join(HOME, ".claude", "projects")
 SOURCE = "herdr-summarizer"
@@ -360,6 +373,9 @@ def step_pane(state, a, now):
         which="CONVERSATION SO FAR" if first else "NEW TURNS SINCE THE PREVIOUS DESCRIPTION",
         recent=render(new)[-TRANSCRIPT_TAIL:])))
     status = str(reply.get("status") or "idle").lower()
+    # Finishing or reopening work always refreshes the summary, whatever the model judged;
+    # otherwise a done session keeps a label like "awaiting your answer".
+    finished = (status == "done") != (entry.get("status") == "done")
     entry.update({                         # 3. update: status always follows the latest turn
         "mtime": mtime, "seen_turns": len(turns),
         "status": status if status in STATUSES else "idle",
@@ -368,9 +384,10 @@ def step_pane(state, a, now):
         "checked": time.strftime("%Y-%m-%d %H:%M"),
     })
     # 3. update: summary only when material. The model alone is too eager (it calls a single
-    # turn material), so a rewrite also needs a minimum amount of new conversation.
+    # turn material), so a rewrite also needs a minimum amount of new conversation; finishing
+    # or reopening work is always material, however short the turn.
     big_enough = len(render(new)) >= MATERIAL_MIN_CHARS
-    if first or (big_enough and reply.get("material") is True):
+    if first or finished or (big_enough and reply.get("material") is True):
         if not isinstance(reply.get("label"), str) or not isinstance(reply.get("description"), str):
             raise ValueError("reply missing label/description")
         changed = clip(reply["label"]) != entry.get("line")
@@ -480,23 +497,37 @@ def snapshot():
     return agents, workspaces
 
 
-def run_pass():
-    if not HERDR[0] or not (CLAUDE or DRY):
-        log("herdr or claude not found on %s; skipping" % ":".join(SEARCH_PATH))
-        return 0
+def take_lock():
+    """One pass at a time per herdr session. Returns the held lock, or None if busy."""
     os.makedirs(STATE_DIR, exist_ok=True)
-    try:
-        agents, workspaces = snapshot()
-    except Exception as e:  # herdr not running: nothing to describe
-        log("herdr unavailable: %s" % e)
-        return 0
-    # One pass at a time: a manual run during a launchd pass skips instead of racing on state.
     lock = open(os.path.join(STATE_DIR, ".lock"), "w")
     try:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except OSError:
+        lock.close()
+        return None
+    return lock
+
+
+def run_pass():
+    """One manual pass."""
+    lock = take_lock()
+    if not lock:
         log("another pass is running; skipping")
         return 0
+    do_pass()
+    return 0
+
+
+def do_pass():
+    if not HERDR[0] or not (CLAUDE or DRY):
+        log("herdr or claude not found on %s; skipping" % ":".join(SEARCH_PATH))
+        return
+    try:
+        agents, workspaces = snapshot()
+    except Exception as e:  # herdr not running: nothing to describe
+        log("herdr unavailable: %s" % e)
+        return
     ws_ids = [w["workspace_id"] for w in workspaces]
     panes_by_ws = {}
     for ws in ws_ids:
@@ -515,6 +546,62 @@ def run_pass():
     summarize_workspaces(state, agents, panes_by_ws, ws_ids)
     save_state(state)
     publish(state, agents, ws_ids)
+
+
+# ── events (herdr plugin) ────────────────────────────────────────────────────
+
+DIRTY = os.path.join(STATE_DIR, ".dirty")
+GUARD = os.path.join(STATE_BASE, "only-sessions")  # while present: act only on listed herdr sessions
+EVENT_LOG = os.path.join(STATE_BASE, "events.log")
+
+
+def session_name():
+    """The herdr session this process belongs to, from the socket herdr gave it."""
+    m = re.search(r"/sessions/([^/]+)/", os.environ.get("HERDR_SOCKET_PATH", ""))
+    return m.group(1) if m else "default"
+
+
+def note_event(kind, verdict):
+    try:
+        if os.path.exists(EVENT_LOG) and os.path.getsize(EVENT_LOG) > 200000:
+            os.replace(EVENT_LOG, EVENT_LOG + ".1")
+        with open(EVENT_LOG, "a") as f:
+            f.write("%s %s %s %s\n" % (time.strftime("%Y-%m-%d %H:%M:%S"), session_name(), kind, verdict))
+    except OSError:
+        pass
+
+
+def on_event():
+    """Plugin hook. Must return fast: mark the session dirty and hand off to a detached worker."""
+    try:
+        kind = json.loads(os.environ.get("HERDR_PLUGIN_EVENT_JSON") or "{}").get("event", "?")
+    except ValueError:
+        kind = "?"
+    if os.path.exists(GUARD):
+        with open(GUARD) as f:
+            allowed = f.read().split()
+        if session_name() not in allowed:
+            note_event(kind, "ignored (guard)")
+            return 0
+    os.makedirs(STATE_DIR, exist_ok=True)
+    open(DIRTY, "w").close()
+    note_event(kind, "queued")
+    log_path = os.path.join(STATE_DIR, "worker.log")
+    with open(log_path, "a") as logf:
+        subprocess.Popen([sys.executable, os.path.abspath(__file__), "work"], start_new_session=True,
+                         stdin=subprocess.DEVNULL, stdout=logf, stderr=logf, close_fds=True)
+    return 0
+
+
+def work():
+    """Detached worker: pass until no new event arrived during the last pass."""
+    lock = take_lock()
+    if not lock:
+        return 0  # a worker is already running; it will see the dirty flag
+    while os.path.exists(DIRTY):
+        os.remove(DIRTY)
+        do_pass()
+        time.sleep(1)  # let a burst of events (e.g. focus changes) collapse into one more pass
     return 0
 
 
@@ -606,10 +693,69 @@ def show(pane_id):
     return 0
 
 
+HELP = """RECENT SESSIONS  (ctrl+b a)
+
+Order: stale first, then needs-you, working, idle, done.
+Within each group, most recently active first.
+
+STATUS
+  stale     Untouched for a week longer than your newest session.
+            Shown first because it asks: close it or act on it.
+            A stronger model reviews each stale session once and
+            suggests close, resume or park (save a pointer, then
+            close). Its verdict and reason appear in the preview.
+  you       Needs you: a decision, information, a review, an action
+            only you can take, or just a go-ahead. Marked with an
+            orange dot in the sidebar.
+  working   The agent is mid-task. "→name" means it is waiting on
+            another agent it drives. A "working" session silent for
+            2 hours is shown as idle: the agent is probably gone.
+  idle      Stopped without a clear ask; unclear whether anything
+            is left to do.
+  done      The work was explicitly wrapped up.
+
+COLUMNS
+  heat      Time since the session's transcript last changed.
+            "?" means no data yet. The sidebar shows coarser
+            steps (now, <1h, today, 2d) so it doesn't flicker.
+  space     The herdr workspace the pane is in.
+  └ name    This session is driven by the one above it: that
+            session ran herdr agent commands against it by name.
+
+WHEN THINGS UPDATE
+  Nothing runs on a timer. herdr events trigger updates:
+  - When an agent's turn ends, a small model reads only the new
+    turns and sets the status and your next move.
+  - The label and description are rewritten only when the change
+    is material: at least ~1,500 characters of new conversation
+    that the model judges significant. Finishing or reopening
+    work always refreshes them.
+  - Tool calls and mid-turn activity never trigger anything.
+  - Switching panes refreshes heat and stale marks; no model.
+
+DATA
+  Transcripts are read from disk. Nothing is ever sent to a
+  running agent; the only writes are herdr sidebar tokens and
+  ~/.local/state/herdr-summarizer/.
+
+KEYS
+  type to filter · ↑↓ move · enter jump to pane · esc close
+  ? this guide (move to another row to return)
+  shift+↑↓ scroll the preview or this guide
+"""
+
+
 def main(argv):
     cmd = argv[1] if len(argv) > 1 else "run"
+    if cmd == "help":
+        print(HELP)
+        return 0
     if cmd == "run":
         return run_pass()
+    if cmd == "event":
+        return on_event()
+    if cmd == "work":
+        return work()
     if cmd == "list":
         return list_rows()
     if cmd == "show" and len(argv) > 2:

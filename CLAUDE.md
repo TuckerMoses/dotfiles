@@ -44,7 +44,7 @@ To add a new tool's config:
 | **starship** | `.config/starship.toml` | Starship cross-shell prompt (minimal single-line, language detection) |
 | **tmux** | `.tmux.conf` | Tmux multiplexer (vim-tmux-navigator, Catppuccin status bar, TPM plugins) |
 | **herdr** | `.config/herdr/config.toml`, `.local/bin/herdr-{summarize,recent}` | Herdr terminal workspace manager (tmux-style keys, vim-herdr-navigation, sounds, pane descriptions + `prefix+a` recent-sessions picker) — stowed with `--no-folding` |
-| **herdr-summarizer** | *(not stowed)* `install.sh`, `launchd.plist.template` | Opt-in macOS launchd job that runs `herdr-summarize` every 5 min (labels, heat, status, stale reviews, descriptions). Never run by `bootstrap.sh` |
+| **herdr-summarizer** | *(not stowed)* `install.sh`, `plugin/` | Opt-in herdr plugin: on agent turn-end, agent-detected, pane-moved and pane-focused events it runs `herdr-summarize` (labels, status, stale reviews, descriptions). No timer. `install.sh` links it; never run by `bootstrap.sh` |
 | **zsh** | `.zshrc` | Zsh shell via Oh My Zsh (plugins: git, wd, fzf-tab, autosuggestions, syntax-highlighting) |
 
 ### Notifications
