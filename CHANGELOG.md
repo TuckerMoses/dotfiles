@@ -7,6 +7,11 @@ All notable changes to this dotfiles setup.
 ### Planned
 - Jujutsu adoption for lock-free agent workflows ([plan](docs/plans/jujutsu-adoption.md))
 
+## [2026-11-09]
+
+### Added
+- `validate.sh`: read-only check that every stowed file links back to this checkout, bootstrap's tools are installed, configs parse (tmux via a throwaway server, ghostty, starship, atuin, nvim, zsh), herdr plugins and the Claude integration are healthy, and the herdr-summarizer has no failed hook runs; lists come from `bootstrap.sh`
+
 ## [2026-11-08]
 
 ### Added

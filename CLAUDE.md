@@ -8,6 +8,7 @@ This repository manages personal dotfiles using [GNU Stow](https://www.gnu.org/s
 dotfile-setup/
 ├── .github/workflows/claude-pr-review.yml  # Claude Code Action for PR reviews
 ├── bootstrap.sh                     # One-command setup (idempotent)
+├── validate.sh                      # Read-only check: everything linked, installed, loading cleanly
 ├── atuin/.config/atuin/config.toml  # Shell history config
 ├── ghostty/.config/ghostty/config   # Terminal emulator config
 ├── notification-sounds/             # Custom game sound pack for Claude Code notifications
@@ -96,7 +97,15 @@ Edit files in this repo (not in `~`), then changes apply immediately via symlink
 ### Testing bootstrap on a fresh system
 ```bash
 ./bootstrap.sh
+./validate.sh
 ```
+
+### Validating
+`./validate.sh` (or `-q` for warnings and failures only) checks that every stowed file links back
+to this checkout, bootstrap's tools are installed, each config parses (tmux, ghostty, starship, atuin,
+nvim and zsh, using throwaway instances where needed), herdr's plugins and Claude integration are healthy,
+and the opt-in herdr-summarizer has no failed hook runs. It reads package, tool and plugin lists from
+`bootstrap.sh`, so new packages are covered automatically. Run it after any change; it exits 1 on failure.
 
 ## CI / GitHub Actions
 
