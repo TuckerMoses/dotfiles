@@ -99,19 +99,24 @@ Edit files in this repo (not in `~`), then changes apply immediately via symlink
 ./bootstrap.sh    # ends by running ./validate.sh -q
 ```
 
-### Ideas, plans and execution
-Three stages, each with one owner:
+### Proposals, plans and execution
+Work flows one way: proposal, then plan, then change.
 
-- **Ideas** are discovered by the scheduled cloud routine "dotfiles scout" (monthly, Opus). It keeps a short backlog in
-  `ideas.md` on the `claude/research` branch and does nothing else: no plans, no PRs, nothing on `master`.
-- **Plans** live in `docs/plans/` (index and statuses in its README). Only the project skill `/execute-plans`
-  writes them, and only for ideas the user names. Plans are written on Opus.
-- **Execution** is `/execute-plans` as well (`.claude/skills/execute-plans/SKILL.md`), run locally because dotfiles
-  can only be validated on the real machine: parallel worktrees with Opus agents, a new `validate.sh` check per unit, one integration
-  branch validated live, an adversarial review, then one PR.
+- **Proposals** are short statements of something worth doing, one file each in `docs/proposals/`. **Every proposal on
+  `master` is approved**; merging it is the approval, and closing its PR with a comment is the rejection. They come
+  from the scheduled cloud routine "dotfiles scout" (monthly, Opus; at most three proposal PRs open at a time, from
+  `claude/proposal/*` branches), from the user, or from any session. Format: `docs/proposals/README.md`.
+- **Plans** are written only by the project skill `/execute-proposals`, at the moment it executes a proposal, against
+  the repo and machine as they are then. `docs/plans/` is the record of what was built, not a queue.
+- **Execution** is `/execute-proposals` (`.claude/skills/execute-proposals/SKILL.md`), run locally because dotfiles can
+  only be validated on the real machine: parallel worktrees with Opus agents, a new `validate.sh` check per unit, one
+  integration branch validated live, an adversarial review, then one PR. That PR deletes the executed proposals and
+  adds their plans.
 
-A second routine, "dotfiles tidy" (weekly, Sonnet), keeps `CHANGELOG.md`, `README.md` and plan statuses in sync with the repo
-and opens a PR when something is off. Neither routine pushes to `master` or deletes branches.
+To queue something yourself, add a proposal file. Do not write a plan by hand and do not add a status field.
+
+A second routine, "dotfiles tidy" (weekly, Sonnet), keeps `CHANGELOG.md`, `README.md` and the plans index in sync with
+the repo and opens a PR when something is off. Neither routine pushes to `master` or deletes branches.
 
 ### Herdr guide
 `docs/herdr.html` is the README for everything this repo adds to herdr (sidebar rows, the `prefix+a` picker,
