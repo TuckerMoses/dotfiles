@@ -99,6 +99,11 @@ Edit files in this repo (not in `~`), then changes apply immediately via symlink
 ./bootstrap.sh    # ends by running ./validate.sh -q
 ```
 
+### Executing plans
+Plans live in `docs/plans/` (index and statuses in its README) and as open PRs from `claude/plan/*` branches.
+The project skill `/execute-plans` (`.claude/skills/execute-plans/SKILL.md`) runs them: parallel worktrees, a new
+`validate.sh` check per unit, one integration branch validated live, an adversarial review, then one PR.
+
 ### Herdr guide
 `docs/herdr.html` is the README for everything this repo adds to herdr (sidebar rows, the `prefix+a` picker,
 the summarizer plugin, key bindings, plugins, troubleshooting). Its terminal figures are hand-drawn with

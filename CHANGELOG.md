@@ -11,6 +11,7 @@ All notable changes to this dotfiles setup.
 ## [2026-11-09]
 
 ### Added
+- `/execute-plans` project skill (`.claude/skills/execute-plans/`): reviews the pending plans and open plan PRs, implements independent units in parallel worktrees at a model tier chosen per unit, requires a new `validate.sh` check from each, merges into one integration branch, validates it live, runs `claude-materia:adversarial-review`, and opens a single PR
 - `docs/herdr.html`: guide to the whole herdr setup (sidebar, picker, statuses and herdr's dots, how event-driven updates work, key bindings, plugins, install, troubleshooting, limits), replacing the outdated annotated page from the first version
 
 ### Changed

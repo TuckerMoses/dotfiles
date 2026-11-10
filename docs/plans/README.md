@@ -20,9 +20,21 @@ Implementation plans for terminal/workflow improvements. Each plan is self-conta
 - `done` — implemented and verified
 - `blocked` — waiting on something external
 
-## How to execute a plan
+## How to execute plans
 
-Start a Claude Code session in `~/dotfiles` and run:
+Run the `execute-plans` skill in a Claude Code session started in `~/dotfiles`:
+
+```
+/execute-plans                 # every pending plan here, plus open plan PRs (claude/plan/*)
+/execute-plans git-config      # only the named plans
+/execute-plans --dry-run       # review the plans and print the dispatch table; change nothing
+```
+
+It reviews each plan against the current repo, implements independent units in parallel worktrees,
+has each add a `validate.sh` check, merges them into one branch, validates that branch live, runs an
+adversarial review, and opens one PR. It never merges to `master`. Details: `.claude/skills/execute-plans/SKILL.md`.
+
+To execute a single plan by hand instead:
 
 ```
 Execute the plan in docs/plans/<plan-name>.md. Follow the CLAUDE.md instructions and update the plan status, changelog, and commit when done.
