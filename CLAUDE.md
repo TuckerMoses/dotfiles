@@ -11,12 +11,16 @@ dotfile-setup/
 ├── validate.sh                      # Read-only check: everything linked, installed, loading cleanly
 ├── atuin/.config/atuin/config.toml  # Shell history config
 ├── ghostty/.config/ghostty/config   # Terminal emulator config
+├── herdr/.config/herdr/             # Herdr config + .local/bin/herdr-{summarize,recent}
+├── herdr-summarizer/                # Opt-in herdr plugin (not stowed)
 ├── notification-sounds/             # Custom game sound pack for Claude Code notifications
 ├── nvim/.config/nvim/               # Neovim config with Claude Code sync
 ├── starship/.config/starship.toml   # Prompt engine config
 ├── tmux/.tmux.conf                  # Terminal multiplexer config
 ├── zsh/.zshrc                       # Shell configuration
+├── docs/herdr.html                  # Guide to the herdr setup
 ├── docs/plans/                      # Implementation plans
+├── .claude/skills/execute-plans/    # /execute-plans project skill
 ├── CHANGELOG.md                     # Project changelog
 ├── CLAUDE.md                        # This file
 └── README.md                        # User-facing docs
