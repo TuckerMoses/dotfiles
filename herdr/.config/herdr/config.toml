@@ -96,7 +96,7 @@ command = "vim-herdr-navigation.right"
 
 # Recent agent sessions: decisions first, then hottest, with full descriptions
 # (herdr-recent + herdr-summarize from this package; descriptions need the opt-in
-# launchd job in ~/dotfiles/herdr-summarizer/install.sh)
+# plugin linked by ~/dotfiles/herdr-summarizer/install.sh). Guide: docs/herdr.html
 [[keys.command]]
 key = "prefix+a"
 type = "popup"

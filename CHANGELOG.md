@@ -9,7 +9,11 @@ All notable changes to this dotfiles setup.
 
 ## [2026-11-09]
 
+### Added
+- `docs/herdr.html`: guide to the whole herdr setup (sidebar, picker, statuses and herdr's dots, how event-driven updates work, key bindings, plugins, install, troubleshooting, limits), replacing the outdated annotated page from the first version
+
 ### Changed
+- `bootstrap.sh` ends by running `validate.sh -q`; failures are reported but never fail the bootstrap
 - herdr sidebar: a session that needs you *and* has a turn you haven't seen (herdr's `done`) gets an orange label instead of a second dot under herdr's state icon; it returns to normal when you focus the pane
 - Picker: the summarizer's `done` status is shown as `finished`, since herdr uses `done` for an unseen turn; the `?` guide explains each herdr state dot and the orange label
 
