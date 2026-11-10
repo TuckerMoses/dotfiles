@@ -7,7 +7,7 @@ actionable.** Merging a proposal here is the approval; there is no status field.
   `claude/proposal/*` branches, at most three open at a time), you, or any session.
 - **How one is approved:** its pull request is merged, or you commit the file to `master`.
 - **How one is rejected:** close its pull request with a comment saying why. The scout reads those.
-- **How one is executed:** `/execute-proposals` in a Claude Code session started in `~/dotfiles`.
+- **How one is executed:** `/build-proposals` in a Claude Code session started in `~/dotfiles`.
   It writes the implementation plan at that point, against the repo and machine as they are then,
   builds it, and opens one PR. That PR deletes the proposal and adds the plan to `docs/plans/`.
 
@@ -36,7 +36,7 @@ source: scout | user | <where it came from>
 ```
 
 A proposal that cannot be executed until you decide something carries one more section. While it
-is present, `/execute-proposals` skips the proposal and reports the question:
+is present, `/build-proposals` skips the proposal and reports the question:
 
 ```markdown
 ## Needs decision

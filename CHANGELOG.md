@@ -10,7 +10,7 @@ Queued work lives in `docs/proposals/`.
 
 ### Changed
 - Work now flows proposal → plan → change. `docs/proposals/` is the queue: every file there on `master` is approved, and merging a proposal is the approval. `docs/plans/` becomes the record of what was built
-- `/execute-plans` is renamed `/execute-proposals`: it reads only `docs/proposals/` on `master`, writes each plan at execution time against the repo as it is then, and its PR deletes the executed proposals and adds their plans. It no longer reads open plan PRs or takes idea names
+- `/execute-plans` is renamed `/build-proposals`, after what it does (takes a proposal, writes its plan, builds it): it reads only `docs/proposals/` on `master`, writes each plan at execution time against the repo as it is then, and its PR deletes the executed proposals and adds their plans. It no longer reads open plan PRs or takes idea names
 - The two pending plans (Jujutsu adoption, herdr-summarizer for other harnesses) moved to `docs/proposals/`, each with a "Needs decision" section
 - "dotfiles scout" routine: besides keeping `ideas.md`, it submits its best ideas as proposal PRs, at most three open at a time
 

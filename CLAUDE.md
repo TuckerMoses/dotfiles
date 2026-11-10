@@ -106,9 +106,9 @@ Work flows one way: proposal, then plan, then change.
   `master` is approved**; merging it is the approval, and closing its PR with a comment is the rejection. They come
   from the scheduled cloud routine "dotfiles scout" (monthly, Opus; at most three proposal PRs open at a time, from
   `claude/proposal/*` branches), from the user, or from any session. Format: `docs/proposals/README.md`.
-- **Plans** are written only by the project skill `/execute-proposals`, at the moment it executes a proposal, against
+- **Plans** are written only by the project skill `/build-proposals`, at the moment it executes a proposal, against
   the repo and machine as they are then. `docs/plans/` is the record of what was built, not a queue.
-- **Execution** is `/execute-proposals` (`.claude/skills/execute-proposals/SKILL.md`), run locally because dotfiles can
+- **Execution** is `/build-proposals` (`.claude/skills/build-proposals/SKILL.md`), run locally because dotfiles can
   only be validated on the real machine: parallel worktrees with Opus agents, a new `validate.sh` check per unit, one
   integration branch validated live, an adversarial review, then one PR. That PR deletes the executed proposals and
   adds their plans.

@@ -1,18 +1,19 @@
 ---
-name: execute-proposals
-description: Turn this repo's approved proposals into one reviewed pull request. Reads every proposal in docs/proposals/ on master, writes an implementation plan for each against the repo as it is now, implements independent units in parallel git worktrees with Opus subagents, has each add a new validate.sh check, merges everything into one integration branch, validates that branch live, runs claude-materia:adversarial-review on it, and opens a single PR that deletes the executed proposals and records their plans in docs/plans/. Use when the user says "execute the proposals", "run the proposals", "build what's approved", "what's in the queue", "/execute-proposals", or asks to work through docs/proposals.
+name: build-proposals
+description: Take this repo's approved proposals from proposal to plan to working change, delivered as one reviewed pull request. Reads every proposal in docs/proposals/ on master, writes an implementation plan for each against the repo as it is now, implements independent units in parallel git worktrees with Opus subagents, has each add a new validate.sh check, merges everything into one integration branch, validates that branch live, runs claude-materia:adversarial-review on it, and opens a single PR that deletes the executed proposals and records their plans in docs/plans/. Use when the user says "build the proposals", "run the proposals", "build what's approved", "execute the plans", "what's in the queue", "/build-proposals", or asks to work through docs/proposals.
 user-invocable: true
 argument-hint: "[proposal-name ...] [--dry-run]"
 ---
 
-# Execute proposals
+# Build proposals
 
-Turn the approved proposals for this dotfiles repo into one pull request the user can review.
+Take each approved proposal for this dotfiles repo through its whole life: write its plan, build
+it, validate it, and deliver everything as one pull request the user can review.
 
 **The model.** A proposal is a short statement of something worth doing. It becomes approved by
 being merged into `docs/proposals/` on `master`: whoever wrote it (the scheduled "dotfiles scout"
 routine, the user, another session), merging is the approval. This skill is the only thing that
-turns proposals into plans and plans into changes. When a proposal is executed, the same PR
+turns proposals into plans and plans into changes. When a proposal is built, the same PR
 deletes it and adds its plan to `docs/plans/` as the record of what was built.
 
 - With no arguments, take every proposal in `docs/proposals/` on `master`.
@@ -151,7 +152,7 @@ stow, reload or edit.
    that edited a file you own, or that reached outside its worktree. A rejected or failed unit
    is re-dispatched once, or left out and reported.
 2. Create the integration branch in its own worktree:
-   `git worktree add .worktrees/integration -b feat/execute-proposals-<YYYY-MM-DD> master`
+   `git worktree add .worktrees/integration -b feat/build-proposals-<YYYY-MM-DD> master`
 3. Merge the unit branches into it one at a time with `--no-ff`. `bootstrap.sh` and
    `validate.sh` are edited by most units, so expect conflicts there: they are additive, keep
    both sides, then re-run the static checks.
@@ -169,7 +170,7 @@ stow, reload or edit.
 
 This follows "Worktree testing" in `CLAUDE.md` and is the only phase that changes the machine.
 
-1. In the main checkout: `git checkout feat/execute-proposals-<date>`. The stowed config is now
+1. In the main checkout: `git checkout feat/build-proposals-<date>`. The stowed config is now
    the branch's version.
 2. For each file in `$HOME` that a new package will replace: copy it to the scratchpad, make
    sure the package version carries its content forward, then move the original aside so stow

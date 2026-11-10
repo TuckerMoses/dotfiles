@@ -2,7 +2,7 @@
 
 The record of what was built. Each file here is the implementation plan for a change that is on `master`.
 
-Plans are not a queue. The queue is `docs/proposals/`: every proposal there is approved, and `/execute-proposals`
+Plans are not a queue. The queue is `docs/proposals/`: every proposal there is approved, and `/build-proposals`
 writes a plan for each one at the moment it executes it, then deletes the proposal and adds the plan here. See
 `docs/proposals/README.md`.
 
@@ -20,11 +20,11 @@ writes a plan for each one at the moment it executes it, then deletes the propos
 In a Claude Code session started in `~/dotfiles`:
 
 ```
-/execute-proposals                # every proposal in docs/proposals/ on master
-/execute-proposals git-config     # only the named proposals
-/execute-proposals --dry-run      # review the proposals and print the dispatch table; change nothing
+/build-proposals                # every proposal in docs/proposals/ on master
+/build-proposals git-config     # only the named proposals
+/build-proposals --dry-run      # review the proposals and print the dispatch table; change nothing
 ```
 
 It reviews each proposal against the current repo, writes its plan, implements independent units in parallel
 worktrees, has each add a `validate.sh` check, merges them into one branch, validates that branch live, runs an
-adversarial review, and opens one PR. It never merges to `master`. Details: `.claude/skills/execute-proposals/SKILL.md`.
+adversarial review, and opens one PR. It never merges to `master`. Details: `.claude/skills/build-proposals/SKILL.md`.
