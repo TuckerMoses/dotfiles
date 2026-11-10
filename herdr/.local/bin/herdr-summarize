@@ -24,7 +24,7 @@ Usage:
   herdr-summarize            one pass by hand
   herdr-summarize event      plugin hook (reads HERDR_PLUGIN_EVENT_JSON)
   herdr-summarize work       detached worker: passes until no new events arrived
-  herdr-summarize list       TSV for the picker: stale, needs-you, working, idle, done
+  herdr-summarize list       TSV for the picker: stale, needs-you, working, idle, finished
   herdr-summarize show ID    full description for a pane
   herdr-summarize help       guide shown by ? in the picker
 
@@ -475,10 +475,14 @@ def publish(state, agents, ws_ids):
     for a in agents:
         entry = state["sessions"].get(session_of(a), {})
         status = display_status(entry, newest, now) if entry.get("line") else ""
+        # The orange dot means "needs you, and there is something new": herdr's own
+        # "done" state is a finished turn you have not looked at yet. Focusing the pane
+        # clears it (herdr marks it seen; the focus event triggers a pass).
+        unseen = a.get("agent_status") == "done"
         targets.append(("pane", a["pane_id"], {
             "summary": entry.get("line", ""),
             "heat": coarse_age(now - entry["active"]) if entry.get("active") else "",
-            "attn": "●" if status == "you" else "",
+            "attn": "●" if status == "you" and unseen else "",
             "stale": "stale" if status == "stale" else "",
             "ball": "",  # retired token from the first version; cleared once
         }))
@@ -622,7 +626,7 @@ def children_of(state, agents):
 
 def list_rows():
     """TSV: pane_id, status, heat, workspace, label. Stale first, then needs-you,
-    working, idle, done; hottest within each. Driven agents nest under their driver."""
+    working, idle, finished; hottest within each. Driven agents nest under their driver."""
     agents, workspaces = snapshot()
     ws_names = {w["workspace_id"]: w.get("label") or w["workspace_id"] for w in workspaces}
     state, now = load_state(), time.time()
@@ -648,7 +652,7 @@ def list_rows():
         label = e.get("line", "")
         if depth:
             label = "└ %s: %s" % (name, label)
-        st = status(a)
+        st = SHOWN.get(status(a), status(a))
         if st == "working" and e.get("waiting_on"):
             st = "→" + e["waiting_on"]
         print("\t".join([a["pane_id"], st, age(now - e["active"]) if e.get("active") else "?",
@@ -663,7 +667,9 @@ def list_rows():
     return 0
 
 
-HEADS = {"stale": "STALE", "you": "NEEDS YOU", "working": "WORKING", "idle": "IDLE", "done": "DONE"}
+# "done" is shown as "finished": herdr already uses "done" for a turn you have not seen.
+SHOWN = {"done": "finished"}
+HEADS = {"stale": "STALE", "you": "NEEDS YOU", "working": "WORKING", "idle": "IDLE", "done": "FINISHED"}
 
 
 def show(pane_id):
@@ -695,7 +701,7 @@ def show(pane_id):
 
 HELP = """RECENT SESSIONS  (ctrl+b a)
 
-Order: stale first, then needs-you, working, idle, done.
+Order: stale first, then needs-you, working, idle, finished.
 Within each group, most recently active first.
 
 STATUS
@@ -705,14 +711,21 @@ STATUS
             suggests close, resume or park (save a pointer, then
             close). Its verdict and reason appear in the preview.
   you       Needs you: a decision, information, a review, an action
-            only you can take, or just a go-ahead. Marked with an
-            orange dot in the sidebar.
+            only you can take, or just a go-ahead.
   working   The agent is mid-task. "→name" means it is waiting on
             another agent it drives. A "working" session silent for
             2 hours is shown as idle: the agent is probably gone.
   idle      Stopped without a clear ask; unclear whether anything
             is left to do.
-  done      The work was explicitly wrapped up.
+  finished  The work was explicitly wrapped up.
+
+SIDEBAR
+  First mark (herdr's own agent state):
+    filled teal   finished a turn you have not looked at yet
+    hollow        idle; you have seen its last turn
+  orange ●  needs you AND has an unseen turn. Clears when you
+            focus the pane, so it only marks what is new.
+  Second line: heat (now, <1h, today, 2d) and the tab name.
 
 COLUMNS
   heat      Time since the session's transcript last changed.

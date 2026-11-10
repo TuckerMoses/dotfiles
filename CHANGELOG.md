@@ -9,6 +9,10 @@ All notable changes to this dotfiles setup.
 
 ## [2026-11-09]
 
+### Changed
+- herdr sidebar: the orange ● now marks sessions that need you *and* have a turn you haven't seen (herdr's `done`), and clears when you focus the pane; before, nearly every idle session had one
+- Picker: the summarizer's `done` status is shown as `finished`, since herdr uses `done` for an unseen turn; the `?` guide explains the sidebar marks
+
 ### Added
 - `validate.sh`: read-only check that every stowed file links back to this checkout, bootstrap's tools are installed, configs parse (tmux via a throwaway server, ghostty, starship, atuin, nvim, zsh), herdr plugins and the Claude integration are healthy, and the herdr-summarizer has no failed hook runs; lists come from `bootstrap.sh`
 - `validate.sh` checks what programs actually load: shadow config files on tmux's built-in search path and Ghostty's Application Support config, redirecting environment variables, config-like files in nvim's `site` dir, zsh startup files outside the repo, and tmux servers, nvim instances, Ghostty and herdr still running a config from before the last change
