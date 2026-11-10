@@ -1,6 +1,6 @@
 ---
 name: execute-plans
-description: Write and execute this repo's implementation plans and deliver one reviewed pull request. Turns ideas the user names (from the scout's ideas.md, the Planned list, or their own words) into plans, reviews every pending plan against the current repo, groups them into independent units, implements each unit in its own git worktree with a subagent at a model tier chosen per unit, has each add a new validate.sh check, merges everything into one integration branch, validates that branch live, runs claude-materia:adversarial-review on it, and opens a single PR for the user. Use when the user says "execute the plans", "run the pending plans", "plan and build X", "turn this idea into a plan", "what ideas are waiting", "/execute-plans", or asks to work through docs/plans, ideas.md or the open plan PRs.
+description: Write and execute this repo's implementation plans and deliver one reviewed pull request. Turns ideas the user names (from the scout's ideas.md, the Planned list, or their own words) into plans, reviews every pending plan against the current repo, groups them into independent units, implements each unit in its own git worktree with an Opus subagent, has each add a new validate.sh check, merges everything into one integration branch, validates that branch live, runs claude-materia:adversarial-review on it, and opens a single PR for the user. Use when the user says "execute the plans", "run the pending plans", "plan and build X", "turn this idea into a plan", "what ideas are waiting", "/execute-plans", or asks to work through docs/plans, ideas.md or the open plan PRs.
 user-invocable: true
 argument-hint: "[plan-or-idea ...] [--dry-run] [--plan-only]"
 ---
@@ -104,24 +104,22 @@ Write amendments as concrete instructions, not as doubts. Note for each plan wha
 **outside the repo** (a file in `$HOME` that a new stow package would replace, an entry in
 `~/.zshrc.local`, a tool to install). Those are handled in Phase 6 by you, never by a subagent.
 
-## Phase 3: units, tiers and the dispatch table
+## Phase 3: units and the dispatch table
 
 **Units.** Plans that would edit the same config file, or that depend on each other, go into
 one unit and are implemented in order by one agent. Everything else is its own unit. Units run
 in parallel, so two units must never need the same package file.
 
-**Tier.** Choose the cheapest model that is sufficient for the unit, and write one line saying why.
+**Model.** Writing plans and implementing them both run on Opus. Every implementation agent is
+dispatched with `model: "opus"`. If this session is not itself on Opus, hand the plan writing in
+Phase 1 to an Opus agent too, and review what it returns. Do not drop to a cheaper model to save
+cost; the adversarial review in Phase 7 chooses its own models.
 
-| Tier | Use when |
-|---|---|
-| `haiku` | One config file, the plan gives the exact lines, nothing to design |
-| `sonnet` | The default: a new stow package, several files, `bootstrap.sh` changes, some judgment |
-| `opus` | Logic in scripts (`validate.sh`, `herdr-summarize`), a migration that depends on machine state, or a plan you had to amend heavily |
+If a unit comes back failing its own checks, re-dispatch it once with what failed. A second
+failure leaves the unit out and is reported.
 
-If a unit comes back failing its own checks twice, re-dispatch it once at the next tier up.
-
-Print the dispatch table: unit, plans and their sources, verdicts, amendments in brief, tier
-and reason, and the list of blocked or done plans. Below it, list the ideas that have no plan
+Print the dispatch table: unit, plans and their sources, verdicts, amendments in brief,
+and the list of blocked or done plans. Below it, list the ideas that have no plan
 yet (name and one line each), so the user can name any they want next time. With `--dry-run`,
 stop here.
 
@@ -130,7 +128,7 @@ stop here.
 1. Create one worktree per unit, each on its own branch from `master`:
    `git worktree add .worktrees/<unit> -b plan/<unit> master`
 2. Launch **all units in a single message** so they run in parallel, each with the Agent tool
-   and the `model` chosen in Phase 3. The brief is the agent's only context. Give it:
+   and `model: "opus"`. The brief is the agent's only context. Give it:
    - the absolute worktree path, and the instruction to work only there;
    - the full plan text and your amendments;
    - the rules: no `stow`, no `bootstrap.sh`, no installs, nothing outside the worktree, no push;
@@ -207,7 +205,7 @@ Push, then open one PR against `master` with `gh pr create`. The body has, in th
 
 1. **What to review first:** anything that needs the user's decision, and blocked plans with
    the exact question each one is waiting on.
-2. **Plans table:** plan, source (file or PR number), verdict, tier used, result, the
+2. **Plans table:** plan, source (file or PR number), verdict, result, the
    validation check added.
 3. **Amendments** you made to plans, and deviations the agents reported.
 4. **Machine changes from Phase 6:** tools installed, files in `$HOME` replaced (with the backup

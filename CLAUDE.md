@@ -102,15 +102,15 @@ Edit files in this repo (not in `~`), then changes apply immediately via symlink
 ### Ideas, plans and execution
 Three stages, each with one owner:
 
-- **Ideas** are discovered by the scheduled cloud routine "dotfiles scout" (monthly). It keeps a short backlog in
+- **Ideas** are discovered by the scheduled cloud routine "dotfiles scout" (monthly, Opus). It keeps a short backlog in
   `ideas.md` on the `claude/research` branch and does nothing else: no plans, no PRs, nothing on `master`.
 - **Plans** live in `docs/plans/` (index and statuses in its README). Only the project skill `/execute-plans`
-  writes them, and only for ideas the user names.
+  writes them, and only for ideas the user names. Plans are written on Opus.
 - **Execution** is `/execute-plans` as well (`.claude/skills/execute-plans/SKILL.md`), run locally because dotfiles
-  can only be validated on the real machine: parallel worktrees, a new `validate.sh` check per unit, one integration
+  can only be validated on the real machine: parallel worktrees with Opus agents, a new `validate.sh` check per unit, one integration
   branch validated live, an adversarial review, then one PR.
 
-A second routine, "dotfiles tidy" (weekly), keeps `CHANGELOG.md`, `README.md` and plan statuses in sync with the repo
+A second routine, "dotfiles tidy" (weekly, Sonnet), keeps `CHANGELOG.md`, `README.md` and plan statuses in sync with the repo
 and opens a PR when something is off. Neither routine pushes to `master` or deletes branches.
 
 ### Herdr guide
