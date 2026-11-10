@@ -125,11 +125,12 @@ width = "85%"
 height = "85%"
 
 # ── herdr-summarizer tokens ─────────────────────────────────────────────────
-# $summary (pane or space label), $attn (● when the session needs you), $stale (untouched a
-# week longer than your newest session), $heat (now / <1h / today / Nd). Written by
-# herdr-summarize; empty tokens render nothing. Status detail lives in the prefix+a picker.
+# $summary (pane or space label), $summary_you (the same label, used instead when the session
+# needs you and has an unseen turn, so it renders orange), $stale (untouched a week longer than
+# your newest session), $heat (now / <1h / today / Nd). Written by herdr-summarize; empty
+# tokens render nothing. Status detail lives in the prefix+a picker (? for the guide).
 [ui.sidebar.agents]
-rows = [["state_icon", "$summary"], [{ token = "$attn", fg = "#fab387", bold = true }, { token = "$stale", fg = "#f38ba8", bold = true }, { token = "$heat", dim = true }, { token = "tab", dim = true }]]
+rows = [["state_icon", "$summary", { token = "$summary_you", fg = "#fab387" }], [{ token = "$stale", fg = "#f38ba8", bold = true }, { token = "$heat", dim = true }, { token = "tab", dim = true }]]
 
 [ui.sidebar.spaces]
 rows = [["state_icon", "workspace", { token = "branch", dim = true }, { token = "git_status", dim = true }], [{ token = "$summary", dim = true }]]

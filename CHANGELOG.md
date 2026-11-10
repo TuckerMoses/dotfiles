@@ -10,8 +10,8 @@ All notable changes to this dotfiles setup.
 ## [2026-11-09]
 
 ### Changed
-- herdr sidebar: the orange ● now marks sessions that need you *and* have a turn you haven't seen (herdr's `done`), and clears when you focus the pane; before, nearly every idle session had one
-- Picker: the summarizer's `done` status is shown as `finished`, since herdr uses `done` for an unseen turn; the `?` guide explains the sidebar marks
+- herdr sidebar: a session that needs you *and* has a turn you haven't seen (herdr's `done`) gets an orange label instead of a second dot under herdr's state icon; it returns to normal when you focus the pane
+- Picker: the summarizer's `done` status is shown as `finished`, since herdr uses `done` for an unseen turn; the `?` guide explains each herdr state dot and the orange label
 
 ### Added
 - `validate.sh`: read-only check that every stowed file links back to this checkout, bootstrap's tools are installed, configs parse (tmux via a throwaway server, ghostty, starship, atuin, nvim, zsh), herdr plugins and the Claude integration are healthy, and the herdr-summarizer has no failed hook runs; lists come from `bootstrap.sh`

@@ -475,16 +475,19 @@ def publish(state, agents, ws_ids):
     for a in agents:
         entry = state["sessions"].get(session_of(a), {})
         status = display_status(entry, newest, now) if entry.get("line") else ""
-        # The orange dot means "needs you, and there is something new": herdr's own
+        # An orange label means "needs you, and there is something new": herdr's own
         # "done" state is a finished turn you have not looked at yet. Focusing the pane
         # clears it (herdr marks it seen; the focus event triggers a pass).
+        # herdr styles tokens statically, so the label goes in one of two tokens that
+        # share a slot in the row: $summary (plain) or $summary_you (orange).
         unseen = a.get("agent_status") == "done"
+        line, hot = entry.get("line", ""), status == "you" and unseen
         targets.append(("pane", a["pane_id"], {
-            "summary": entry.get("line", ""),
+            "summary": "" if hot else line,
+            "summary_you": line if hot else "",
             "heat": coarse_age(now - entry["active"]) if entry.get("active") else "",
-            "attn": "●" if status == "you" and unseen else "",
             "stale": "stale" if status == "stale" else "",
-            "ball": "",  # retired token from the first version; cleared once
+            "attn": "", "ball": "",  # retired tokens from earlier versions; cleared once
         }))
     for ws in ws_ids:
         targets.append(("workspace", ws, {"summary": state["workspaces"].get(ws, {}).get("line", "")}))
@@ -720,11 +723,22 @@ STATUS
   finished  The work was explicitly wrapped up.
 
 SIDEBAR
-  First mark (herdr's own agent state):
-    filled teal   finished a turn you have not looked at yet
-    hollow        idle; you have seen its last turn
-  orange ●  needs you AND has an unseen turn. Clears when you
-            focus the pane, so it only marks what is new.
+  The dot before each label is herdr's own agent state. It is
+  about turns, not about the work:
+    filled teal ●   done: finished a turn you have not looked at
+                    yet. Becomes idle once you focus the pane.
+    hollow ○        idle: at the prompt; you have seen its last
+                    turn.
+    working         mid-turn right now.
+    blocked         stopped at an approval or question dialog.
+    unknown         herdr cannot tell (agent just started or gone).
+  herdr's "done" is not the "finished" status above: a session
+  can have an unseen turn and plenty of work left.
+
+  orange label    needs you AND has an unseen turn. Returns to
+                  normal when you focus the pane, so it only marks
+                  what is new.
+  red "stale"     see STATUS.
   Second line: heat (now, <1h, today, 2d) and the tab name.
 
 COLUMNS
