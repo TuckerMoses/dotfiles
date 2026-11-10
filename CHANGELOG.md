@@ -11,6 +11,9 @@ All notable changes to this dotfiles setup.
 ## [2026-11-09]
 
 ### Added
+- `/execute-plans` project skill (`.claude/skills/execute-plans/`): reviews the pending plans and open plan PRs, implements independent units in parallel worktrees with Opus agents, requires a new `validate.sh` check from each, merges into one integration branch, validates it live, runs `claude-materia:adversarial-review`, and opens a single PR
+- `/execute-plans` also writes plans, for ideas the user names (from the scout's `ideas.md`, the Planned list, or their own words); `--plan-only` stops at a plans-only PR
+- Cloud routines restructured: "dotfiles scout" (monthly, discovery only, keeps `ideas.md` on `claude/research`) replaces the researcher and planner; "dotfiles tidy" (weekly, opens a PR) replaces the daily manager; plan execution moved out of the cloud to `/execute-plans`
 - `docs/herdr.html`: guide to the whole herdr setup (sidebar, picker, statuses and herdr's dots, how event-driven updates work, key bindings, plugins, install, troubleshooting, limits), replacing the outdated annotated page from the first version
 
 ### Changed
