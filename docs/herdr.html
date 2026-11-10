@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Herdr setup guide</title>
+<style>
+/* One reading column. Terminal figures are hand-drawn from the real layout with
+   made-up sessions; numbered marks in the right gutter refer to the key below. */
+:root {
+  --bg: #f5f4f0; --surface: #ffffff; --fg: #1d2326; --muted: #5a666b; --rule: #d9d6cc;
+  --accent: #b4540a; --note: #1b6a8c;
+  --sans: -apple-system, "Helvetica Neue", "Segoe UI", Arial, sans-serif;
+  --mono: "JetBrains Mono", "JetBrainsMono Nerd Font", ui-monospace, Menlo, monospace;
+  /* terminal colours: always dark (solarized, as in config.toml) */
+  --t-bg: #002b36; --t-fg: #c5d0d0; --t-dim: #6c8389; --t-sel: #0b4552;
+  --t-teal: #2aa198; --t-idle: #a3ad2e; --t-orange: #fab387; --t-red: #f38ba8; --t-yellow: #f9e2af;
+}
+@media (prefers-color-scheme: dark) { :root {
+  --bg: #12181a; --surface: #1a2225; --fg: #e3e8e8; --muted: #9aa8ab; --rule: #2c383c;
+  --accent: #fab387; --note: #7cc4e0; color-scheme: dark } }
+
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.6 var(--sans); }
+main { max-width: 980px; margin: 0 auto; padding: 48px 16px 72px; display: grid; gap: 52px; }
+header { display: grid; gap: 12px; }
+.eyebrow { font: 500 12px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+h1 { font-size: clamp(28px, 4vw, 38px); line-height: 1.15; font-weight: 650; margin: 0; }
+h2 { font-size: 22px; font-weight: 650; margin: 0; }
+h3 { font-size: 16px; font-weight: 650; margin: 0; }
+p { margin: 0; max-width: 70ch; }
+.muted { color: var(--muted); }
+a { color: var(--note); }
+code, kbd { font: 0.88em var(--mono); background: color-mix(in srgb, var(--fg) 8%, transparent); padding: 1px 5px; border-radius: 4px; }
+kbd { border: 1px solid var(--rule); }
+section { display: grid; gap: 18px; }
+nav { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 14.5px; }
+
+/* terminal figures */
+.fig { display: grid; gap: 8px; }
+.term { background: var(--t-bg); color: var(--t-fg); font: 13.5px/1.5 var(--mono); border-radius: 10px;
+  padding: 14px 16px; overflow-x: auto; box-shadow: 0 12px 30px -18px rgb(0 0 0 / .5); }
+.term.side { max-width: 46ch; }
+.r { white-space: pre; display: flex; justify-content: space-between; gap: 2ch; min-height: 1.5em; }
+.r.sel { background: var(--t-sel); margin-inline: -6px; padding-inline: 6px; border-radius: 3px; }
+.d { color: var(--t-dim); } .teal { color: var(--t-teal); } .idle { color: var(--t-idle); }
+.or { color: var(--t-orange); } .red { color: var(--t-red); font-weight: 700; } .yl { color: var(--t-yellow); }
+.pv { border: 1px solid var(--t-dim); border-radius: 6px; padding: 8px 12px; margin-top: 10px; white-space: pre-wrap; }
+.m, .key .n { flex: none; width: 20px; height: 20px; border-radius: 50%; display: inline-grid; place-items: center;
+  font: 700 11px/1 var(--sans); color: #1b1b1b; background: var(--t-orange); }
+.cap { font-size: 13.5px; color: var(--muted); }
+.key { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 14px 30px; }
+.key li { display: grid; grid-template-columns: 26px 1fr; gap: 10px; align-items: start; }
+.key .n { margin-top: 3px; }
+.key b { display: block; font-weight: 650; }
+.key p { font-size: 15px; color: var(--muted); }
+
+/* tables */
+.table-wrap { overflow-x: auto; border: 1px solid var(--rule); border-radius: 10px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; min-width: 560px; font-size: 14.5px; }
+th, td { text-align: left; vertical-align: top; padding: 10px 14px; border-bottom: 1px solid var(--rule); }
+tr:last-child td { border-bottom: 0; }
+th { font: 500 12px/1.2 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+td:first-child { white-space: nowrap; }
+.sw { display: inline-block; width: 11px; height: 11px; border-radius: 50%; vertical-align: -1px; margin-right: 6px; }
+.sw.teal { background: var(--t-teal); } .sw.hollow { border: 2px solid var(--t-idle); }
+
+/* event flow */
+.flow { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; counter-reset: s; }
+.flow li { counter-increment: s; display: grid; grid-template-columns: 34px 1fr; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--rule); }
+.flow li:last-child { border-bottom: 0; }
+.flow li::before { content: counter(s); width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center;
+  font: 700 12px/1 var(--sans); background: var(--note); color: var(--bg); margin-top: 2px; }
+.flow b { font-weight: 650; }
+pre { margin: 0; background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; padding: 14px 16px;
+  font: 13.5px/1.55 var(--mono); overflow-x: auto; }
+ul.plain { margin: 0; padding-left: 20px; display: grid; gap: 8px; max-width: 72ch; }
+footer { font-size: 13px; color: var(--muted); }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div class="eyebrow">dotfiles · herdr · updated 9 Nov 2026</div>
+    <h1>Herdr setup guide</h1>
+    <p>Everything this repo changes or adds on top of stock herdr: the sidebar, the recent-sessions picker, the summarizer plugin, key bindings and the other plugins. Open it with <code>open ~/dotfiles/docs/herdr.html</code>.</p>
+    <p class="muted">The terminal figures are drawn from the real layout with made-up sessions. They are not captures, so nothing from a real session is stored here.</p>
+    <nav>
+      <a href="#files">Files</a><a href="#sidebar">Sidebar</a><a href="#picker">Picker</a><a href="#status">Statuses and dots</a>
+      <a href="#updates">How updates happen</a><a href="#keys">Keys</a><a href="#plugins">Plugins</a>
+      <a href="#install">Install and check</a><a href="#trouble">Troubleshooting</a><a href="#limits">Limits</a>
+    </nav>
+  </header>
+
+  <section id="files">
+    <h2>What lives where</h2>
+    <div class="table-wrap"><table>
+      <thead><tr><th>In the repo</th><th>On the machine</th><th>What it is</th></tr></thead>
+      <tbody>
+        <tr><td><code>herdr/.config/herdr/config.toml</code></td><td><code>~/.config/herdr/config.toml</code></td><td>All herdr settings: keys, sidebar rows, popups, sounds, theme. Stowed by <code>bootstrap.sh</code> with <code>--no-folding</code>, because that folder also holds herdr's sockets and logs.</td></tr>
+        <tr><td><code>herdr/.local/bin/herdr-summarize</code></td><td><code>~/.local/bin/herdr-summarize</code></td><td>Writes labels, statuses, descriptions and stale reviews. Passive until something runs it.</td></tr>
+        <tr><td><code>herdr/.local/bin/herdr-recent</code></td><td><code>~/.local/bin/herdr-recent</code></td><td>The <kbd>prefix</kbd> <kbd>a</kbd> picker (fzf).</td></tr>
+        <tr><td><code>herdr-summarizer/plugin/</code></td><td>linked into herdr's plugin registry</td><td>The herdr plugin that runs <code>herdr-summarize</code> on herdr events. Not stowed.</td></tr>
+        <tr><td><code>herdr-summarizer/install.sh</code></td><td>run by hand</td><td>Opt-in installer for that plugin. <code>bootstrap.sh</code> never runs it, because the plugin calls a model.</td></tr>
+        <tr><td>(not in the repo)</td><td><code>~/.local/state/herdr-summarizer/</code></td><td>State, event log and worker log.</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section id="sidebar">
+    <h2>The sidebar</h2>
+    <p class="muted">Always visible, 34 columns wide (herdr's default is 26). Two rows per agent and per space.</p>
+    <div class="fig">
+      <div class="term side">
+<div class="r"><span class="d"> spaces</span></div>
+<div class="r"><span> <span class="idle">○</span> dotfiles <span class="d">· master · +2</span></span><b class="m">1</b></div>
+<div class="r"><span class="d">   Release prep and test runs</span><b class="m">2</b></div>
+<div class="r"><span> <span class="idle">○</span> research <span class="d">· main</span></span></div>
+<div class="r"><span class="d">   Cache spike and paper notes</span></div>
+<div class="r"> </div>
+<div class="r"><span class="d"> agents</span></div>
+<div class="r sel"><span> <span class="teal">●</span> <span class="or">api client: review retry plan</span></span><b class="m">3</b></div>
+<div class="r sel"><span class="d">   now · impl</span><b class="m">5</b></div>
+<div class="r"><span> <span class="idle">○</span> docs: outline drafted</span><b class="m">4</b></div>
+<div class="r"><span class="d">   &lt;1h · writing</span></div>
+<div class="r"><span> <span class="idle">○</span> changelog: written and pushed</span></div>
+<div class="r"><span class="d">   today · release</span></div>
+<div class="r"><span> <span class="idle">○</span> old spike: cache layer</span></div>
+<div class="r"><span>   <span class="red">stale</span><span class="d"> · 9d · spike</span></span><b class="m">6</b></div>
+      </div>
+      <div class="cap">Illustrative. Colours follow the solarized theme set in <code>config.toml</code>.</div>
+    </div>
+    <ol class="key">
+      <li><span class="n">1</span><div><b>Space row</b><p>herdr's state icon and space name, with branch and git status dimmed on the same line (stock herdr puts them on a second row).</p></div></li>
+      <li><span class="n">2</span><div><b>Space summary</b><p>One line written from the labels of the agents in that space. Rewritten only when those labels change.</p></div></li>
+      <li><span class="n">3</span><div><b>Orange label</b><p>This session needs you <em>and</em> has a turn you have not looked at. It returns to normal once you focus the pane, so orange always means something new.</p></div></li>
+      <li><span class="n">4</span><div><b>Label</b><p>What the session is doing, at most 30 characters. It replaces herdr's default <code>machine · workspace · tab</code> line. The dot before it is herdr's own; see <a href="#status">Statuses and dots</a>.</p></div></li>
+      <li><span class="n">5</span><div><b>Heat and tab</b><p>Time since the transcript last changed, in coarse steps (<code>now</code>, <code>&lt;1h</code>, <code>today</code>, <code>2d</code>) so it does not flicker, then the tab name.</p></div></li>
+      <li><span class="n">6</span><div><b>Stale</b><p>Untouched for a week longer than your newest session. Open the picker to read the review.</p></div></li>
+    </ol>
+    <p class="muted">The sidebar itself is still sorted by herdr (<code>agent_panel_sort = "priority"</code>): unseen and blocked agents first. Sorting by status and heat happens in the picker.</p>
+  </section>
+
+  <section id="picker">
+    <h2>The recent-sessions picker</h2>
+    <p class="muted"><kbd>ctrl+b</kbd> <kbd>a</kbd>. The place to read full descriptions when you come back to work. It is a new popup on a key that was unbound; herdr's own Go-to picker is untouched.</p>
+    <div class="fig">
+      <div class="term">
+<div class="r"><span>recent › </span><span class="d">6/6</span></div>
+<div class="r"><span class="d">  status         heat  space      label                              enter jump · ? guide · esc close</span></div>
+<div class="r sel"><span><span class="or">▌</span> stale          9d    research   old spike: cache layer</span><b class="m">1</b></div>
+<div class="r"><span>  you            now   dotfiles   api client: review retry plan</span></div>
+<div class="r"><span>  →tester        4m    dotfiles   release: waiting on test run</span><b class="m">2</b></div>
+<div class="r"><span>  working        4m    dotfiles   └ tester: running integration suite</span><b class="m">3</b></div>
+<div class="r"><span>  idle           38m   research   docs: outline drafted</span></div>
+<div class="r"><span>  finished       2h    dotfiles   changelog: written and pushed</span></div>
+<div class="pv">old spike: cache layer  ·  STALE  ·  updated 2026-10-31 16:20
+
+Review (2026-11-09 09:10): CLOSE. The release session replaced this cache layer with the retry plan now under review, so nothing here is still needed.
+Next: copy the benchmark numbers into the release notes, then close the pane.
+
+The session explored an in-memory cache for the API client. A prototype and one benchmark were finished. Whether to keep the cache was left open.  <b class="m">4</b></div>
+      </div>
+      <div class="cap">Illustrative. Type to filter, arrows to move, <kbd>enter</kbd> jumps to the pane.</div>
+    </div>
+    <ol class="key">
+      <li><span class="n">1</span><div><b>Order</b><p>Stale first, then needs-you, working, idle, finished. Most recently active first within each group. Heat here is exact (<code>4m</code>, <code>38m</code>).</p></div></li>
+      <li><span class="n">2</span><div><b><code>→name</code></b><p>A working session that is waiting on another agent it drives.</p></div></li>
+      <li><span class="n">3</span><div><b>Nested agent</b><p><code>└ name</code> is driven by the session above it: that session ran <code>herdr agent</code> commands against it by name.</p></div></li>
+      <li><span class="n">4</span><div><b>Preview</b><p>Status, your next move, then a 2 to 4 sentence description. For a stale session it opens with the review: close, resume or park, with the reason and a next step.</p></div></li>
+    </ol>
+    <p><kbd>?</kbd> swaps the preview for a built-in guide and enlarges it; moving to another row brings the description back. <kbd>shift</kbd> <kbd>↑</kbd><kbd>↓</kbd> scrolls either. The guide text lives in <code>herdr-summarize help</code>, next to the code it describes.</p>
+  </section>
+
+  <section id="status">
+    <h2>Statuses and dots</h2>
+    <p>Two systems show state, and they answer different questions.</p>
+    <h3>The summarizer's status: where is the work?</h3>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Status</th><th>Meaning</th></tr></thead>
+      <tbody>
+        <tr><td><code>stale</code></td><td>Untouched for a week longer than your newest session. Each stale session is reviewed once by a stronger model against your other sessions, and again only if it moves.</td></tr>
+        <tr><td><code>you</code></td><td>Needs you: a decision, information, a review, an action only you can take, or a go-ahead.</td></tr>
+        <tr><td><code>working</code></td><td>The agent is mid-task. A working session that has been silent for 2 hours is shown as idle.</td></tr>
+        <tr><td><code>idle</code></td><td>Stopped without a clear ask; unclear whether anything is left.</td></tr>
+        <tr><td><code>finished</code></td><td>The work was explicitly wrapped up.</td></tr>
+      </tbody>
+    </table></div>
+    <h3>herdr's dot: what happened with the last turn?</h3>
+    <div class="table-wrap"><table>
+      <thead><tr><th>herdr state</th><th>Meaning</th></tr></thead>
+      <tbody>
+        <tr><td><i class="sw teal"></i><code>done</code></td><td>Finished a turn you have not looked at yet. Becomes idle once you focus the pane.</td></tr>
+        <tr><td><i class="sw hollow"></i><code>idle</code></td><td>At the prompt, and you have seen its last turn.</td></tr>
+        <tr><td><code>working</code></td><td>Mid-turn right now.</td></tr>
+        <tr><td><code>blocked</code></td><td>Stopped at an approval or question dialog.</td></tr>
+        <tr><td><code>unknown</code></td><td>herdr cannot tell: the agent just started or is gone.</td></tr>
+      </tbody>
+    </table></div>
+    <p class="muted">herdr's <code>done</code> is not the summarizer's <code>finished</code>. A session can have an unseen turn and plenty of work left. The orange label is where the two meet: status <code>you</code> plus herdr state <code>done</code>.</p>
+  </section>
+
+  <section id="updates">
+    <h2>How updates happen</h2>
+    <p>Nothing runs on a timer. The plugin subscribes to four herdr events and the rest follows from them.</p>
+    <ol class="flow">
+      <li><div><b>herdr fires an event.</b> <code>pane.agent_status_changed</code> (a turn started or ended), <code>pane.agent_detected</code>, <code>pane.moved</code> or <code>pane.focused</code>.</div></li>
+      <li><div><b>The hook returns at once.</b> <code>plugin/hook</code> runs <code>herdr-summarize event</code>, which marks the session dirty and starts a detached worker. herdr waits about 70 ms and never on a model.</div></li>
+      <li><div><b>The worker checks for a diff.</b> A session is skipped if its transcript file is unchanged, if the new entries are only tool calls, or if the agent is still mid-turn. A pass with nothing new makes no model call.</div></li>
+      <li><div><b>A small model reads the new turns.</b> Haiku gets the previous label and description plus only the new conversation, and returns the status, who it is waiting on, and your next move. These always follow the latest turn.</div></li>
+      <li><div><b>The summary changes only when it should.</b> Label and description are rewritten when the new conversation is at least 1,500 characters and the model judges it material, or when work finishes or reopens. Otherwise they stay word for word.</div></li>
+      <li><div><b>Tokens are published.</b> The label, heat and stale mark go to herdr as pane and workspace tokens, which the sidebar rows in <code>config.toml</code> display.</div></li>
+    </ol>
+    <ul class="plain">
+      <li><b>Heat and stale need no timer.</b> They depend on the clock, but only matter while you are looking, and switching panes fires <code>pane.focused</code>.</li>
+      <li><b>Links come from the parent's transcript.</b> herdr events do not say who started a pane, so the summarizer reads the <code>herdr agent …</code> commands a session ran. Agent names are remembered, so a moved or restarted agent stays nested.</li>
+      <li><b>Nothing is sent to a running agent.</b> Transcripts are read from <code>~/.claude/projects</code>; the only writes are herdr tokens and the state folder.</li>
+      <li><b>Cost.</b> One Haiku call per finished turn that has new conversation, and one Opus call per stale session (at most two per pass).</li>
+    </ul>
+  </section>
+
+  <section id="keys">
+    <h2>Key bindings</h2>
+    <p class="muted">Prefix is <kbd>ctrl+b</kbd>. The aim is tmux and nvim muscle memory. Defaults not listed here are unchanged.</p>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Keys</th><th>Action</th><th>Note</th></tr></thead>
+      <tbody>
+        <tr><td><kbd>ctrl+h/j/k/l</kbd></td><td>Move between panes, and into nvim splits</td><td>vim-herdr-navigation plugin. <kbd>ctrl+l</kbd> and <kbd>ctrl+k</kbd> no longer reach plain shells.</td></tr>
+        <tr><td><kbd>prefix</kbd> <kbd>ctrl+l</kbd></td><td>Clear pane</td><td>Moved behind the prefix for that reason.</td></tr>
+        <tr><td><kbd>prefix</kbd> <kbd>a</kbd></td><td>Recent-sessions picker</td><td>Added.</td></tr>
+        <tr><td><kbd>prefix</kbd> <kbd>alt+g</kbd> / <kbd>alt+j</kbd></td><td>lazygit / lazyjj popup</td><td>Alt needs Ghostty's <code>macos-option-as-alt</code>.</td></tr>
+        <tr><td><kbd>prefix</kbd> <kbd>v</kbd> <kbd>%</kbd> <kbd>|</kbd></td><td>Split side by side</td><td>tmux's keys added to herdr's.</td></tr>
+        <tr><td><kbd>prefix</kbd> <kbd>-</kbd> <kbd>"</kbd></td><td>Split stacked</td><td></td></tr>
+        <tr><td><kbd>prefix</kbd> <kbd>z</kbd>, <kbd>ctrl+z</kbd></td><td>Zoom pane</td><td><kbd>ctrl+z</kbd> no longer suspends jobs inside herdr.</td></tr>
+        <tr><td><kbd>prefix</kbd> <kbd>c</kbd> / <kbd>n</kbd></td><td>New tab</td><td><kbd>n</kbd> is new, not next.</td></tr>
+        <tr><td><kbd>prefix</kbd> <kbd>ctrl+n</kbd> / <kbd>ctrl+p</kbd></td><td>Next / previous tab</td><td></td></tr>
+        <tr><td><kbd>prefix</kbd> <kbd>,</kbd> or <kbd>shift+t</kbd></td><td>Rename tab</td><td></td></tr>
+        <tr><td><kbd>prefix</kbd> <kbd>&amp;</kbd> or <kbd>shift+x</kbd></td><td>Close tab</td><td></td></tr>
+        <tr><td><kbd>prefix</kbd> <kbd>w</kbd> / <kbd>s</kbd>, <kbd>ctrl+s</kbd></td><td>Workspace picker</td><td>Settings moved to <kbd>prefix</kbd> <kbd>shift+s</kbd>.</td></tr>
+        <tr><td><kbd>ctrl+1..9</kbd></td><td>Jump to workspace</td><td>Also <kbd>prefix</kbd> <kbd>shift+1..9</kbd>.</td></tr>
+        <tr><td><kbd>prefix</kbd> <kbd>shift+h/j/k/l</kbd></td><td>Resize pane</td><td>Swap moved to <kbd>prefix</kbd> <kbd>shift+arrows</kbd>.</td></tr>
+        <tr><td><kbd>prefix</kbd> <kbd>e</kbd> or <kbd>/</kbd></td><td>Scrollback in <code>$EDITOR</code></td><td></td></tr>
+        <tr><td><kbd>prefix</kbd> <kbd>q</kbd> / <kbd>d</kbd></td><td>Detach</td><td></td></tr>
+        <tr><td><kbd>prefix</kbd> <kbd>shift+r</kbd></td><td>Reload config</td><td><kbd>prefix</kbd> <kbd>r</kbd> is herdr's resize mode, not tmux's reload.</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section id="plugins">
+    <h2>Plugins and other settings</h2>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Piece</th><th>Installed by</th><th>What it does</th></tr></thead>
+      <tbody>
+        <tr><td>vim-herdr-navigation</td><td><code>bootstrap.sh</code></td><td><kbd>ctrl+h/j/k/l</kbd> across panes and nvim splits. Needs <code>jq</code>.</td></tr>
+        <tr><td>herdr-plus</td><td><code>bootstrap.sh</code></td><td>Per-worktree layouts and quick actions.</td></tr>
+        <tr><td>Claude integration</td><td><code>bootstrap.sh</code></td><td>A Claude Code hook that reports agent state and session IDs to herdr. The summarizer needs it to find transcripts. Re-run <code>herdr integration install claude</code> after herdr upgrades.</td></tr>
+        <tr><td>herdr-summarizer</td><td><code>herdr-summarizer/install.sh</code></td><td>Everything on this page about labels, statuses and reviews. Opt-in.</td></tr>
+      </tbody>
+    </table></div>
+    <ul class="plain">
+      <li><b>Sounds:</b> herdr's done and request events play two files from <code>notification-sounds/zelda/</code>. Toasts are shown by herdr itself.</li>
+      <li><b>Restore:</b> agents resume after a server restart (<code>resume_agents_on_restore</code>), and pane scrollback is kept (<code>pane_history</code>).</li>
+      <li><b>Look:</b> solarized theme, no outer pane borders, hostname and time at the right of the tab bar.</li>
+      <li><b>Ghostty:</b> <code>macos-non-native-fullscreen = visible-menu</code>, so revealing the menu bar does not swallow clicks on herdr's tab row.</li>
+    </ul>
+  </section>
+
+  <section id="install">
+    <h2>Install and check</h2>
+<pre>./bootstrap.sh                       # stow config and scripts, install plugins and the Claude integration,
+                                     # then run validate.sh -q
+./herdr-summarizer/install.sh        # opt in to the summarizer (checks herdr, claude, fzf and a claude login)
+./herdr-summarizer/install.sh --uninstall
+./validate.sh                        # read-only: is everything linked, loading and actually in use?</pre>
+    <p>After editing <code>config.toml</code>, run <code>herdr config check</code> before reloading with <kbd>prefix</kbd> <kbd>shift+r</kbd>. The check is what catches mistakes; a reload on its own can report success for a config that has problems.</p>
+  </section>
+
+  <section id="trouble">
+    <h2>Troubleshooting</h2>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Symptom</th><th>Look at</th></tr></thead>
+      <tbody>
+        <tr><td>No labels at all</td><td>Is the plugin linked? <code>herdr plugin list</code>. Then <code>./validate.sh</code>, which checks the link, recent hook runs and the worker log.</td></tr>
+        <tr><td>Labels never update</td><td><code>tail ~/.local/state/herdr-summarizer/events.log</code> should show <code>queued</code> lines as turns end. <code>ignored (guard)</code> means a leftover test file: delete <code>~/.local/state/herdr-summarizer/only-sessions</code>.</td></tr>
+        <tr><td>A pass fails</td><td><code>~/.local/state/herdr-summarizer/worker.log</code>, and <code>herdr plugin log list --plugin herdr-summarizer</code> for the hook itself.</td></tr>
+        <tr><td>One pane has no description</td><td>The Claude integration must be installed so herdr knows the session ID. A session also gets nothing until its first turn ends.</td></tr>
+        <tr><td>Want to see it run</td><td><code>herdr-summarize</code> does one pass by hand. <code>herdr-summarize list</code> and <code>herdr-summarize show &lt;pane&gt;</code> print what the picker shows.</td></tr>
+      </tbody>
+    </table></div>
+    <p class="muted">Knobs, all environment variables read by <code>herdr-summarize</code>: <code>HERDR_SUMMARIZER_STALE_DAYS</code> (default 7), <code>HERDR_SUMMARIZER_STATE</code> (another state folder), <code>HERDR_SUMMARIZER_DRY</code> (a pass with no model calls). The plugin runs with herdr's environment, so set them there or use them for runs by hand. Each named herdr session keeps its own state under <code>sessions/&lt;name&gt;/</code>. Sessions idle for 30 days are forgotten.</p>
+  </section>
+
+  <section id="limits">
+    <h2>Limits worth knowing</h2>
+    <ul class="plain">
+      <li><b>Claude sessions only.</b> Summaries come from Claude Code transcripts; other agents show herdr's dot but no label. Planned: <code>docs/plans/herdr-summarizer-other-harnesses.md</code>.</li>
+      <li><b>Links need names.</b> An agent is nested only if its parent drove it through <code>herdr agent</code> commands by name. Agents you start yourself in a new pane are top level.</li>
+      <li><b>herdr styles tokens statically.</b> A token's colour is fixed in <code>config.toml</code>, which is why the orange label is a second token (<code>$summary_you</code>) sharing a slot with <code>$summary</code>. herdr also always puts <code> · </code> between tokens on a row.</li>
+      <li><b>The plugin registry is shared by all herdr sessions.</b> A named session (<code>herdr --session sandbox</code>) gets its own server and state, but the same plugins. To test a plugin change safely, list the session names it may act on in <code>~/.local/state/herdr-summarizer/only-sessions</code>, and delete the file afterwards.</li>
+      <li><b>Stale is relative.</b> It compares each session with your newest one, so a week away from the machine does not turn everything stale.</li>
+    </ul>
+  </section>
+
+  <footer>Source of truth is the code: <code>herdr/.config/herdr/config.toml</code>, <code>herdr/.local/bin/herdr-summarize</code> (its header and <code>help</code> text) and <code>herdr-summarizer/</code>. Update this page when those change.</footer>
+</main>
+</body>
+</html>

@@ -96,9 +96,14 @@ Edit files in this repo (not in `~`), then changes apply immediately via symlink
 
 ### Testing bootstrap on a fresh system
 ```bash
-./bootstrap.sh
-./validate.sh
+./bootstrap.sh    # ends by running ./validate.sh -q
 ```
+
+### Herdr guide
+`docs/herdr.html` is the README for everything this repo adds to herdr (sidebar rows, the `prefix+a` picker,
+the summarizer plugin, key bindings, plugins, troubleshooting). Its terminal figures are hand-drawn with
+made-up sessions, not captures. Update it in the same change whenever `herdr/` or `herdr-summarizer/` changes
+behaviour a reader would see.
 
 ### Validating
 `./validate.sh` (or `-q` for warnings and failures only) checks that every stowed file links back

@@ -153,5 +153,14 @@ fi
 # (notification-sounds pack) are replaced by Herdr's own toasts, prefix+o and [ui.sound] in
 # herdr/.config/herdr/config.toml. notification-sounds/ stays as the source of those mp3s.
 
+# ── Validate ─────────────────────────────────────────────────────────────────
+# Read-only check that everything above is linked, installed and actually what
+# each program loads. Problems are reported, never fixed here, and never fail
+# the bootstrap: its own work is already done by this point.
 echo ""
-echo "==> Done! Restart your terminal for changes to take effect."
+echo "==> Validating (./validate.sh for the full report)..."
+if "$DOTFILES_DIR/validate.sh" -q; then
+  echo "==> Done! Restart your terminal for changes to take effect."
+else
+  echo "==> Done, but validation found failures (listed above). Restart your terminal, fix them, then run ./validate.sh."
+fi
