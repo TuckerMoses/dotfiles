@@ -56,9 +56,14 @@ for pkg in $packages; do
     rel="${src#"$DOTFILES_DIR/$pkg/"}"; target="$HOME/$rel"; count=$((count+1))
     if [[ ! -e "$target" ]]; then fail "$pkg: ~/$rel is missing (run ./bootstrap.sh)"; bad=1
     elif [[ "$(real "$target")" != "$(real "$src")" ]]; then fail "$pkg: ~/$rel exists but is not linked to this checkout"; bad=1; fi
-  done < <(find "$DOTFILES_DIR/$pkg" -type f ! -name '.DS_Store' -print0)
+  done < <(find "$DOTFILES_DIR/$pkg" \( -type f -o -type l \) ! -name '.DS_Store' -print0)
   (( bad )) || pass "$pkg ($count file$([[ $count == 1 ]] || echo s))"
 done
+
+# Configs must work for any user and any home directory: no literal home paths.
+hard="$(git -C "$DOTFILES_DIR" grep -nIE '(/Users|/home)/[A-Za-z0-9._-]+' -- . ':!docs' ':!CHANGELOG.md' ':!validate.sh' || true)"
+if [[ -z "$hard" ]]; then pass "no hardcoded home directory paths in tracked files"
+else fail "hardcoded home directory path (use \$HOME, ~ or a relative path): $(echo "$hard" | cut -d: -f1,2 | tr '\n' ' ')"; fi
 
 # ── tools ────────────────────────────────────────────────────────────────────
 section "Tools installed by bootstrap"

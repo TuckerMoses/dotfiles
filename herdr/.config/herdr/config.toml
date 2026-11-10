@@ -12,11 +12,13 @@ tab_bar_right = [{ type = "hostname" }, { type = "datetime", format = "%H:%M  %d
 [ui.toast]
 delivery = "herdr"
 
-# Sounds: reuse the Claude Code game pack (zelda) for herdr's two events
+# Sounds: reuse the Claude Code game pack (zelda) for herdr's two events.
+# herdr does not expand ~ or $HOME here; relative paths resolve from this file's directory,
+# where the stowed `sounds` symlink points at the repo's notification-sounds/.
 [ui.sound]
 enabled = true
-done_path    = "$HOME/dotfiles/notification-sounds/zelda/task-complete/item-get.mp3"
-request_path = "$HOME/dotfiles/notification-sounds/zelda/permission/hey-listen.mp3"
+done_path    = "sounds/zelda/task-complete/item-get.mp3"
+request_path = "sounds/zelda/permission/hey-listen.mp3"
 
 [session]
 resume_agents_on_restore = true    # needs `herdr integration install claude` (session refs)
