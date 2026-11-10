@@ -4,9 +4,15 @@ All notable changes to this dotfiles setup.
 
 ## [Unreleased]
 
-### Planned
-- Jujutsu adoption for lock-free agent workflows ([plan](docs/plans/jujutsu-adoption.md))
-- herdr-summarizer support for harnesses other than Claude Code ([plan](docs/plans/herdr-summarizer-other-harnesses.md))
+Queued work lives in `docs/proposals/`.
+
+## [2026-11-10]
+
+### Changed
+- Work now flows proposal → plan → change. `docs/proposals/` is the queue: every file there on `master` is approved, and merging a proposal is the approval. `docs/plans/` becomes the record of what was built
+- `/execute-plans` is renamed `/build-proposals`, after what it does (takes a proposal, writes its plan, builds it): it reads only `docs/proposals/` on `master`, writes each plan at execution time against the repo as it is then, and its PR deletes the executed proposals and adds their plans. It no longer reads open plan PRs or takes idea names
+- The two pending plans (Jujutsu adoption, herdr-summarizer for other harnesses) moved to `docs/proposals/`, each with a "Needs decision" section
+- "dotfiles scout" routine: besides keeping `ideas.md`, it submits its best ideas as proposal PRs, at most three open at a time
 
 ## [2026-11-09]
 
