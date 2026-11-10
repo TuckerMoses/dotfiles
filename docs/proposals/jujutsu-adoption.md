@@ -10,7 +10,7 @@ source: user (moved from docs/plans, where it sat pending since March)
 - **Effort:** large. It changes how every session commits in this repo.
 - **Touches:** `bootstrap.sh`, `CLAUDE.md` (branch and worktree workflow), `validate.sh`, the repo's own VCS state.
 - **Needs the real machine:** yes.
-- **Notes for the plan:** `lazyjj` is already installed and bound to a herdr popup. The original detailed plan is in git history: `git show 871733c:docs/plans/jujutsu-adoption.md`. It predates herdr and `/execute-proposals`, both of which give each agent its own worktree.
+- **Notes for the plan:** `lazyjj` is already installed and bound to a herdr popup. The original detailed plan is in git history: `git show 871733c:docs/plans/jujutsu-adoption.md`. It predates herdr and `/build-proposals`, both of which give each agent its own worktree.
 - **Links:** https://jj-vcs.github.io/jj/
 
 ## Needs decision
