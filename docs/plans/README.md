@@ -27,8 +27,13 @@ Run the `execute-plans` skill in a Claude Code session started in `~/dotfiles`:
 ```
 /execute-plans                 # every pending plan here, plus open plan PRs (claude/plan/*)
 /execute-plans git-config      # only the named plans
-/execute-plans --dry-run       # review the plans and print the dispatch table; change nothing
+/execute-plans "direnv"        # an idea with no plan yet: the skill writes the plan, then executes it
+/execute-plans --dry-run       # review the plans and print the dispatch table; also lists unplanned ideas
+/execute-plans mise --plan-only  # write the plan and open a PR with only the plan file
 ```
+
+Ideas come from the "dotfiles scout" routine's backlog (`ideas.md` on the `claude/research` branch), the `Planned`
+list in `CHANGELOG.md`, or you. The skill is the only thing that writes plans, and only for ideas you name.
 
 It reviews each plan against the current repo, implements independent units in parallel worktrees,
 has each add a `validate.sh` check, merges them into one branch, validates that branch live, runs an

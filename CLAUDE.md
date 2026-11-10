@@ -99,10 +99,19 @@ Edit files in this repo (not in `~`), then changes apply immediately via symlink
 ./bootstrap.sh    # ends by running ./validate.sh -q
 ```
 
-### Executing plans
-Plans live in `docs/plans/` (index and statuses in its README) and as open PRs from `claude/plan/*` branches.
-The project skill `/execute-plans` (`.claude/skills/execute-plans/SKILL.md`) runs them: parallel worktrees, a new
-`validate.sh` check per unit, one integration branch validated live, an adversarial review, then one PR.
+### Ideas, plans and execution
+Three stages, each with one owner:
+
+- **Ideas** are discovered by the scheduled cloud routine "dotfiles scout" (monthly). It keeps a short backlog in
+  `ideas.md` on the `claude/research` branch and does nothing else: no plans, no PRs, nothing on `master`.
+- **Plans** live in `docs/plans/` (index and statuses in its README). Only the project skill `/execute-plans`
+  writes them, and only for ideas the user names.
+- **Execution** is `/execute-plans` as well (`.claude/skills/execute-plans/SKILL.md`), run locally because dotfiles
+  can only be validated on the real machine: parallel worktrees, a new `validate.sh` check per unit, one integration
+  branch validated live, an adversarial review, then one PR.
+
+A second routine, "dotfiles tidy" (weekly), keeps `CHANGELOG.md`, `README.md` and plan statuses in sync with the repo
+and opens a PR when something is off. Neither routine pushes to `master` or deletes branches.
 
 ### Herdr guide
 `docs/herdr.html` is the README for everything this repo adds to herdr (sidebar rows, the `prefix+a` picker,

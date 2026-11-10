@@ -1,16 +1,23 @@
 ---
 name: execute-plans
-description: Execute this repo's approved implementation plans in parallel and deliver one reviewed pull request. Reviews every pending plan against the current repo, groups them into independent units, implements each unit in its own git worktree with a subagent at a model tier chosen per unit, has each add a new validate.sh check, merges everything into one integration branch, validates that branch live, runs claude-materia:adversarial-review on it, and opens a single PR for the user. Use when the user says "execute the plans", "run the pending plans", "implement the approved plans", "/execute-plans", or asks to work through docs/plans or the open plan PRs.
+description: Write and execute this repo's implementation plans and deliver one reviewed pull request. Turns ideas the user names (from the scout's ideas.md, the Planned list, or their own words) into plans, reviews every pending plan against the current repo, groups them into independent units, implements each unit in its own git worktree with a subagent at a model tier chosen per unit, has each add a new validate.sh check, merges everything into one integration branch, validates that branch live, runs claude-materia:adversarial-review on it, and opens a single PR for the user. Use when the user says "execute the plans", "run the pending plans", "plan and build X", "turn this idea into a plan", "what ideas are waiting", "/execute-plans", or asks to work through docs/plans, ideas.md or the open plan PRs.
 user-invocable: true
-argument-hint: "[plan-name ...] [--dry-run]"
+argument-hint: "[plan-or-idea ...] [--dry-run] [--plan-only]"
 ---
 
 # Execute plans
 
-Turn the approved plans for this dotfiles repo into one pull request the user can review.
+Write the plans for this dotfiles repo and turn them into one pull request the user can review.
+This skill is the only thing that creates plans and the only thing that executes them. The
+scheduled "dotfiles scout" routine only discovers ideas; it never writes a plan.
 
-- With no arguments, take every plan in the queue. With plan names, take only those.
-- `--dry-run` stops after the dispatch table (Phase 3) and changes nothing.
+- With no arguments, execute every plan in the queue.
+- With names, take only those. A name that is an existing plan is executed. A name that is an
+  idea with no plan yet gets a plan written first (Phase 1), then executed with the rest.
+- `--dry-run` stops after the dispatch table (Phase 3) and changes nothing. It also lists the
+  ideas that have no plan yet, so the user can see what is available.
+- `--plan-only` writes the plans for the named ideas and stops: one PR containing only plan
+  files. Merging it approves them into the queue.
 
 You are the orchestrator. Subagents implement; you review their diffs, integrate, validate
 and report. Read `CLAUDE.md` in the repo root first: its branch, worktree and stow rules bind
@@ -24,8 +31,11 @@ every phase here.
   main checkout; running it elsewhere repoints the user's live config. Only Phase 6 touches the
   live machine, and only from the main checkout.
 - **Subagents change nothing outside their worktree**: nothing in `$HOME`, no installs, no pushes.
-- **Being in the queue is the approval.** Do not re-argue whether a plan is worth doing. Do
-  check whether it is still correct and executable.
+- **Being in the queue is the approval.** A plan is approved when it is `pending` on `master`,
+  when it sits in an open `claude/plan/*` PR, or when the user named its idea in this run. Do
+  not re-argue whether it is worth doing. Do check whether it is still correct and executable.
+- **Never promote an idea the user did not name.** Ideas are suggestions; only the user turns
+  one into work.
 - Branch names are plain (`feat/...`, `plan/...`). The `claude/` prefix is reserved for automation.
 - Report faithfully. A unit that failed, a check that could not be verified, a plan that was
   skipped: each is named in the PR with the reason.
@@ -44,9 +54,9 @@ Stop and tell the user if any of these fails.
 Then tell the user in two lines what is about to happen, including that Phase 6 will switch the
 live config to the integration branch and may install tools.
 
-## Phase 1: gather the queue
+## Phase 1: gather the queue, and write missing plans
 
-Two sources:
+Plans come from two sources:
 
 - **Pending plans on `master`:** rows marked `pending` in `docs/plans/README.md`.
 - **Open plan PRs:** open PRs whose head branch starts with `claude/plan/`. The plan is the one
@@ -58,6 +68,25 @@ Two sources:
 grep -E '^\| \[.*\| `pending`' docs/plans/README.md | sed -E 's/^\| \[([^]]+)\].*/\1/'
 gh pr list --state open --limit 100 --json number,headRefName,files -q '.[] | select(.headRefName|startswith("claude/plan/")) | "#\(.number)\t\(.headRefName)\t\([.files[].path | select(startswith("docs/plans/") and (endswith("README.md")|not))] | join(","))"'
 ```
+
+**Ideas** are not plans yet. They come from three places:
+
+- the scout's backlog: `git show origin/claude/research:ideas.md` (after `git fetch origin claude/research`);
+- the `Planned` list under `[Unreleased]` in `CHANGELOG.md`, for entries with no plan file;
+- the user's own words in this run.
+
+For each idea the user named that has no plan, write the plan now, as
+`docs/plans/<kebab-name>.md`, in the format of the existing plans: YAML frontmatter (`status:
+pending`, `created`, `updated`), then goal, context, the concrete steps with the exact files
+and lines, how it will be verified (including the `validate.sh` check it will add), what it
+needs outside the repo, and edge cases. Write it against the repo and machine as they are
+today: read the files it touches and check what is installed. If an idea needs a decision only
+the user can make, ask before writing, once, with all such questions together.
+
+Plans written in this run travel with their implementation: they are committed on the
+integration branch in Phase 5. With `--plan-only`, instead commit them on a branch
+`plan/<YYYY-MM-DD>`, add them to `docs/plans/README.md` and the `Planned` list, open one PR
+containing only those files, and stop.
 
 ## Phase 2: review each plan against the repo as it is now
 
@@ -92,7 +121,9 @@ in parallel, so two units must never need the same package file.
 If a unit comes back failing its own checks twice, re-dispatch it once at the next tier up.
 
 Print the dispatch table: unit, plans and their sources, verdicts, amendments in brief, tier
-and reason, and the list of blocked or done plans. With `--dry-run`, stop here.
+and reason, and the list of blocked or done plans. Below it, list the ideas that have no plan
+yet (name and one line each), so the user can name any they want next time. With `--dry-run`,
+stop here.
 
 ## Phase 4: dispatch
 
@@ -133,8 +164,8 @@ stow, reload or edit.
 3. Merge the unit branches into it one at a time with `--no-ff`. `bootstrap.sh` and
    `validate.sh` are edited by most units, so expect conflicts there: they are additive, keep
    both sides, then re-run the static checks.
-4. Write the shared files yourself, once: copy each executed plan into `docs/plans/` if it came
-   from a PR, set statuses in `docs/plans/README.md`, add the `CHANGELOG.md` entry, update the
+4. Write the shared files yourself, once: add each executed plan to `docs/plans/` if it came
+   from a PR or was written in this run, set statuses in `docs/plans/README.md`, add the `CHANGELOG.md` entry, update the
    package table in `CLAUDE.md` and the tree in `README.md`, and update `docs/herdr.html` if
    anything a herdr user would see changed.
 5. Push the integration branch. Remove every unit worktree and the integration worktree.
