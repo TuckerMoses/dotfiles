@@ -11,6 +11,7 @@ Implementation plans for terminal/workflow improvements. Each plan is self-conta
 | [tmux-session-persistence](tmux-session-persistence.md) | `done` | Persist tmux sessions across reboots with resurrect + continuum |
 | [claude-context-management](claude-context-management.md) | `done` | Global CLAUDE.md via Stow so every Claude Code session has context |
 | [jujutsu-adoption](jujutsu-adoption.md) | `pending` | Migrate to Jujutsu (jj) for lock-free concurrent agent workflows |
+| [herdr-summarizer-other-harnesses](herdr-summarizer-other-harnesses.md) | `pending` | Labels, status and descriptions for herdr agents other than Claude Code |
 
 ## Statuses
 

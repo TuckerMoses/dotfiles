@@ -293,7 +293,7 @@ The session explored an in-memory cache for the API client. A prototype and one 
   <section id="limits">
     <h2>Limits worth knowing</h2>
     <ul class="plain">
-      <li><b>Claude sessions only.</b> Summaries come from Claude Code transcripts; other agents show herdr's dot but no label.</li>
+      <li><b>Claude sessions only.</b> Summaries come from Claude Code transcripts; other agents show herdr's dot but no label. Planned: <code>docs/plans/herdr-summarizer-other-harnesses.md</code>.</li>
       <li><b>Links need names.</b> An agent is nested only if its parent drove it through <code>herdr agent</code> commands by name. Agents you start yourself in a new pane are top level.</li>
       <li><b>herdr styles tokens statically.</b> A token's colour is fixed in <code>config.toml</code>, which is why the orange label is a second token (<code>$summary_you</code>) sharing a slot with <code>$summary</code>. herdr also always puts <code> · </code> between tokens on a row.</li>
       <li><b>The plugin registry is shared by all herdr sessions.</b> A named session (<code>herdr --session sandbox</code>) gets its own server and state, but the same plugins. To test a plugin change safely, list the session names it may act on in <code>~/.local/state/herdr-summarizer/only-sessions</code>, and delete the file afterwards.</li>

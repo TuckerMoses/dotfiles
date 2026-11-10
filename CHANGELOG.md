@@ -6,6 +6,7 @@ All notable changes to this dotfiles setup.
 
 ### Planned
 - Jujutsu adoption for lock-free agent workflows ([plan](docs/plans/jujutsu-adoption.md))
+- herdr-summarizer support for harnesses other than Claude Code ([plan](docs/plans/herdr-summarizer-other-harnesses.md))
 
 ## [2026-11-09]
 
