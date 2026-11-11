@@ -6,6 +6,11 @@ All notable changes to this dotfiles setup.
 
 Queued work lives in `docs/proposals/`.
 
+## [2026-11-11]
+
+### Added
+- herdr-summarizer names tabs: a tab still on herdr's default name (a number) is named after the session in it, two or three words for its subject. Tabs you named are never touched; rename one to a number to hand it back. The topic changes only with the session's subject, not its status
+
 ## [2026-11-10]
 
 ### Changed
