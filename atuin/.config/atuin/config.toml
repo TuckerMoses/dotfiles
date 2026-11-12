@@ -18,9 +18,12 @@ show_preview = true
 # Inline height (0 = fullscreen overlay)
 inline_height = 0
 
-# Sync is off: no server address, and no background sync even after `atuin login`.
-# To sync a machine on purpose, log in and run `atuin sync`, or set auto_sync = true there.
-sync_address = ""
+# Sync is off twice over: the server address is a name that can never resolve (Atuin's
+# default is https://api.atuin.sh), and nothing syncs in the background even if a real
+# one is set. To sync on purpose, both lines have to change.
+# The address must be a valid URL: Atuin 18.24 refuses to load the config with "".
+# .invalid is reserved (RFC 6761), so no server or local process can ever answer for it.
+sync_address = "https://sync-disabled.invalid"
 auto_sync = false
 
 # Store duration and exit code
