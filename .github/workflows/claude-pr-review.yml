@@ -6,8 +6,11 @@ on:
 
 jobs:
   respond-to-review:
-    # Only run on inline review comments that mention /claude
+    # Only run on inline review comments from the repo owner that mention /claude.
+    # The repo is public: without the owner check anyone could spend the API key
+    # and have Claude push commits.
     if: >
+      github.event.comment.author_association == 'OWNER' &&
       contains(github.event.comment.body, '/claude')
     runs-on: ubuntu-latest
     permissions:
