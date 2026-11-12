@@ -22,7 +22,6 @@ dotfiles/
 ├── ghostty/.config/ghostty/config    → ~/.config/ghostty/config
 ├── herdr/.config/herdr/config.toml   → ~/.config/herdr/config.toml (plus herdr-summarize, herdr-recent → ~/.local/bin)
 ├── herdr-summarizer/                 — opt-in herdr plugin (not stowed; herdr-summarizer/install.sh)
-├── notification-sounds/               — custom game sound pack for Claude Code notifications
 ├── nvim/.config/nvim/                → ~/.config/nvim/
 ├── starship/.config/starship.toml    → ~/.config/starship.toml
 ├── tmux/.tmux.conf                   → ~/.tmux.conf
@@ -44,13 +43,12 @@ dotfiles/
 | **atuin** | Shell history with fuzzy search and per-directory filtering |
 | **ghostty** | Ghostty terminal emulator (Catppuccin Mocha theme, JetBrains Mono NF) |
 | **herdr** | Herdr terminal workspace manager (tmux-style keys, sounds, pane descriptions, `prefix+a` recent-sessions picker); stowed with `--no-folding` |
-| **notification-sounds** | Custom game sound pack that Herdr plays for agent done / needs-attention |
 | **nvim** | Neovim with Claude Code sync plugins (auto-reload, diffview.nvim, claudecode.nvim) |
 | **starship** | Cross-shell prompt (minimal single-line, language detection) |
 | **tmux** | Terminal multiplexer (vim-tmux-navigator, Catppuccin status bar, session persistence) |
 | **zsh** | Zsh shell via Oh My Zsh (fzf-tab, autosuggestions, syntax-highlighting) |
 
-Claude Code notifications and sounds are handled by Herdr (toasts, `prefix+o` jump-to-agent, and `[ui.sound]` playing files from `notification-sounds/`). The opt-in `herdr-summarizer/` plugin is not stowed; `herdr-summarizer/install.sh` links it.
+Claude Code notifications and sounds are handled by Herdr (toasts, `prefix+o` jump-to-agent, and its built-in sounds via `[ui.sound]`). The opt-in `herdr-summarizer/` plugin is not stowed; `herdr-summarizer/install.sh` links it.
 
 ## Adding a new config
 
