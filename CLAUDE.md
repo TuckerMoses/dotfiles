@@ -187,3 +187,4 @@ Worktrees should be removed before testing (see above). In general, remove a wor
 - **Test cross-platform** — any bootstrap changes must work on both macOS and Linux.
 - **Stow structure must mirror `$HOME`** — files must be placed exactly where they'd live under `~`.
 - **Prefer appending to existing config sections** over creating new files when possible.
+- **New functionality needs a new `validate.sh` check** — any change that adds behaviour (a package, tool, plugin, key binding, hook, script) also adds at least one check that fails when that behaviour is not live on the machine: the program loads and uses it, not merely "the file exists". Show the check can fail by running its logic against a deliberately broken copy. `validate.sh` stays read-only: checks never install, stow, reload or edit. Removals, docs and refactors that add no behaviour need no new check.

@@ -138,13 +138,11 @@ and the blocked and done proposals with their reasons. With `--dry-run`, stop he
      could not verify from a worktree.
 3. It commits on its branch in the repo's commit style and stops.
 
-**The validation requirement.** Every unit adds at least one new check to `validate.sh` that
-fails when that unit's result is not live on the machine: not merely "the file exists", but the
-program loads it and uses it. Stow links for a new package are already checked, because
-`validate.sh` reads the package list from `bootstrap.sh`; the new check covers what that cannot.
-The agent must show the check can fail, by running its logic against a deliberately broken copy.
-A check that cannot fail is worse than none. `validate.sh` stays read-only: checks never install,
-stow, reload or edit.
+**The validation requirement.** Every unit adds at least one new check to `validate.sh`, under
+the repo rule "New functionality needs a new `validate.sh` check" in `CLAUDE.md` (what the check
+must prove, showing it can fail, and `validate.sh` staying read-only are all defined there). Stow
+links for a new package are already checked, because `validate.sh` reads the package list from
+`bootstrap.sh`; the new check covers what that cannot. A check that cannot fail is worse than none.
 
 ## Phase 5: integrate
 
