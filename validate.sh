@@ -200,11 +200,14 @@ if have nvim; then
 fi
 
 # zsh: startup files it loads that the repo does not manage.
-for f in .zshenv .zprofile .zlogin .zlogout .zshrc.local; do
+# ~/.zshrc.local is the deliberate machine-local layer (.zshrc sources it, and it
+# can hold secrets), so it is expected to stay out of the repo.
+for f in .zshenv .zprofile .zlogin .zlogout; do
   [[ -e "$HOME/$f" ]] || continue
   [[ "$(real "$HOME/$f")" == "$DOTFILES_DIR"/* ]] && continue
   warn "zsh loads ~/$f, which is not in dotfiles"
 done
+[[ -e "$HOME/.zshrc.local" ]] && info "~/.zshrc.local: machine-local layer, untracked by design (keep secrets out of the repo)"
 
 # herdr keeps the config it loaded until a reload; its log records both.
 if have herdr && [[ -f "$HOME/.config/herdr/herdr-server.log" ]]; then
