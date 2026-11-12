@@ -86,7 +86,7 @@ footer { font-size: 13px; color: var(--muted); }
     <p>Everything this repo changes or adds on top of stock herdr: the sidebar, the recent-sessions picker, the summarizer plugin, key bindings and the other plugins. Open it with <code>open ~/dotfiles/docs/herdr.html</code>.</p>
     <p class="muted">The terminal figures are drawn from the real layout with made-up sessions. They are not captures, so nothing from a real session is stored here.</p>
     <nav>
-      <a href="#files">Files</a><a href="#sidebar">Sidebar</a><a href="#picker">Picker</a><a href="#status">Statuses and dots</a>
+      <a href="#files">Files</a><a href="#sidebar">Sidebar</a><a href="#tabs">Tab names</a><a href="#picker">Picker</a><a href="#status">Statuses and dots</a>
       <a href="#updates">How updates happen</a><a href="#keys">Keys</a><a href="#plugins">Plugins</a>
       <a href="#install">Install and check</a><a href="#trouble">Troubleshooting</a><a href="#limits">Limits</a>
     </nav>
@@ -139,6 +139,19 @@ footer { font-size: 13px; color: var(--muted); }
       <li><span class="n">6</span><div><b>Stale</b><p>Untouched for a week longer than your newest session. Open the picker to read the review.</p></div></li>
     </ol>
     <p class="muted">The sidebar itself is still sorted by herdr (<code>agent_panel_sort = "priority"</code>): unseen and blocked agents first. Sorting by status and heat happens in the picker.</p>
+  </section>
+
+  <section id="tabs">
+    <h2>Tab names</h2>
+    <p>The summarizer also names tabs, but only the ones you have not named yourself.</p>
+    <ul class="plain">
+      <li><b>Which tabs:</b> a tab still carrying herdr's default name (a number) is named after the session in it, in two or three words for its subject, such as <code>aios migration</code>. With several agents in one tab, the first one created there names it, so the name does not flip as other panes become active.</li>
+      <li><b>Your names win.</b> A tab you named is never touched. If you rename a tab the summarizer named, it lets go of it for good.</li>
+      <li><b>Handing one back:</b> rename the tab to a number (<kbd>prefix</kbd> <kbd>,</kbd>) and it is named automatically again.</li>
+      <li><b>Stability:</b> the topic is set once and changes only when the session's subject does, never with its status. Status stays in the sidebar label.</li>
+      <li><b>New tabs:</b> herdr asks for a name when you create a tab. Leave it empty to get a number, and so an automatic name. Setting <code>prompt_new_tab_name = false</code> in <code>config.toml</code> skips the question.</li>
+      <li><b>Off switch:</b> set <code>HERDR_SUMMARIZER_NO_TABS</code> in herdr's environment.</li>
+    </ul>
   </section>
 
   <section id="picker">
