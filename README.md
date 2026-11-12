@@ -31,6 +31,7 @@ dotfiles/
 ├── validate.sh                       — read-only check that everything here is live and working
 ├── docs/herdr.html                   — guide to the herdr setup: sidebar, picker, summarizer, keys (open in a browser)
 ├── docs/plans/                       — implementation plans
+├── .claude/skills/execute-plans/     — /execute-plans project skill
 ├── CHANGELOG.md                      — project changelog
 ├── CLAUDE.md                         — AI assistant instructions
 └── README.md
@@ -42,13 +43,14 @@ dotfiles/
 |---------|---------|
 | **atuin** | Shell history with fuzzy search and per-directory filtering |
 | **ghostty** | Ghostty terminal emulator (Catppuccin Mocha theme, JetBrains Mono NF) |
-| **notification-sounds** | Custom game sound pack for Claude Code event notifications |
+| **herdr** | Herdr terminal workspace manager (tmux-style keys, sounds, pane descriptions, `prefix+a` recent-sessions picker); stowed with `--no-folding` |
+| **notification-sounds** | Custom game sound pack that Herdr plays for agent done / needs-attention |
 | **nvim** | Neovim with Claude Code sync plugins (auto-reload, diffview.nvim, claudecode.nvim) |
 | **starship** | Cross-shell prompt (minimal single-line, language detection) |
 | **tmux** | Terminal multiplexer (vim-tmux-navigator, Catppuccin status bar, session persistence) |
 | **zsh** | Zsh shell via Oh My Zsh (fzf-tab, autosuggestions, syntax-highlighting) |
 
-Bootstrap installs the **claude-notifications-go** plugin (desktop banners with click-to-focus tmux pane switching) and configures a custom sound pack for the **game-sounds** plugin (event sound effects, sourced from `notification-sounds/`).
+Claude Code notifications and sounds are handled by Herdr (toasts, `prefix+o` jump-to-agent, and `[ui.sound]` playing files from `notification-sounds/`). The opt-in `herdr-summarizer/` plugin is not stowed; `herdr-summarizer/install.sh` links it.
 
 ## Adding a new config
 
