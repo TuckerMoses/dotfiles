@@ -18,10 +18,11 @@ show_preview = true
 # Inline height (0 = fullscreen overlay)
 inline_height = 0
 
-# Sync is off twice over: there is no server to talk to (Atuin's default is
-# https://api.atuin.sh), and nothing syncs in the background even if one is set.
-# To sync on purpose, both lines have to change.
-sync_address = ""
+# Sync is off twice over: the server address points at a closed local port (Atuin's
+# default is https://api.atuin.sh), and nothing syncs in the background even if a real
+# one is set. To sync on purpose, both lines have to change.
+# The address must be a valid URL: Atuin 18.24 refuses to load the config with "".
+sync_address = "http://127.0.0.1:9"
 auto_sync = false
 
 # Store duration and exit code
