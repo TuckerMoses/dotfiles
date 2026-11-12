@@ -105,6 +105,11 @@ fi
 
 if have atuin; then
   if err="$(atuin info 2>&1 >/dev/null)"; then pass "atuin: config loads"; else fail "atuin: $(echo "$err" | head -2 | tr '\n' ' ')"; fi
+  # Shell history must not upload in the background: the resolved setting, after defaults and env.
+  async="$(atuin config get --resolved auto_sync 2>/dev/null | tail -1)"
+  if [[ "$async" == "false" ]]; then pass "atuin: auto_sync is off"
+  else fail "atuin: auto_sync resolves to '${async:-unknown}', so history would sync in the background once logged in"; fi
+  if atuin status >/dev/null 2>&1; then warn "atuin: logged in to a sync server (history uploads when you run atuin sync)"; fi
 fi
 
 if have nvim; then
