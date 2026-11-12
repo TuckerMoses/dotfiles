@@ -151,7 +151,7 @@ fi
 # ── Claude Code notifications ───────────────────────────────────────────────
 # Removed 2026-11-03: claude-notifications-go (banners + tmux click-to-focus) and game-sounds
 # (notification-sounds pack) are replaced by Herdr's own toasts, prefix+o and [ui.sound] in
-# herdr/.config/herdr/config.toml. notification-sounds/ stays as the source of those mp3s.
+# herdr/.config/herdr/config.toml. The notification-sounds/ pack itself was removed 2026-11-12.
 
 # ── Validate ─────────────────────────────────────────────────────────────────
 # Read-only check that everything above is linked, installed and actually what
