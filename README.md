@@ -30,7 +30,7 @@ dotfiles/
 ├── validate.sh                       — read-only check that everything here is live and working
 ├── docs/herdr.html                   — guide to the herdr setup: sidebar, picker, summarizer, keys (open in a browser)
 ├── docs/plans/                       — implementation plans
-├── .claude/skills/execute-plans/     — /execute-plans project skill
+├── .claude/skills/build-proposals/   — /build-proposals project skill
 ├── CHANGELOG.md                      — project changelog
 ├── CLAUDE.md                         — AI assistant instructions
 └── README.md

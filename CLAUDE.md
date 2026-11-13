@@ -19,7 +19,7 @@ dotfiles/
 ├── zsh/.zshrc                       # Shell configuration
 ├── docs/herdr.html                  # Guide to the herdr setup
 ├── docs/plans/                      # Implementation plans
-├── .claude/skills/execute-plans/    # /execute-plans project skill
+├── .claude/skills/build-proposals/  # /build-proposals project skill
 ├── CHANGELOG.md                     # Project changelog
 ├── CLAUDE.md                        # This file
 └── README.md                        # User-facing docs
