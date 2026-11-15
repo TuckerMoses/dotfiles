@@ -9,7 +9,14 @@ Queued work lives in `docs/proposals/`.
 ## [2026-11-14]
 
 ### Fixed
-- herdr-summarizer: a session's name no longer follows its latest turns. Asking a top-level session to start another agent used to rename that session, its tab and its space after the side task. Each session now has a fixed identity (short name, topic, purpose) worked out from its whole history and from names it already has, reconsidered at 1k, 10k, 30k and 100k tokens of conversation and then every 100k; the label is that short name plus what the session is doing now
+- herdr-summarizer: a session's name no longer follows its latest turns. Asking a top-level session to start another agent used to rename that session, its tab and its space after the side task. Each session now has a fixed identity (short name, topic, purpose) worked out from its whole history and from names it already has; the label is that short name plus what the session is doing now, and a space is summarized from its sessions' identities
+- Identity is reconsidered at 1k, 10k, 30k and 100k tokens of conversation and then every 100k, only when the owner has said something since the last check; each rename is logged with its reason
+- A session that started or instructed three or more agents is named as their orchestrator, counted from its commands; pane IDs such as `w3:p1` are no longer mistaken for agent names
+- No two open sessions share a short name or topic: clashes are resolved in code
+- Model output is filtered before it is shown or fed back: printable characters only, length caps, no colon inside a name or state, and quoted when reused in a prompt
+
+### Changed
+- On upgrade, each session is named once and its label rewritten once (about two small model calls per open session, at most three sessions named per pass). Tabs the summarizer named earlier may be renamed once, since topics from before this change are not kept
 
 ## [2026-11-11]
 
