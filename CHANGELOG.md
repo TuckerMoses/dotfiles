@@ -6,6 +6,11 @@ All notable changes to this dotfiles setup.
 
 Queued work lives in `docs/proposals/`.
 
+## [2026-11-14]
+
+### Fixed
+- herdr-summarizer: a session's name no longer follows its latest turns. Asking a top-level session to start another agent used to rename that session, its tab and its space after the side task. Each session now has a fixed identity (short name, topic, purpose) worked out from its whole history and from names it already has, reconsidered only when the session doubles in length; the label is that short name plus what the session is doing now
+
 ## [2026-11-11]
 
 ### Added

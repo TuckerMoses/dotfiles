@@ -86,7 +86,7 @@ footer { font-size: 13px; color: var(--muted); }
     <p>Everything this repo changes or adds on top of stock herdr: the sidebar, the recent-sessions picker, the summarizer plugin, key bindings and the other plugins. Open it with <code>open ~/dotfiles/docs/herdr.html</code>.</p>
     <p class="muted">The terminal figures are drawn from the real layout with made-up sessions. They are not captures, so nothing from a real session is stored here.</p>
     <nav>
-      <a href="#files">Files</a><a href="#sidebar">Sidebar</a><a href="#tabs">Tab names</a><a href="#picker">Picker</a><a href="#status">Statuses and dots</a>
+      <a href="#files">Files</a><a href="#sidebar">Sidebar</a><a href="#names">Session names</a><a href="#tabs">Tab names</a><a href="#picker">Picker</a><a href="#status">Statuses and dots</a>
       <a href="#updates">How updates happen</a><a href="#keys">Keys</a><a href="#plugins">Plugins</a>
       <a href="#install">Install and check</a><a href="#trouble">Troubleshooting</a><a href="#limits">Limits</a>
     </nav>
@@ -139,6 +139,18 @@ footer { font-size: 13px; color: var(--muted); }
       <li><span class="n">6</span><div><b>Stale</b><p>Untouched for a week longer than your newest session. Open the picker to read the review.</p></div></li>
     </ol>
     <p class="muted">The sidebar itself is still sorted by herdr (<code>agent_panel_sort = "priority"</code>): unseen and blocked agents first. Sorting by status and heat happens in the picker.</p>
+  </section>
+
+  <section id="names">
+    <h2>Session names</h2>
+    <p>Each session has a fixed identity, separate from what it is doing at the moment.</p>
+    <ul class="plain">
+      <li><b>Three parts:</b> a <em>short</em> name that leads its label (<code>aios orch: awaiting review</code>), a <em>topic</em> of two or three words that names its tab, and a one-sentence <em>purpose</em> shown first in the picker preview.</li>
+      <li><b>Where it comes from:</b> the opening prompt, a sample of your messages across the session's whole life, and names it already has: the agent name it was started under, a tab name you typed, its terminal title. A session that drives other agents is named as their orchestrator.</li>
+      <li><b>What cannot change it:</b> a detour or a delegated side task. Asking the top-level session to start a research agent shows up after the colon as what it is doing, not as a new name.</li>
+      <li><b>When it is reconsidered:</b> only when the session has doubled in length, and then against the whole session again.</li>
+      <li><b>Telling sessions apart:</b> names are chosen to differ from the other open sessions, so two sessions on the same project get their roles (<code>migrator</code>, <code>verifier</code>) and not the same project name twice.</li>
+    </ul>
   </section>
 
   <section id="tabs">
