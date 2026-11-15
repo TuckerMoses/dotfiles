@@ -67,6 +67,13 @@ SILENT_WORK = 2 * 3600   # "working" but silent this long: the agent is not real
 TAB_MAX = 20             # tab names sit in a crowded tab bar
 SHORT_MAX = 14           # the fixed prefix of a label, e.g. "aios" in "aios: awaiting review"
 IDENTITY_SAMPLE = 30     # owner messages, spread over the whole session, used to name it
+# When a session's identity is looked at again, in conversation tokens (the prose the owner
+# and the agent wrote, at 4 characters a token; not context tokens, which are mostly tool
+# output and say nothing about what a session is for). Dense while a session is young and
+# its first name is most likely wrong, then a fixed cadence so a wrong name cannot outlive
+# IDENTITY_EVERY tokens of conversation.
+IDENTITY_STEPS = (1000, 10000, 30000, 100000)
+IDENTITY_EVERY = 100000
 MATERIAL_MIN_CHARS = 1500  # new conversation needed before the summary may be rewritten
 PRUNE_AFTER = 30 * 86400 # forget sessions idle this long
 
@@ -419,11 +426,25 @@ def compose_line(entry):
     return clip("%s: %s" % (short, state) if short and state else state or short)
 
 
+def conversation_tokens(turns):
+    return sum(len(text) for _role, text in turns) // 4
+
+
+def identity_due(entry, tokens):
+    """True when the session has no identity yet, or its conversation has grown past the
+    next checkpoint since the identity was last worked out."""
+    if not entry.get("purpose"):
+        return True
+    last = entry.get("identity_tokens", 0)
+    ahead = [s for s in IDENTITY_STEPS if s > last]
+    return tokens >= (ahead[0] if ahead else (last // IDENTITY_EVERY + 1) * IDENTITY_EVERY)
+
+
 def identify(entry, turns, links, others=(), hints=()):
     """Work out what the session as a whole is for: topic (tab name), short (label prefix)
     and purpose. Unlike the status, this looks across the whole session, so one detour or a
-    delegated side task cannot rename it. It runs when a session is first seen and then only
-    each time the session has doubled in length."""
+    delegated side task cannot rename it. It runs when a session is first seen and then at
+    the checkpoints in identity_due()."""
     owner = [text for role, text in turns if role == "user"]
     if not owner:
         return
@@ -450,7 +471,9 @@ def identify(entry, turns, links, others=(), hints=()):
         head, sep, tail = entry["line"].rstrip("…").partition(":")
         same = set(head.lower().split()) & set((topic + " " + short).lower().split())
         entry["state"] = (tail if sep and same else entry["line"].rstrip("…")).strip()
-    entry.update({"topic": topic, "short": short, "purpose": purpose, "identity_at": len(owner)})
+    entry.update({"topic": topic, "short": short, "purpose": purpose,
+                  "identity_tokens": conversation_tokens(turns)})
+    entry.pop("identity_at", None)
     entry["line"] = compose_line(entry)
 
 
@@ -490,8 +513,11 @@ def step_pane(state, a, now):
     turns, links, pairs = read_transcript(path)
     entry["links"] = links
     harvest_names(state, pairs)
-    owners = sum(1 for role, _ in turns if role == "user")
-    if unnamed or (not entry.get("purpose") and owners) or owners >= 2 * max(entry.get("identity_at") or 0, 1):
+    tokens = conversation_tokens(turns)
+    if entry.get("purpose") and "identity_tokens" not in entry:
+        entry["identity_tokens"] = tokens  # named under the first scheme: count from here
+    # A checkpoint is taken at the end of a turn, so a turn that crosses two of them is one check.
+    if turns and identity_due(entry, tokens) and (not entry.get("purpose") or a.get("agent_status") != "working"):
         try:
             others = ["%s / %s" % (e["topic"], e["short"]) if e.get("purpose") else e["line"]
                       for s, e in state["sessions"].items()
@@ -964,8 +990,9 @@ NAMES
   The part of the label after the colon is what it is doing now
   and follows the latest turns. The identity does not: a detour
   or a delegated side task shows up as activity, never as a new
-  name. It is reconsidered only when a session has doubled in
-  length, and sessions are named so they can be told apart.
+  name. It is reconsidered at 1k, 10k, 30k and 100k tokens of
+  conversation, then every 100k, and sessions are named so they
+  can be told apart.
 
 TABS
   A tab still carrying herdr's default name (a number) is named

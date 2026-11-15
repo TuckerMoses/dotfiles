@@ -148,7 +148,7 @@ footer { font-size: 13px; color: var(--muted); }
       <li><b>Three parts:</b> a <em>short</em> name that leads its label (<code>aios orch: awaiting review</code>), a <em>topic</em> of two or three words that names its tab, and a one-sentence <em>purpose</em> shown first in the picker preview.</li>
       <li><b>Where it comes from:</b> the opening prompt, a sample of your messages across the session's whole life, and names it already has: the agent name it was started under, a tab name you typed, its terminal title. A session that drives other agents is named as their orchestrator.</li>
       <li><b>What cannot change it:</b> a detour or a delegated side task. Asking the top-level session to start a research agent shows up after the colon as what it is doing, not as a new name.</li>
-      <li><b>When it is reconsidered:</b> only when the session has doubled in length, and then against the whole session again.</li>
+      <li><b>When it is reconsidered:</b> at 1k, 10k, 30k and 100k tokens of conversation, then every 100k, each time against the whole session. The count is the text you and the agent wrote, not context tokens: tool output and file contents fill the context without saying what a session is for. A turn that crosses two checkpoints is one check.</li>
       <li><b>Telling sessions apart:</b> names are chosen to differ from the other open sessions, so two sessions on the same project get their roles (<code>migrator</code>, <code>verifier</code>) and not the same project name twice.</li>
     </ul>
   </section>
