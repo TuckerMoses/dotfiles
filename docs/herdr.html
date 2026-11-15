@@ -86,7 +86,7 @@ footer { font-size: 13px; color: var(--muted); }
     <p>Everything this repo changes or adds on top of stock herdr: the sidebar, the recent-sessions picker, the summarizer plugin, key bindings and the other plugins. Open it with <code>open ~/dotfiles/docs/herdr.html</code>.</p>
     <p class="muted">The terminal figures are drawn from the real layout with made-up sessions. They are not captures, so nothing from a real session is stored here.</p>
     <nav>
-      <a href="#files">Files</a><a href="#sidebar">Sidebar</a><a href="#tabs">Tab names</a><a href="#picker">Picker</a><a href="#status">Statuses and dots</a>
+      <a href="#files">Files</a><a href="#sidebar">Sidebar</a><a href="#names">Session names</a><a href="#tabs">Tab names</a><a href="#picker">Picker</a><a href="#status">Statuses and dots</a>
       <a href="#updates">How updates happen</a><a href="#keys">Keys</a><a href="#plugins">Plugins</a>
       <a href="#install">Install and check</a><a href="#trouble">Troubleshooting</a><a href="#limits">Limits</a>
     </nav>
@@ -141,6 +141,21 @@ footer { font-size: 13px; color: var(--muted); }
     <p class="muted">The sidebar itself is still sorted by herdr (<code>agent_panel_sort = "priority"</code>): unseen and blocked agents first. Sorting by status and heat happens in the picker.</p>
   </section>
 
+  <section id="names">
+    <h2>Session names</h2>
+    <p>Each session has a fixed identity, separate from what it is doing at the moment.</p>
+    <ul class="plain">
+      <li><b>Three parts:</b> a <em>short</em> name that leads its label (<code>aios orch: awaiting review</code>), a <em>topic</em> of two or three words that names its tab, and a one-sentence <em>purpose</em> shown under the header in the picker preview.</li>
+      <li><b>Where it comes from:</b> the opening prompt, your messages spread evenly across the session's whole life plus the newest few shown separately, and names it already has: the agent name it was started under and a tab name you typed. The terminal title is not used; Claude Code sets it from the current topic.</li>
+      <li><b>Orchestrators:</b> a session that started or instructed three or more agents is named as their orchestrator. That is counted from the commands it ran, not judged by the model. Starting an agent or two along the way does not count.</li>
+      <li><b>What cannot change it:</b> a detour or a delegated side task. Asking the top-level session to start a research agent shows up after the colon as what it is doing, not as a new name.</li>
+      <li><b>When it is reconsidered:</b> at 1k, 10k, 30k and 100k tokens of conversation, then every 100k, and only if you have said something since the last check. The count is the text you and the agent wrote, not context tokens: tool output and file contents fill the context without saying what a session is for. A turn that crosses two checkpoints is one check. A name is kept unless it was based on only the first message or two, or it no longer fits your recent messages and the opening goal is finished. Each rename is logged with its reason.</li>
+      <li><b>Telling sessions apart:</b> no two open sessions get the same short name or topic. The model is asked to pick distinct names, and the script checks: a clash is resolved by leading with the session's agent name, or failing that a number. A session keeps a name it already had, so a newer session never pushes an older one off it.</li>
+      <li><b>Spaces:</b> a space's summary is built from its sessions' topics and purposes, so it does not follow their activity either.</li>
+      <li><b>Limits per pass:</b> at most three sessions are named in one pass, and a failed attempt waits 15 minutes. Until a session has a name, its label leads with its agent name or the first words of its opening prompt.</li>
+    </ul>
+  </section>
+
   <section id="tabs">
     <h2>Tab names</h2>
     <p>The summarizer also names tabs, but only the ones you have not named yourself.</p>
@@ -148,7 +163,7 @@ footer { font-size: 13px; color: var(--muted); }
       <li><b>Which tabs:</b> a tab still carrying herdr's default name (a number) is named after the session in it, in two or three words for its subject, such as <code>aios migration</code>. With several agents in one tab, the first one created there names it, so the name does not flip as other panes become active.</li>
       <li><b>Your names win.</b> A tab you named is never touched. If you rename a tab the summarizer named, it lets go of it for good.</li>
       <li><b>Handing one back:</b> rename the tab to a number (<kbd>prefix</kbd> <kbd>,</kbd>) and it is named automatically again.</li>
-      <li><b>Stability:</b> the topic is set once and changes only when the session's subject does, never with its status. Status stays in the sidebar label.</li>
+      <li><b>Stability:</b> the topic can change only at the identity checkpoints described under Session names, never with the session's status. Status stays in the sidebar label.</li>
       <li><b>New tabs:</b> herdr asks for a name when you create a tab. Leave it empty to get a number, and so an automatic name. Setting <code>prompt_new_tab_name = false</code> in <code>config.toml</code> skips the question.</li>
       <li><b>Off switch:</b> set <code>HERDR_SUMMARIZER_NO_TABS</code> in herdr's environment.</li>
     </ul>
