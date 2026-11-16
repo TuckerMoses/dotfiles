@@ -18,6 +18,12 @@ Queued work lives in `docs/proposals/`.
 ### Changed
 - On upgrade, each session is named once and its label rewritten once (about two small model calls per open session, at most three sessions named per pass). Tabs the summarizer named earlier may be renamed once, since topics from before this change are not kept
 
+## [2026-11-12]
+
+### Changed
+- atuin: `auto_sync = false` is set explicitly and `sync_address` points at the reserved `https://sync-disabled.invalid`, so nothing syncs in the background (atuin 18.24 rejects an empty address); `validate.sh` checks both
+- The `/claude` PR review workflow runs only for comments by the repo owner, and the README clones over HTTPS from the new repo name
+
 ## [2026-11-11]
 
 ### Added

@@ -18,7 +18,8 @@ dotfiles/
 ├── tmux/.tmux.conf                  # Terminal multiplexer config
 ├── zsh/.zshrc                       # Shell configuration
 ├── docs/herdr.html                  # Guide to the herdr setup
-├── docs/plans/                      # Implementation plans
+├── docs/proposals/                  # Approved work queue
+├── docs/plans/                      # Record of what was built
 ├── .claude/skills/build-proposals/  # /build-proposals project skill
 ├── CHANGELOG.md                     # Project changelog
 ├── CLAUDE.md                        # This file
