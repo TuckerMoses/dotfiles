@@ -1,0 +1,13 @@
+---
+created: 2026-11-17
+source: user
+---
+
+# Linux as a tested target, x86-64 and arm64
+
+- **What:** Make the whole setup (bootstrap, every stowed package, herdr with its plugins and the summarizer, `validate.sh`) work on Linux on both x86-64 and arm64, and prove it by running `bootstrap.sh` and `validate.sh` to a clean pass in a fresh Linux VM of each architecture.
+- **Why here:** Linux support is claimed but has never been tested, and the code shows it is incomplete: `zsh/.zshrc:9` calls `brew --prefix` unconditionally; the Linux package list at `bootstrap.sh:47` omits `lazyjj`, zsh itself, zsh-vi-mode, the JetBrains Mono Nerd Font and herdr; `tmux/.tmux.conf:50-52` assumes `xclip`; the starship installer at `bootstrap.sh:62` is piped to `sh` without a non-interactive flag.
+- **Effort:** large.
+- **Touches:** `bootstrap.sh`, `validate.sh`, `zsh/.zshrc`, `tmux/.tmux.conf`, `ghostty/`, `herdr/`, `herdr-summarizer/`, a new test script for the VMs, `README.md`, `CLAUDE.md`.
+- **Needs the real machine:** yes (it hosts the VMs).
+- **Notes for the plan:** The host is an arm64 Mac with `qemu-system-aarch64`, `qemu-system-x86_64`, `docker` and `multipass` already installed. Run the arm64 guest with hardware acceleration and the x86-64 guest under QEMU emulation, as the user asked; expect the emulated run to be several times slower, so the test script should be unattended and resumable. Use one distro's cloud image for both architectures as the reference (the newest Ubuntu LTS, which exercises the `apt` path); the `dnf` path stays best-effort unless a Fedora guest is cheap to add. The test is: fresh image, clone this branch, `./bootstrap.sh` twice (the second run proves idempotence), then `./validate.sh` exits 0. Keep the VM harness out of `bootstrap.sh` and out of the stow packages, and never stow from the host into a guest. Architecture matters wherever a binary is downloaded and not packaged: herdr, starship, atuin, lazygit, lazyjj, and herdr plugins that fetch release binaries or build with cargo; check each has an arm64 Linux build. Distro packages for neovim, fzf and lazygit may be too old or missing; find out in the guest and do not assume. The guests are headless, so Ghostty can only be checked by parsing its config, and clipboard, fonts and sounds cannot be exercised; say plainly in the plan what was and was not tested. Checks in `validate.sh` that are macOS-only today (`validate.sh:70`, `:173`, `:267`) need a Linux counterpart or an explicit skip. macOS behaviour must not change: `validate.sh` must still pass on this machine. A GitHub Actions job on the hosted x86-64 and arm64 Ubuntu runners would keep this from regressing; treat it as an optional last unit, since those runners have no herdr server.
