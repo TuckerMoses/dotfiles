@@ -29,7 +29,8 @@ dotfiles/
 ├── bootstrap.sh                      — one-command setup
 ├── validate.sh                       — read-only check that everything here is live and working
 ├── docs/herdr.html                   — guide to the herdr setup: sidebar, picker, summarizer, keys (open in a browser)
-├── docs/plans/                       — implementation plans
+├── docs/proposals/                   — the approved queue (see docs/proposals/README.md)
+├── docs/plans/                       — record of what was built
 ├── .claude/skills/build-proposals/   — /build-proposals project skill
 ├── CHANGELOG.md                      — project changelog
 ├── CLAUDE.md                         — AI assistant instructions
