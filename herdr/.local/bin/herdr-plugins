@@ -377,7 +377,7 @@ def lock_pkgs(path, text):
 pin, target = (gh("repos/%s/commits/%s" % (repo, r))["sha"] for r in (pin, target))
 cmp = gh("repos/%s/compare/%s...%s" % (repo, pin, target))
 steps, scripts, bodies, manifest = build_files(target, blobs(target))
-_, old_scripts, _, _ = build_files(pin, blobs(pin))
+old_steps, old_scripts, old_bodies, _ = build_files(pin, blobs(pin))
 scripts += [s for s in old_scripts if s not in scripts]  # a script the build stopped running is a change too
 seen = set(scripts)
 
@@ -442,20 +442,21 @@ for t in texts:
     for line in t.splitlines():
         if re.search(r'(^|&&|;|\|\||\bexec)\s*cargo\s+(build|install)\b', line) and "--locked" not in line:
             incomplete.append("a cargo build without --locked (%s): dependency versions are not held to Cargo.lock" % line.strip()[:80])
-# Install-time code that fetches code another way (a package manager, curl or wget, git clone, go
-# install) is not covered by the handled cases above (a release download with its tag check, a locked
-# cargo build) and makes the review incomplete. In a text that names a release URL, curl and wget are
-# that download's helper, unless the line pipes into a shell.
-FETCHER = re.compile(r'\b(curl|wget)\b|\b(?:npm|npx|pnpm|yarn|pip3?|pipx)\b|\bgo\s+(?:install|get|run)\b|\bgit\s+(?:clone|submodule)\b')
-for t in texts:
-    release_text = bool(re.search(r'releases/(download|latest)', t))
-    for line in t.splitlines():
-        m = FETCHER.search(line)
-        if not m or line.strip().startswith("#"):
-            continue
-        if release_text and m.group(1) and not re.search(r'\|\s*(sudo\s+)?(ba|z)?sh\b', line):
-            continue
-        incomplete.append("install-time code fetches something the review does not cover: %s" % line.strip()[:80])
+# Install-time code that fetches code (curl or wget, a package manager, git clone, go install) can
+# fetch anything, and what it fetches is not in this diff. A fetch line is accepted only when the
+# same line was already in the same file at the pin, i.e. covered by the review that set the pin.
+# Any new or changed fetch line makes the review incomplete; there is no URL-based exemption,
+# since URLs are usually built from variables.
+FETCHER = re.compile(r'\b(curl|wget)\b|\b(?:npm|npx|pnpm|yarn|pip3?|pipx|uv|gem|cargo\s+install)\b|\bgo\s+(?:install|get|run)\b|\bgit\s+(?:clone|submodule|fetch|pull)\b')
+def fetch_lines(text):
+    return {l.strip() for l in text.splitlines() if FETCHER.search(l) and not l.strip().startswith("#")}
+old_fetch = {"[[build]]": fetch_lines("\n".join(" ".join(c) for c in old_steps))}
+old_fetch.update({p: fetch_lines(b) for p, b in old_bodies.items()})
+new_texts = {"[[build]]": "\n".join(" ".join(c) for c in steps)}
+new_texts.update(bodies)
+for where, text in new_texts.items():
+    for line in sorted(fetch_lines(text) - old_fetch.get(where, set())):
+        incomplete.append("%s: a new or changed line fetches code the review cannot see: %s" % (where, line[:80]))
 # Diffed from the files themselves at both commits, not from the compare API's file list,
 # which can be truncated or omit patches.
 for path in ["herdr-plugin.toml"] + scripts:
