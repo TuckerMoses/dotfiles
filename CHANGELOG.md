@@ -6,6 +6,22 @@ All notable changes to this dotfiles setup.
 
 Queued work lives in `docs/proposals/`.
 
+## [2026-11-18]
+
+### Added
+- Linux is a tested target on x86-64 and arm64 (Ubuntu 26.04; `dnf` distros stay best-effort and untested). `bootstrap.sh` now installs everything the Mac gets: zsh, a clipboard tool, `jj` and `lazyjj` (pinned release binaries checked by sha256), herdr, zsh-vi-mode, the JetBrains Mono Nerd Font, with every installer non-interactive and user-level binaries in `~/.local/bin`
+- `test/suite.sh <local|vm-native|vm-emulated|here>`: one suite for an isolated throwaway `$HOME` on this machine, a fresh QEMU guest of the host's architecture, and an emulated guest of the other one. It runs `bootstrap.sh` three times (the third must install nothing), a headless herdr server, nvim plugins, a summarizer hook run, an interactive zsh, then `validate.sh` to exit 0. See `test/README.md`
+- `/build-proposals` runs that suite in all three environments before it touches the live machine, and stops if an environment cannot be started
+- `validate.sh`: an interactive zsh starts with nothing on stderr and with zsh-vi-mode loaded; the Nerd Font is installed; tmux's copy-mode `y` pipes to a command that exists; on Linux, a running Ghostty older than its config
+- A GitHub Actions job runs the suite on hosted x86-64 and arm64 Linux runners for pull requests that touch bootstrap, validate, the packages or `test/`
+
+### Fixed
+- `zsh/.zshrc` no longer needs Homebrew: zsh-vi-mode comes from brew when brew has it, else from the Oh My Zsh custom plugin; the `launchctl` alias is macOS-only; `~/.local/bin` is put on `PATH` when missing
+- tmux copy mode on Linux uses `wl-copy`, then `xclip`, then tmux's own buffer, where it used to assume `xclip`
+- bootstrap on a machine with no `~/.zshrc`: the Oh My Zsh installer wrote a template there, which made stow abort
+- bootstrap reinstalled the herdr plugins on some re-runs: `herdr plugin list | grep -q` failed under `pipefail` when grep exited first
+- bootstrap skips herdr's Claude integration with a hint when `~/.claude` does not exist, and `validate.sh` reports that case as not checked, where both used to fail
+
 ## [2026-11-14]
 
 ### Fixed

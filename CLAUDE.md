@@ -7,8 +7,10 @@ This repository manages personal dotfiles using [GNU Stow](https://www.gnu.org/s
 ```
 dotfiles/
 ├── .github/workflows/claude-pr-review.yml  # Claude Code Action for PR reviews
+├── .github/workflows/linux-test.yml # Runs test/suite.sh on x86-64 and arm64 Linux runners
 ├── bootstrap.sh                     # One-command setup (idempotent)
 ├── validate.sh                      # Read-only check: everything linked, installed, loading cleanly
+├── test/suite.sh, test/lib/vm.sh    # Test suite + QEMU harness (not stowed, not run by bootstrap)
 ├── atuin/.config/atuin/config.toml  # Shell history config
 ├── ghostty/.config/ghostty/config   # Terminal emulator config
 ├── herdr/.config/herdr/             # Herdr config + .local/bin/herdr-{summarize,recent}
@@ -62,6 +64,9 @@ pack on 2026-11-12.
 - **GNU Stow** for symlink management
 - **Oh My Zsh** with custom plugins (zsh-autosuggestions, zsh-syntax-highlighting)
 - **Neovim**, **fzf**, **zoxide**, **Starship**, **Atuin**
+- **Linux only**: zsh, a clipboard tool (`wl-clipboard`), `jj` and `lazyjj` (pinned release binaries, checked by
+  sha256), herdr (its installer), zsh-vi-mode (as an Oh My Zsh custom plugin) and the Nerd Font
+  (`~/.local/share/fonts`). User-level binaries go to `~/.local/bin`; every download is picked by `uname -m`
 
 ## Design Conventions
 
@@ -103,6 +108,21 @@ Edit files in this repo (not in `~`), then changes apply immediately via symlink
 ./bootstrap.sh    # ends by running ./validate.sh -q
 ```
 
+### Testing without touching the live machine
+`test/suite.sh <environment>` runs one suite (bootstrap three times, a headless herdr server, nvim plugins, a
+summarizer hook run, an interactive zsh, then `validate.sh` to exit 0) against the committed `HEAD`:
+
+```bash
+test/suite.sh local         # throwaway $HOME here, isolated from the running herdr, tmux and environment
+test/suite.sh vm-native     # fresh Ubuntu guest of this machine's architecture (QEMU, accelerated)
+test/suite.sh vm-emulated   # fresh Ubuntu guest of the other architecture (QEMU TCG; slow)
+```
+
+Exit 0 passed, 1 failed, 3 the environment could not be started. Details: `test/README.md`. `validate.sh`
+remains the read-only check of the live machine; anything that installs, stows or starts a server belongs to
+the suite. Headless guests cannot show Ghostty rendering, clipboard round-trips, fonts on screen or sounds,
+and the suite makes no model calls.
+
 ### Proposals, plans and execution
 Work flows one way: proposal, then plan, then change.
 
@@ -114,7 +134,8 @@ Work flows one way: proposal, then plan, then change.
   the repo and machine as they are then. `docs/plans/` is the record of what was built, not a queue.
 - **Execution** is `/build-proposals` (`.claude/skills/build-proposals/SKILL.md`), run locally because dotfiles can
   only be validated on the real machine: parallel worktrees with Opus agents, a new `validate.sh` check per unit, one
-  integration branch validated live, an adversarial review, then one PR. That PR deletes the executed proposals and
+  integration branch tested with `test/suite.sh` in three environments and only then validated live, an adversarial
+  review, then one PR. That PR deletes the executed proposals and
   adds their plans.
 
 To queue something yourself, add a proposal file. Do not write a plan by hand and do not add a status field.
@@ -162,7 +183,7 @@ Each Claude session should follow this workflow at the start:
 
 ### Worktree testing
 
-Stow symlinks point to absolute paths in the main repo directory. **Never run `stow` or `bootstrap.sh` from a worktree** — it will repoint symlinks to the worktree, and they'll break when the worktree is cleaned up.
+Stow symlinks point to absolute paths in the main repo directory. **Never run `stow` or `bootstrap.sh` from a worktree** — it will repoint symlinks to the worktree, and they'll break when the worktree is cleaned up. The one exception is `test/suite.sh`, which is safe from a worktree: it stows only into a throwaway `$HOME` or inside a VM guest, from a clone of the committed `HEAD`.
 
 To test changes made in a worktree:
 
