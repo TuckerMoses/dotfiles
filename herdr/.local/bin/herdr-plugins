@@ -382,11 +382,12 @@ if len(cmp.get("files", [])) >= 300:
 # Every changed file that is not documentation or an asset gets its full patch, within a budget;
 # a file not shown in full makes the review incomplete (fail closed). Build-adjacent paths come first.
 SUSPECT = re.compile(r'(^|/)(build\.rs|Makefile|justfile|[^/]*\.(sh|bash|ps1))$|^(scripts|build|herdr)/')
-# Docs and assets are listed by stats only. Narrow on purpose: .txt and docs/ can be compiled
-# in (include_str!, go:embed), so they count as code. A doc whose name appears in any changed
-# code, build script or manifest is promoted to code below.
-DOC = re.compile(r'\.(md|markdown|rst|png|jpe?g|gif|ico|webp)$|(^|/)(LICENSE|COPYING|NOTICE)(\.[a-z]+)?$', re.I)
-EMBED = re.compile(r'include_(str|bytes)!|go:embed|embed\.FS')
+# Only binary images and the license files are listed by stats alone. Any text file can be
+# compiled in (include_str!, go:embed) from a file that did not change, which a review of the
+# changed files cannot see, so every changed text file, docs included, gets its full patch.
+ASSET = re.compile(r'\.(png|jpe?g|gif|ico|webp)$|(^|/)(LICENSE|COPYING|NOTICE)(\.(md|txt|rst))?$')
+def is_asset(n):
+    return bool(ASSET.search(n)) and not SUSPECT.search(n)
 BUDGET = 600
 print("%s  %s -> %s  (%s, %d commits)" % (repo, pin[:7], target[:7], cmp["status"], cmp["ahead_by"]))
 print("https://github.com/%s/compare/%s...%s" % (repo, pin[:12], target[:12]))
@@ -443,14 +444,7 @@ for path in ["herdr-plugin.toml"] + scripts:
     print("\n--- %s (%s)" % (path, "added" if old is None else "removed" if new is None else "changed"))
     print_code("\n".join(d))
 rest = [(n, f) for n, f in files.items() if n not in seen and n != "herdr-plugin.toml" and n.rsplit("/", 1)[-1] not in LOCKS]
-refs = "\n".join([f.get("patch", "") for n, f in rest if not DOC.search(n)] + texts + [content("herdr-plugin.toml", target) or ""])
-def is_doc(n):
-    base = n.rsplit("/", 1)[-1]
-    return bool(DOC.search(n)) and n not in refs and base not in refs
-if any(DOC.search(n) for n, f in rest) and EMBED.search(refs):
-    incomplete.append("docs changed and the changed code embeds files at build time (include_str!/go:embed): "
-                      "a doc may be compiled in")
-code = sorted((nf for nf in rest if not is_doc(nf[0])),
+code = sorted((nf for nf in rest if not is_asset(nf[0])),
               key=lambda nf: (not SUSPECT.search(nf[0]), len(nf[1].get("patch", "").splitlines()), nf[0]))
 budget = BUDGET
 for n, f in code:
@@ -489,8 +483,8 @@ if not locks:
     print("  (no Cargo.lock/go.sum changes)")
 else:
     print("  only package names and versions are listed; the dependencies' own source is not reviewed")
-docs = [f for n, f in rest if is_doc(n)]
-print("\n── docs and assets: %d changed (+%d -%d) ──" % (len(docs), sum(f["additions"] for f in docs), sum(f["deletions"] for f in docs)))
+docs = [f for n, f in rest if is_asset(n)]
+print("\n── images and license files: %d changed (+%d -%d) ──" % (len(docs), sum(f["additions"] for f in docs), sum(f["deletions"] for f in docs)))
 for f in docs:
     print("  %-50s +%d -%d" % (f["filename"], f["additions"], f["deletions"]))
 if noted:
