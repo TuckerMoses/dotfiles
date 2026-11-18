@@ -522,6 +522,30 @@ if [[ -x "$summ" ]]; then
      && "$summ" help >/dev/null 2>&1; then pass "herdr-summarize compiles and runs"
   else fail "herdr-summarize does not compile or run (try: herdr-summarize help)"; fi
 fi
+# $jj_status: what the summarizer reports for a throwaway jj repo (made and removed in
+# $TMPDIR, nothing else touched) and for a plain directory.
+if [[ -x "$summ" ]] && have jj; then
+  jt="$(mktemp -d "${TMPDIR:-/tmp}/dotfiles-validate-jj.XXXXXX")"
+  plain="$("$summ" jj-status "$jt" 2>&1)"
+  ( cd "$jt" && jj git init . && echo x >f && jj status ) >/dev/null 2>&1
+  dirty="$("$summ" jj-status "$jt" 2>&1)"
+  ( cd "$jt" && jj bookmark create t -r @ ) >/dev/null 2>&1
+  mkdir -p "$jt/sub"
+  named="$("$summ" jj-status "$jt/sub" 2>&1)"
+  [[ -d "$jt" ]] && rm -rf "$jt"
+  brief() { head -1 <<<"$1" | sed 's/^.* jj [^ ]*validate-jj[^:]*: //' | cut -c1-90; }  # first line, minus the log prefix
+  plain="$(brief "$plain")"; dirty="$(brief "$dirty")"; named="$(brief "$named")"
+  if [[ -n "$plain" ]]; then fail "herdr-summarize jj-status: a plain directory gave '$plain', expected nothing"
+  elif [[ ! "$dirty" =~ ^[a-z]{8}\*$ || "$named" != "t*" ]]; then
+    fail "herdr-summarize jj-status: got '$dirty' and '$named' from a test repo, expected '<change id>*' and 't*' (jj template broken?)"
+  else pass "herdr-summarize computes \$jj_status (test repo: $dirty, then $named)"; fi
+elif ! have jj; then info "jj not installed; \$jj_status not checked"; fi
+hcfg="$HOME/.config/herdr/config.toml"
+if [[ -f "$hcfg" ]]; then
+  if awk '/^\[/ { s = ($0 == "[ui.sidebar.spaces]") } s && /^rows *=/' "$hcfg" | grep -q '"\$jj_status"'; then
+    pass "herdr sidebar spaces row shows \$jj_status"
+  else fail "herdr sidebar: [ui.sidebar.spaces] rows in ~/.config/herdr/config.toml lack \$jj_status"; fi
+fi
 if [[ "$OS" == "Darwin" ]] && launchctl print "gui/$(id -u)/dev.dotfiles.herdr-summarizer" >/dev/null 2>&1; then
   fail "the old launchd job is still loaded (run herdr-summarizer/install.sh to remove it)"
 fi
@@ -547,6 +571,35 @@ print(len(bad), len(logs))' 2>/dev/null || echo "0 0")"
     if [[ -s "$wlog" ]] && tail -50 "$wlog" | grep -q 'Traceback\|Error'; then
       warn "worker logged errors recently: $(grep -E 'Error|error' "$wlog" | tail -1 | cut -c1-120)"
     else pass "worker log clean"; fi
+    # $jj_status is live: each space whose first pane (its home) is in a jj repo carries it.
+    if have jj && [[ -x "$summ" ]]; then
+      homes="$(/usr/bin/python3 -c 'import json, subprocess
+def h(*a):
+    return json.loads(subprocess.run(["herdr"] + list(a), capture_output=True, text=True, timeout=10).stdout)["result"]
+for w in h("workspace", "list")["workspaces"]:
+    try:
+        panes = h("pane", "list", "--workspace", w["workspace_id"])["panes"]
+    except Exception:
+        continue
+    if not panes:
+        continue
+    order = lambda p: (len(p["pane_id"].split(":")[-1]), p["pane_id"].split(":")[-1])
+    first = min(panes, key=order)
+    print("\x1f".join([w.get("label") or w["workspace_id"], first.get("cwd") or "",
+                        (w.get("tokens") or {}).get("jj_status", "")]))' 2>/dev/null)"
+      njj=0; missing=""; broken=""
+      while IFS=$'\x1f' read -r label dir token; do
+        [[ -n "$dir" ]] || continue
+        if ! want="$("$summ" jj-status "$dir" 2>/dev/null)"; then broken+=" $label"; continue; fi
+        [[ -n "$want" ]] || continue
+        njj=$((njj+1))
+        [[ -n "$token" ]] || missing+=" $label"
+      done <<<"$homes"
+      [[ -n "$broken" ]] && warn "jj failed reading the home of space(s):$broken (try: herdr-summarize jj-status DIR)"
+      if (( njj == 0 )); then info "no open space has its first pane in a jj repo; \$jj_status not checked live"
+      elif [[ -n "$missing" ]]; then warn "\$jj_status missing on jj space(s):$missing (no summarizer pass since they opened? focus a pane there)"
+      else pass "\$jj_status shown on all $njj jj space(s)"; fi
+    fi
   fi
 fi
 
