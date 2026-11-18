@@ -443,31 +443,35 @@ for t in texts:
         if re.search(r'(^|&&|;|\|\||\bexec)\s*cargo\s+(build|install)\b', line) and "--locked" not in line:
             incomplete.append("a cargo build without --locked (%s): dependency versions are not held to Cargo.lock" % line.strip()[:80])
 # Install-time code that fetches code (curl or wget, a package manager, git clone, go install)
-# runs something that is not in this diff. Judged per whole file, since an unchanged fetch line
-# can fetch something else when a variable above it changed:
-#  - a build file (or the [[build]] steps) that changed in any way and fetches: incomplete;
-#  - an unchanged file's fetches were covered by the review that set the pin, EXCEPT ones whose
-#    result can change with no change to the repo (pipe into a shell; a package manager, go
-#    install or git clone by name), which are always incomplete.
-# Backslash-continued lines are joined first, so a command split over lines is one unit.
+# runs something that is not in this diff. The build is judged as one unit, since a fetch can
+# take its URL from a variable set in another build file:
+#  - if the [[build]] steps or ANY build file changed, every fetch in every build file makes
+#    the review incomplete;
+#  - if nothing in the build changed, its fetches were covered by the review that set the pin,
+#    EXCEPT ones whose result can change with no change to the repo (pipe into an interpreter;
+#    a package manager, go install or git clone by name), which are always incomplete.
+# Matching is fail-closed: on the raw text, comments included (no shell parsing to get wrong),
+# split only on \n after joining backslash-continued lines; \r, \v or \f in a build file is
+# itself a reason for an incomplete review.
 FETCHER = re.compile(r'\b(curl|wget)\b|\b(?:npm|npx|pnpm|yarn|pip3?|pipx|uv|gem|brew|apt(?:-get)?|cargo\s+install)\b|\bgo\s+(?:install|get|run)\b|\bgit\s+(?:clone|submodule|fetch|pull)\b')
 ALWAYS = re.compile(r'\|\s*(?:sudo\s+)?(?:ba|z|da|k)?sh\b|\|\s*(?:python3?|perl|ruby|node)\b|\b(?:npm|npx|pnpm|yarn|pip3?|pipx|uv|gem|brew|apt(?:-get)?|cargo\s+install)\b|\bgo\s+(?:install|get|run)\b|\bgit\s+(?:clone|submodule)\b')
 def commands(text):
-    return [l.strip() for l in re.sub(r'\\\r?\n', ' ', text).splitlines() if l.strip() and not l.strip().startswith("#")]
+    return [l.strip() for l in re.sub(r'\\\n', ' ', text).split("\n") if l.strip()]
 def fetches(text):
     return [c for c in commands(text) if FETCHER.search(c)]
-units = [(("steps",), "[[build]] steps", "\n".join(" ".join(c) for c in steps),
-          "\n".join(" ".join(c) for c in old_steps))]
-units += [(("file", p), p, b, old_bodies.get(p)) for p, b in bodies.items()]
-for _key, where, new, old in units:
-    found = fetches(new)
-    if not found:
-        continue
-    if new != old:
-        incomplete.append("%s changed and fetches code the review cannot see: %s" % (where, found[0][:80]))
-        continue
-    for c in found:
-        if ALWAYS.search(c):
+steps_text = "\n".join(" ".join(c) for c in steps)
+old_steps_text = "\n".join(" ".join(c) for c in old_steps)
+units = [("[[build]] steps", steps_text)] + sorted(bodies.items())
+for where, text in units:
+    if re.search(r'[\r\v\f]', text):
+        incomplete.append("%s contains \\r, \\v or \\f, which can hide a command from this review" % where)
+build_changed = (steps_text != old_steps_text or set(bodies) != set(old_bodies)
+                 or any(bodies[p] != old_bodies.get(p) for p in bodies))
+for where, text in units:
+    for c in fetches(text):
+        if build_changed:
+            incomplete.append("the build changed and %s fetches code the review cannot see: %s" % (where, c[:80]))
+        elif ALWAYS.search(c):
             incomplete.append("%s fetches code that can change without the repo changing: %s" % (where, c[:80]))
 # Diffed from the files themselves at both commits, not from the compare API's file list,
 # which can be truncated or omit patches.
