@@ -1,6 +1,6 @@
 ---
 name: build-proposals
-description: Take this repo's approved proposals from proposal to plan to working change, delivered as one reviewed pull request. Reads every proposal in docs/proposals/ on master, writes an implementation plan for each against the repo as it is now, implements independent units in parallel git worktrees with Opus subagents, has each add a new validate.sh check, merges everything into one integration branch, validates that branch live, runs claude-materia:adversarial-review on it, and opens a single PR that deletes the executed proposals and records their plans in docs/plans/. Use when the user says "build the proposals", "run the proposals", "build what's approved", "execute the plans", "what's in the queue", "/build-proposals", or asks to work through docs/proposals.
+description: Take this repo's approved proposals from proposal to plan to working change, delivered as one reviewed pull request. Reads every proposal in docs/proposals/ on master, writes an implementation plan for each against the repo as it is now, implements independent units in parallel git worktrees with Opus subagents, has each add a new validate.sh check, merges everything into one integration branch, tests that branch with test/suite.sh in three environments (an isolated local HOME, a native Ubuntu guest, an emulated one) before validating it live, runs claude-materia:adversarial-review on it, and opens a single PR that deletes the executed proposals and records their plans in docs/plans/. Use when the user says "build the proposals", "run the proposals", "build what's approved", "execute the plans", "what's in the queue", "/build-proposals", or asks to work through docs/proposals.
 user-invocable: true
 argument-hint: "[proposal-name ...] [--dry-run]"
 ---
@@ -29,8 +29,9 @@ and stow rules bind every phase here.
 - **Never** merge the final PR, push to `master`, force-push, or delete a remote branch. The
   final PR is where this skill stops.
 - **Never run `stow`, `bootstrap.sh` or an installer from a worktree.** Stow links point at the
-  main checkout; running it elsewhere repoints the user's live config. Only Phase 6 touches the
-  live machine, and only from the main checkout.
+  main checkout; running it elsewhere repoints the user's live config. The one exception is
+  `test/suite.sh`, which stows only into a throwaway `$HOME` or inside a guest. Only Phase 7
+  touches the live machine, and only from the main checkout.
 - **Subagents change nothing outside their worktree**: nothing in `$HOME`, no installs, no pushes.
 - **Being in `docs/proposals/` on `master` is the approval.** Do not re-argue whether a proposal
   is worth doing. Do check whether it is still correct and executable.
@@ -53,8 +54,8 @@ Stop and tell the user if any of these fails.
 3. Run `./validate.sh` and keep the full output as the **baseline**. Failures that exist before
    you start are recorded, not blamed on a proposal.
 
-Then tell the user in two lines what is about to happen, including that Phase 6 will switch the
-live config to the integration branch and may install tools.
+Then tell the user in two lines what is about to happen, including that Phase 7 will switch the
+live config to the integration branch and may install tools, after the Phase 6 test passes.
 
 ## Phase 1: read the queue
 
@@ -88,7 +89,7 @@ source line), then:
   they are today, not as the proposal assumed;
 - **Validation**: the `validate.sh` check this will add, and how that check can fail;
 - **Outside the repo**: any file in `$HOME` a new stow package would replace, any entry in
-  `~/.zshrc.local`, any tool to install. Those are handled in Phase 6 by you, never by a subagent;
+  `~/.zshrc.local`, any tool to install. Those are handled in Phase 7 by you, never by a subagent;
 - **Edge cases** and what was deliberately left out.
 
 Where the proposal's assumptions no longer hold (a tmux-only part now that herdr is the
@@ -109,7 +110,7 @@ in parallel, so two units must never need the same package file.
 
 **Model.** Writing plans and implementing them both run on Opus. Every implementation agent is
 dispatched with `model: "opus"`. Do not drop to a cheaper model to save cost; the adversarial
-review in Phase 7 chooses its own models.
+review in Phase 8 chooses its own models.
 
 If a unit comes back failing its own checks, re-dispatch it once with what failed. A second
 failure leaves the unit out and is reported; its proposals stay in the queue.
@@ -131,6 +132,9 @@ and the blocked and done proposals with their reasons. With `--dry-run`, stop he
      `HERDR_CONFIG_PATH=<file> herdr config check`, `ghostty +validate-config --config-file=<file>`,
      and sourcing a tmux config into a throwaway server
      (`tmux -L <name> -f /dev/null new-session -d 'sleep 5' \; source-file <file>`);
+   - that it may run `test/suite.sh local` or a VM environment to check its own work: the suite
+     is safe from a worktree and tests the committed `HEAD`, so commit first. It must still never
+     stow or bootstrap by hand;
    - the files it must **not** edit, because you own them: `CHANGELOG.md`, `CLAUDE.md`,
      `README.md`, `docs/herdr.html`, and everything under `docs/plans/` and `docs/proposals/`;
    - what to return: files changed, the check it added and how it fails, tools that need
@@ -162,9 +166,48 @@ links for a new package are already checked, because `validate.sh` reads the pac
    - for a proposal whose unit failed: leave the file untouched.
    Then add the `CHANGELOG.md` entry, update the package table in `CLAUDE.md` and the tree in
    `README.md`, and update `docs/herdr.html` if anything a herdr user would see changed.
-5. Push the integration branch. Remove every unit worktree and the integration worktree.
+5. Commit all of it on the integration branch. Remove every unit worktree; keep the integration
+   worktree, because Phase 6 runs from it.
 
-## Phase 6: validate the integration branch live
+## Phase 6: test in three environments
+
+The live machine is touched only after the integration branch passes one suite in three places,
+all on the same commit. `test/README.md` describes the suite.
+
+```bash
+test/suite.sh local         # throwaway $HOME, env -i, its own herdr server and tmux socket dir
+test/suite.sh vm-native     # fresh Ubuntu guest, this machine's arch (HVF or KVM)
+test/suite.sh vm-emulated   # fresh Ubuntu guest, the other arch (TCG: several times slower)
+```
+
+1. Run all three from the integration worktree, in parallel, each as a background command, and
+   wait for all three to exit.
+2. The suite tests the committed `HEAD` of the checkout it runs from, copied as a git bundle;
+   uncommitted changes are not tested. Commit everything first, and commit nothing to the branch
+   until all three runs have taken their bundle: `local` when its log prints `local: HOME=`, a
+   guest only once it has booted, when its log prints `suite running in the guest`. The report's
+   `commit` row is read when a run starts, not when it bundles, so it cannot catch a commit made
+   in between.
+3. Exit codes: `0` passed, `1` the suite failed, `3` the environment could not be started.
+   - On `1`: read the run dir (`log`, `result`, `validate.txt`; for guests `console.log` and
+     `guest/`), fix on the branch (small fixes yourself, larger ones through a fresh worktree and
+     agent), commit, and re-run that environment fresh. Do not `--resume` a guest after a fix: it
+     keeps the clone it already has. A fix is a new commit, so re-run any environment that passed
+     on the old one.
+   - On `3`: report which environment and why, and **stop before Phase 7**. Never skip an
+     environment silently, and never go on to the live phase on two out of three.
+4. `local` is fully isolated and must never be worked around. Never run herdr, `stow` or
+   `bootstrap.sh` by hand against the real `$HOME` to help a failing run; a `local` that refuses
+   to start (for example, a system package `bootstrap.sh` would install is missing) is a `3`.
+5. What the suite cannot show is reported as **not tested**, never as passed: anything a headless
+   guest cannot show (Ghostty rendering, clipboard, fonts on screen, sounds), model calls (the
+   summarizer runs dry), and `dnf` (no Fedora guest).
+6. When all three pass on the same commit, save
+   `test/suite.sh report <run-dir> <run-dir> <run-dir>` (a side-by-side table: each step, commit,
+   wall time, exit) for the PR. Then push the integration branch and remove the integration
+   worktree.
+
+## Phase 7: validate the integration branch live
 
 This follows "Worktree testing" in `CLAUDE.md` and is the only phase that changes the machine.
 
@@ -182,7 +225,7 @@ This follows "Worktree testing" in `CLAUDE.md` and is the only phase that change
    the branch leaves the machine in a bad state, `git checkout master && ./bootstrap.sh` and
    report. Tools already installed stay installed; list them.
 
-## Phase 7: adversarial review
+## Phase 8: adversarial review
 
 Invoke the `claude-materia:adversarial-review` skill on the integration branch and follow that
 skill's own rules for the loop. Give it a manifest with:
@@ -194,7 +237,7 @@ skill's own rules for the loop. Give it a manifest with:
 
 Commit the fixes it applies. Then run `./validate.sh` again: review fixes can break things too.
 
-## Phase 8: the pull request
+## Phase 9: the pull request
 
 Push, then open one PR against `master` with `gh pr create`. The body has, in this order:
 
@@ -202,12 +245,14 @@ Push, then open one PR against `master` with `gh pr create`. The body has, in th
    the exact question each one is waiting on.
 2. **Proposals table:** proposal, verdict, result, the plan file, the validation check added.
 3. **Differences from the proposals**, and deviations the agents reported.
-4. **Machine changes from Phase 6:** tools installed, files in `$HOME` replaced (with the backup
+4. **Three environments:** the Phase 6 `test/suite.sh report` table, side by side, with the
+   commit and wall time of each, and the not-tested list.
+5. **Machine changes from Phase 7:** tools installed, files in `$HOME` replaced (with the backup
    path), and the steps still to do by hand.
-5. **Validation:** baseline against final, as counts, plus any remaining warning.
-6. **Adversarial review:** rounds, what was fixed, accepted risks, and the path to its summary.
-7. **Queue after merge:** which proposals this PR deletes and which remain in `docs/proposals/`.
-8. **Rollback:** `git checkout master && ./bootstrap.sh`, plus what that does not undo.
+6. **Validation:** baseline against final, as counts, plus any remaining warning.
+7. **Adversarial review:** rounds, what was fixed, accepted risks, and the path to its summary.
+8. **Queue after merge:** which proposals this PR deletes and which remain in `docs/proposals/`.
+9. **Rollback:** `git checkout master && ./bootstrap.sh`, plus what that does not undo.
 
 Then tell the user: the PR link, that the main checkout is on the integration branch and
 therefore live, and the decisions waiting on them.
