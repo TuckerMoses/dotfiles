@@ -382,12 +382,13 @@ if len(cmp.get("files", [])) >= 300:
 # Every changed file that is not documentation or an asset gets its full patch, within a budget;
 # a file not shown in full makes the review incomplete (fail closed). Build-adjacent paths come first.
 SUSPECT = re.compile(r'(^|/)(build\.rs|Makefile|justfile|[^/]*\.(sh|bash|ps1))$|^(scripts|build|herdr)/')
-# Only binary images and the license files are listed by stats alone. Any text file can be
-# compiled in (include_str!, go:embed) from a file that did not change, which a review of the
-# changed files cannot see, so every changed text file, docs included, gets its full patch.
-ASSET = re.compile(r'\.(png|jpe?g|gif|ico|webp)$|(^|/)(LICENSE|COPYING|NOTICE)(\.(md|txt|rst))?$')
+# Only binary images are listed by stats alone: an image name AND no patch from GitHub (it has
+# none for binary files). Any text file can be compiled in (include_str!, go:embed) from a file
+# that did not change, which a review of the changed files cannot see, so every changed text
+# file (docs, licenses, a "png" that is really text) gets its full patch.
+IMAGE = re.compile(r'\.(png|jpe?g|gif|ico|webp)$', re.I)
 def is_asset(n):
-    return bool(ASSET.search(n)) and not SUSPECT.search(n)
+    return bool(IMAGE.search(n)) and "patch" not in files.get(n, {}) and not SUSPECT.search(n)
 BUDGET = 600
 print("%s  %s -> %s  (%s, %d commits)" % (repo, pin[:7], target[:7], cmp["status"], cmp["ahead_by"]))
 print("https://github.com/%s/compare/%s...%s" % (repo, pin[:12], target[:12]))
@@ -484,7 +485,7 @@ if not locks:
 else:
     print("  only package names and versions are listed; the dependencies' own source is not reviewed")
 docs = [f for n, f in rest if is_asset(n)]
-print("\n── images and license files: %d changed (+%d -%d) ──" % (len(docs), sum(f["additions"] for f in docs), sum(f["deletions"] for f in docs)))
+print("\n── binary images: %d changed (+%d -%d) ──" % (len(docs), sum(f["additions"] for f in docs), sum(f["deletions"] for f in docs)))
 for f in docs:
     print("  %-50s +%d -%d" % (f["filename"], f["additions"], f["deletions"]))
 if noted:
