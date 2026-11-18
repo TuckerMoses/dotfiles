@@ -64,8 +64,9 @@ if [[ "$(uname)" == "Linux" ]]; then
   if [[ ${#missing[@]} -gt 0 ]]; then
     echo "==> Installing packages: ${missing[*]}"
     if command -v apt-get &>/dev/null; then
-      sudo env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a apt-get update -qq
-      sudo env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a apt-get install -y -qq --no-install-recommends "${missing[@]}"
+      apt_get() { sudo env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a apt-get -o Acquire::Retries=5 "$@"; }
+      apt_get update -qq
+      apt_get install -y -qq --no-install-recommends "${missing[@]}"
     elif command -v dnf &>/dev/null; then
       sudo dnf install -y "${missing[@]}"
     fi
