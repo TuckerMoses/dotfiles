@@ -139,7 +139,7 @@ if command -v herdr >/dev/null 2>&1; then
     herdr plugin install persiyanov/herdr-reviewr --ref bb71050caa5d3a0b1a414527783eb7a772447f9f --yes || echo "    (install failed: herdr server not running, or a build, toolchain or network error above; re-run ./bootstrap.sh)"
   fi
   # herdr-fingers (trial): hint-copy paths, SHAs, URLs from the focused pane (prefix+f). Pinned to a
-  # reviewed commit; builds with cargo (Rust >= 1.85). Remove the trial by reverting its commit.
+  # reviewed commit; builds with cargo (Rust >= 1.85). Remove the trial: the targets listed in docs/plans/herdr-fingers-trial.md.
   if ! herdr plugin list 2>/dev/null | grep -q herdr-fingers; then
     if command -v cargo >/dev/null 2>&1; then
       echo "==> Installing herdr plugin herdr-fingers (cargo build, a minute or two)"

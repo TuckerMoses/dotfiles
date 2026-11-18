@@ -1,20 +1,22 @@
 #!/usr/bin/env bash
 # ── herdr-plugins ────────────────────────────────────────────────────────────
 # Pins for the third-party herdr plugins bootstrap.sh installs, and one place to move them.
-# The pins' only source is the `herdr plugin install <owner/repo> --ref <sha>` lines in the
-# bootstrap.sh of the checkout this script is linked from (found through its own path).
+# The pins' only source is the `herdr plugin install <owner/repo> --ref <sha>` lines in the bootstrap.sh
+# of the checkout this script is linked from, found through its own path: every command reads that
+# file, whatever the current directory.
 #
 #   herdr-plugins status                   pinned / installed / upstream HEAD / commits behind
 #   herdr-plugins check                    offline: exit 1 when an installed plugin is off its pin
 #   herdr-plugins review <plugin> [<sha>]  commits and install-time code changes, pin..sha
-#   herdr-plugins update [<plugin>...]     review, ask, reinstall, then bump the pin (default: all behind)
+#   herdr-plugins update [<plugin>...]     review, ask, reinstall, then bump the pin (default: all pinned)
 #   herdr-plugins help
 #
 # <plugin> is a repo (herdr-reviewr), owner/repo, or a plugin id (persiyanov.reviewr).
-# Exit codes: 0 ok; 1 drift (check) or a plugin not updated; 2 setup error; 3 review incomplete.
-# update refuses an incomplete review unless the user sets HERDR_PLUGINS_INCOMPLETE_OK=<target sha>.
-# Run update only through the stowed ~/.local/bin/herdr-plugins, on a branch of the main checkout, then
-# commit the pin bump; status, check and review are safe anywhere.
+# Exit codes: 0 ok; 1 drift (check) or a plugin not updated (update); 2 setup error; 3 review incomplete (review only).
+# update is the user's, run in a terminal at the main checkout on a branch made there, through the stowed
+# ~/.local/bin/herdr-plugins; commit the pin bump after. It also reinstalls a plugin installed off its pin at the pin.
+# It refuses an incomplete review unless the user sets HERDR_PLUGINS_INCOMPLETE_OK=<7 to 40 leading
+# characters of the upstream HEAD this run reviews>; if upstream moved, review again.
 
 set -euo pipefail
 
@@ -37,7 +39,7 @@ die() { echo "herdr-plugins: $*" >&2; exit 2; }
 have() { command -v "$1" >/dev/null 2>&1; }
 
 usage() {
-  sed -n '7,17s/^# \{0,1\}//p' "$self"
+  sed -n '8,19s/^# \{0,1\}//p' "$self"
   echo
   echo "Pins are read from $BOOTSTRAP"
 }
@@ -141,9 +143,10 @@ cmd_check() {
 # ── review ───────────────────────────────────────────────────────────────────
 # Prints the commits pin..target, then the full diff of herdr-plugin.toml and of every file the
 # manifest's macOS/Linux [[build]] commands run (and scripts those run with sh/bash/source),
-# resolved at target, then the full patch of every other changed file that is not documentation or
-# an asset (within a line budget), and Cargo.lock/go.sum package changes. Anything it cannot show
-# makes the review incomplete (exit 3).
+# resolved at target, then the full patch of every other changed text file (within a line budget),
+# and Cargo.lock/go.sum package changes. Binary images are listed by stats alone. Anything it
+# cannot show, or install-time code that fetches something it does not cover, makes the review
+# incomplete (exit 3).
 review_text() {  # <owner/repo> <pin> <target>; exits 3 when the review is incomplete
   "${TOMLPY:-$PY}" - "$1" "$2" "$3" <<'PY'
 import builtins, difflib, json, re, subprocess, sys, unicodedata, urllib.parse
@@ -347,19 +350,21 @@ REGISTRY = ("registry+https://github.com/rust-lang/crates.io-index", "sparse+htt
 LOCKS = {"Cargo.lock", "go.sum"}
 
 def lock_pkgs(path, text):
-    """{(name, version, source)} from a Cargo.lock ([[package]] tables) or go.sum (module lines)."""
+    """{(name, version, source, hashes)} from a Cargo.lock ([[package]] tables) or go.sum (module
+    lines; hashes are that module version's h1 hashes, so a changed hash at one version shows)."""
     out = set()
     if path.endswith("go.sum"):
+        h = {}
         for line in text.splitlines():
             w = line.split()
             if len(w) >= 2:
-                out.add((w[0], w[1].replace("/go.mod", ""), ""))
-        return out
+                h.setdefault((w[0], w[1].replace("/go.mod", "")), set()).add(w[2] if len(w) > 2 else "")
+        return {(n, v, "", ",".join(sorted(hs))) for (n, v), hs in h.items()}
     cur = {}
     for line in text.splitlines() + ["[[package]]"]:
         if line.strip() == "[[package]]":
             if "name" in cur:
-                out.add((cur["name"], cur.get("version", ""), cur.get("source", "")))
+                out.add((cur["name"], cur.get("version", ""), cur.get("source", ""), ""))
             cur = {}
             continue
         m = re.match(r'(name|version|source)\s*=\s*"([^"]*)"', line)
@@ -379,8 +384,8 @@ seen = set(scripts)
 files = {f["filename"]: f for f in cmp.get("files", [])}
 if len(cmp.get("files", [])) >= 300:
     incomplete.append("the compare API lists at most 300 changed files")
-# Every changed file that is not documentation or an asset gets its full patch, within a budget;
-# a file not shown in full makes the review incomplete (fail closed). Build-adjacent paths come first.
+# Every changed text file gets its full patch, within a budget; a file not shown in full makes the
+# review incomplete (fail closed). Build-adjacent paths come first.
 SUSPECT = re.compile(r'(^|/)(build\.rs|Makefile|justfile|[^/]*\.(sh|bash|ps1))$|^(scripts|build|herdr)/')
 # Only binary images are listed by stats alone: an image name AND no patch from GitHub (it has
 # none for binary files). Any text file can be compiled in (include_str!, go:embed) from a file
@@ -437,6 +442,20 @@ for t in texts:
     for line in t.splitlines():
         if re.search(r'(^|&&|;|\|\||\bexec)\s*cargo\s+(build|install)\b', line) and "--locked" not in line:
             incomplete.append("a cargo build without --locked (%s): dependency versions are not held to Cargo.lock" % line.strip()[:80])
+# Install-time code that fetches code another way (a package manager, curl or wget, git clone, go
+# install) is not covered by the handled cases above (a release download with its tag check, a locked
+# cargo build) and makes the review incomplete. In a text that names a release URL, curl and wget are
+# that download's helper, unless the line pipes into a shell.
+FETCHER = re.compile(r'\b(curl|wget)\b|\b(?:npm|npx|pnpm|yarn|pip3?|pipx)\b|\bgo\s+(?:install|get|run)\b|\bgit\s+(?:clone|submodule)\b')
+for t in texts:
+    release_text = bool(re.search(r'releases/(download|latest)', t))
+    for line in t.splitlines():
+        m = FETCHER.search(line)
+        if not m or line.strip().startswith("#"):
+            continue
+        if release_text and m.group(1) and not re.search(r'\|\s*(sudo\s+)?(ba|z)?sh\b', line):
+            continue
+        incomplete.append("install-time code fetches something the review does not cover: %s" % line.strip()[:80])
 # Diffed from the files themselves at both commits, not from the compare API's file list,
 # which can be truncated or omit patches.
 for path in ["herdr-plugin.toml"] + scripts:
@@ -474,14 +493,19 @@ nonreg = []
 for n in locks:
     old, new = lock_pkgs(n, content(n, pin) or ""), lock_pkgs(n, content(n, target) or "")
     added, removed = sorted(new - old), sorted(old - new)
+    rehashed = {(a, b) for a, b, c, d in added} & {(a, b) for a, b, c, d in removed} if n.endswith("go.sum") else set()
     print("  %s: +%d -%d packages" % (n, len(added), len(removed)))
-    lines = ["    + %s %s%s" % (a, b, " (%s)" % c if c and not c.startswith(REGISTRY) else "") for a, b, c in added] + \
-            ["    - %s %s" % (a, b) for a, b, c in removed]
+    lines = ["    + %s %s%s%s" % (a, b, " (%s)" % c if c and not c.startswith(REGISTRY) else "",
+                                 " (hash changed)" if (a, b) in rehashed else "") for a, b, c, d in added] + \
+            ["    - %s %s%s" % (a, b, " (hash changed)" if (a, b) in rehashed else "") for a, b, c, d in removed]
+    if rehashed:
+        incomplete.append("%s changes the hash of a module at an unchanged version (%s): the module's code changed"
+                          % (n, ", ".join("%s %s" % x for x in sorted(rehashed)[:5])))
     for line in lines[:40]:
         print_code(line)
     if len(lines) > 40:
         print("    ... and %d more" % (len(lines) - 40))
-    nonreg += ["%s %s" % (a, b) for a, b, c in added if c and not c.startswith(REGISTRY)]
+    nonreg += ["%s %s" % (a, b) for a, b, c, d in added if c and not c.startswith(REGISTRY)]
 if nonreg:
     incomplete.append("a lock file adds package(s) from outside the crates.io registry: %s" % ", ".join(nonreg[:5]))
 if not locks:
@@ -495,13 +519,13 @@ for f in docs:
 if noted:
     print("\n(invisible characters in commit text or file names, shown above as <U+...>: %s)" % ", ".join(sorted(noted)))
 if hidden:
-    incomplete.append("invisible or direction-changing characters in install-time code (%s), shown above as <U+...>: "
-                      "code may not read as it runs" % ", ".join(sorted(hidden)))
+    incomplete.append("invisible characters in install-time code, or direction-changing characters anywhere (%s), "
+                      "shown above as <U+...>: code may not read as it runs" % ", ".join(sorted(hidden)))
 incomplete = list(dict.fromkeys(incomplete))
 if incomplete:
     print("\n!! INCOMPLETE REVIEW: %s." % "; ".join(incomplete))
-    print("!! Read the compare page above before pinning. update refuses to pin unless the user sets "
-          "HERDR_PLUGINS_INCOMPLETE_OK=%s." % target[:12])
+    print("!! Read the compare page above before pinning. update will refuse this review; only the user can "
+          "override it, after reading the compare page. Agents: stop and report this output.")
     sys.exit(3)
 PY
 }
@@ -521,21 +545,68 @@ cmd_review() {
 }
 
 # ── update ───────────────────────────────────────────────────────────────────
-set_pin() {  # <owner/repo> <old sha> <new sha>: rewrite exactly one line of bootstrap.sh
+set_pin() {  # <owner/repo> <old sha> <new sha>: rewrite exactly one line of bootstrap.sh; 1 when it did not
   local tmp changed
   tmp="$(mktemp)"
   sed "s|herdr plugin install $1 --ref $2 |herdr plugin install $1 --ref $3 |" "$BOOTSTRAP" >"$tmp"
   changed="$(diff "$BOOTSTRAP" "$tmp" | grep -c '^>' || true)"
   if [[ "$changed" != 1 ]] || [[ "$(diff "$BOOTSTRAP" "$tmp" | grep -c '^<' || true)" != 1 ]]; then
-    rm -f "$tmp"; die "expected to change exactly one line of $BOOTSTRAP for $1, would change $changed; left it alone"
+    rm -f "$tmp"; echo "herdr-plugins: expected to change exactly one line of $BOOTSTRAP for $1, would change $changed; left it alone" >&2; return 1
   fi
-  cat "$tmp" >"$BOOTSTRAP"; rm -f "$tmp"
+  cat "$tmp" >"$BOOTSTRAP" || { rm -f "$tmp"; return 1; }
+  rm -f "$tmp"
+}
+
+confirm() {  # <question>: a yes typed at the terminal itself, never read from stdin
+  local ans
+  printf '%s [y/N] ' "$1"
+  read -r ans </dev/tty || ans=""
+  case "$ans" in y|Y|yes) return 0 ;; *) return 1 ;; esac
+}
+
+# Whether this repo's stowed config for plugin <id> (if it has one) is still linked in place: an
+# uninstall that removes the plugin's config dir takes the stowed links with it.
+config_linked() {  # <plugin id>
+  local src="$REPO/herdr/.config/herdr/plugins/config/$1" f
+  [[ -d "$src" ]] || return 0
+  while IFS= read -r f; do
+    [[ -L "$HOME/.config/herdr/plugins/config/$1/${f#"$src"/}" ]] || return 1
+  done < <(find "$src" -type f)
+}
+
+relink_hint() {  # <owner/repo> <plugin id>
+  config_linked "$2" || echo "$1: its stowed config under ~/.config/herdr/plugins/config/$2 is no longer linked; re-run 'stow --no-folding herdr' from the main checkout"
+}
+
+# Uninstall <id>, install <repo> at <to>; when the install fails, put <from> back. 0 only when <to> is
+# installed. No --yes: herdr shows the plugin's manifest and build step and asks.
+reinstall() {  # <owner/repo> <plugin id> <from sha> <to sha>
+  local tool
+  tool="$(needs_tool "$1")"
+  if [[ -n "$tool" ]] && ! have "$tool"; then
+    echo "$1: not reinstalled: bootstrap.sh needs $tool for it and $tool is not on PATH; nothing changed"
+    return 1
+  fi
+  if ! herdr plugin uninstall "$2"; then
+    echo "$1: uninstall of $2 FAILED; still installed at ${3:0:7}. Retry with:"
+    echo "    herdr-plugins update ${1#*/}"
+    return 1
+  fi
+  herdr plugin install "$1" --ref "$4" && return 0
+  echo "$1: install at ${4:0:7} FAILED (build or download). Putting ${3:0:7} back:"
+  if herdr plugin install "$1" --ref "$3"; then echo "$1: reinstalled at ${3:0:7}"
+  else echo "$1: could not reinstall ${3:0:7} either (now uninstalled). Retry: herdr plugin install $1 --ref $3"; fi
+  return 1
 }
 
 cmd_update() {
+  # update is the user's. Piped input cannot pass this check and the confirmations are read from the
+  # terminal, not stdin. An agent that spawns a pty is stopped by CLAUDE.md, not by this.
+  [[ -t 0 && -t 1 ]] || die "update needs a terminal; the user runs it"
   have gh || die "update needs the GitHub CLI (gh) to show what changed"
-  local inst repo pin head targets="" t id tool ans ok moved="" failed="" rrc
-  inst="$(installed)" || { inst=""; echo "(herdr plugin list failed; nothing will be reinstalled)" >&2; }
+  local inst repo pin head targets="" t id got ok moved="" failed="" rrc
+  # An unreadable plugin list is not an empty one: update could otherwise move the pin of an installed plugin.
+  inst="$(installed)" || die "herdr plugin list --json failed (is herdr installed and its server running?); update needs to know what is installed"
   if [[ $# -eq 0 ]]; then
     while read -r repo pin; do targets="$targets $repo"; done < <(pins)
   else
@@ -543,6 +614,17 @@ cmd_update() {
   fi
   for repo in $targets; do
     pin="$(pins | awk -v r="$repo" '$1 == r { print $2; exit }')"
+    id="$(lookup "$inst" "$repo" 2)"; got="$(lookup "$inst" "$repo" 3)"
+    # Installed at a commit other than its pin: the pin is the reviewed state, so put the install back
+    # on it (no review) before looking at anything newer.
+    if [[ -n "$id" && "$got" != "$pin"* ]]; then
+      echo
+      confirm "$repo is installed at ${got:0:7} but bootstrap.sh pins ${pin:0:7}. Reinstall it at the pin?" || { echo "$repo: left at ${got:0:7}"; continue; }
+      if reinstall "$repo" "$id" "$got" "$pin"; then
+        echo "$repo: reinstalled at its pin ${pin:0:7}"
+        relink_hint "$repo" "$id"
+      else failed="$failed $repo"; continue; fi
+    fi
     head="$(upstream_head "$repo")"
     if [[ -z "$head" ]]; then echo "$repo: could not read upstream HEAD; skipped"; continue; fi
     if [[ "$head" == "$pin"* ]]; then echo "$repo: up to date at ${pin:0:7}"; continue; fi
@@ -555,32 +637,26 @@ cmd_update() {
       failed="$failed $repo"; continue
     elif (( rrc != 0 && rrc != 3 )); then echo "$repo: review failed; skipped"; failed="$failed $repo"; continue; fi
     echo
-    printf 'Pin %s at %s? [y/N] ' "$repo" "${head:0:7}"
-    read -r ans || ans=""
-    case "$ans" in y|Y|yes) ;; *) echo "$repo: left at ${pin:0:7}"; continue ;; esac
-    id="$(lookup "$inst" "$repo" 2)"
+    confirm "Pin $repo at ${head:0:7}?" || { echo "$repo: left at ${pin:0:7}"; continue; }
     if [[ -z "$id" ]]; then
-      set_pin "$repo" "$pin" "$head"; moved="$moved $repo"
-      echo "$repo: not installed here, so only bootstrap.sh moved, to ${head:0:7}; ./bootstrap.sh installs it at the new pin"; continue
+      if set_pin "$repo" "$pin" "$head"; then
+        moved="$moved $repo"
+        echo "$repo: not installed here, so only bootstrap.sh moved, to ${head:0:7}; ./bootstrap.sh installs it at the new pin"
+      else failed="$failed $repo"; fi
+      continue
     fi
-    tool="$(needs_tool "$repo")"
-    if [[ -n "$tool" ]] && ! have "$tool"; then
-      echo "$repo: not reinstalled: bootstrap.sh needs $tool for it and $tool is not on PATH; bootstrap.sh left at ${pin:0:7}"
-      failed="$failed $repo"; continue
-    fi
-    # The pin moves only once the new commit has installed. No --yes: herdr shows the plugin's
-    # manifest and build step and asks.
-    if ! herdr plugin uninstall "$id"; then
-      echo "$repo: uninstall of $id FAILED; still installed at ${pin:0:7}, bootstrap.sh left at ${pin:0:7}. Retry with:"
-      echo "    herdr-plugins update ${repo#*/}"
-      failed="$failed $repo"
-    elif herdr plugin install "$repo" --ref "$head"; then
-      set_pin "$repo" "$pin" "$head"; moved="$moved $repo"
-      echo "$repo: installed at ${head:0:7}; bootstrap.sh now pins it"
+    # The pin moves only once the new commit has installed.
+    if reinstall "$repo" "$id" "$pin" "$head"; then
+      if set_pin "$repo" "$pin" "$head"; then
+        moved="$moved $repo"
+        echo "$repo: installed at ${head:0:7}; bootstrap.sh now pins it"
+      else
+        echo "$repo: installed at ${head:0:7} but bootstrap.sh could not be updated; set the pin by hand to $head"
+        failed="$failed $repo"
+      fi
+      relink_hint "$repo" "$id"
     else
-      echo "$repo: install at ${head:0:7} FAILED (build or download); bootstrap.sh left at ${pin:0:7}. Putting the old pin back:"
-      if herdr plugin install "$repo" --ref "$pin"; then echo "$repo: reinstalled at ${pin:0:7}"
-      else echo "$repo: could not reinstall ${pin:0:7} either (now uninstalled). Retry: herdr plugin install $repo --ref $pin"; fi
+      echo "$repo: bootstrap.sh left at ${pin:0:7}"
       failed="$failed $repo"
     fi
   done
@@ -588,8 +664,11 @@ cmd_update() {
     echo; git -C "$REPO" --no-pager diff -- bootstrap.sh
     echo
     echo "Commit bootstrap.sh in $REPO."
+    if [[ " $moved " == *" cloudmanic/herdr-plus "* ]]; then
+      echo "herdr-plus moved: re-read its config rules at the new pin, then update them and HERDR_PLUS_RULES_AT in validate.sh (check_herdr_plus_config)."
+    fi
     if [[ " $moved " == *" persiyanov/herdr-reviewr "* ]]; then
-      echo "reviewr moved: re-check validate.sh's reviewr config allowlist (check_reviewr_config) against its src/config.rs and src/theme.rs at the new pin."
+      echo "reviewr moved: re-check validate.sh's reviewr config allowlist (check_reviewr_config) against its src/config.rs and src/theme.rs at the new pin, then update REVIEWR_RULES_AT in validate.sh."
     fi
   fi
   [[ -z "$failed" ]] || return 1

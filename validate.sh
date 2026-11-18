@@ -447,7 +447,7 @@ check_plugin_pins() {
     case "$kind" in
       ok) pass "plugin $repo at its pinned commit ${rest##* }" ;;
       drift) got="${rest#at }"; got="${got%%,*}"
-        warn "plugin $repo is at $got, bootstrap.sh pins ${rest##* }: review the new commits and move the pin (herdr-plugins update ${repo#*/}), or reinstall at the pin" ;;
+        warn "plugin $repo is at $got, bootstrap.sh pins ${rest##* }: the user runs herdr-plugins update ${repo#*/} in a terminal to reinstall it at the pin (it then offers newer commits after a review)" ;;
     esac
   done <<<"$out"
   if (( rc > 1 )); then fail "herdr-plugins check: $(echo "$out" | tail -1)"; fi

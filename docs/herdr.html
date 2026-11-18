@@ -81,7 +81,7 @@ footer { font-size: 13px; color: var(--muted); }
 <body>
 <main>
   <header>
-    <div class="eyebrow">dotfiles · herdr · updated 9 Nov 2026</div>
+    <div class="eyebrow">dotfiles · herdr · updated 18 Nov 2026</div>
     <h1>Herdr setup guide</h1>
     <p>Everything this repo changes or adds on top of stock herdr: the sidebar, the recent-sessions picker, the summarizer plugin, key bindings and the other plugins. Open it with <code>open ~/dotfiles/docs/herdr.html</code>.</p>
     <p class="muted">The terminal figures are drawn from the real layout with made-up sessions. They are not captures, so nothing from a real session is stored here.</p>
@@ -100,6 +100,9 @@ footer { font-size: 13px; color: var(--muted); }
         <tr><td><code>herdr/.config/herdr/config.toml</code></td><td><code>~/.config/herdr/config.toml</code></td><td>All herdr settings: keys, sidebar rows, popups, sounds, theme. Stowed by <code>bootstrap.sh</code> with <code>--no-folding</code>, because that folder also holds herdr's sockets and logs.</td></tr>
         <tr><td><code>herdr/.local/bin/herdr-summarize</code></td><td><code>~/.local/bin/herdr-summarize</code></td><td>Writes labels, statuses, descriptions and stale reviews. Passive until something runs it.</td></tr>
         <tr><td><code>herdr/.local/bin/herdr-recent</code></td><td><code>~/.local/bin/herdr-recent</code></td><td>The <kbd>prefix</kbd> <kbd>a</kbd> picker (fzf).</td></tr>
+        <tr><td><code>herdr/.local/bin/herdr-plugins</code></td><td><code>~/.local/bin/herdr-plugins</code></td><td>Status, review and update for the pinned third-party plugins. See <a href="#install">Install and check</a>.</td></tr>
+        <tr><td><code>herdr/.config/herdr/plugins/config/</code></td><td><code>~/.config/herdr/plugins/config/</code></td><td>Settings for herdr-plus (project templates, worktree layouts, quick actions) and reviewr. Stowed file by file, so each plugin's folder stays a real directory.</td></tr>
+        <tr><td><code>bootstrap.sh</code></td><td>(run by hand)</td><td>Installs the plugins, each at a pinned commit: the <code>--ref</code> on its <code>herdr plugin install</code> line is the only place a pin is recorded.</td></tr>
         <tr><td><code>herdr-summarizer/plugin/</code></td><td>linked into herdr's plugin registry</td><td>The herdr plugin that runs <code>herdr-summarize</code> on herdr events. Not stowed.</td></tr>
         <tr><td><code>herdr-summarizer/install.sh</code></td><td>run by hand</td><td>Opt-in installer for that plugin. <code>bootstrap.sh</code> never runs it, because the plugin calls a model.</td></tr>
         <tr><td>(not in the repo)</td><td><code>~/.local/state/herdr-summarizer/</code></td><td>State, event log and worker log.</td></tr>
@@ -117,6 +120,8 @@ footer { font-size: 13px; color: var(--muted); }
 <div class="r"><span class="d">   Release prep and test runs</span><b class="m">2</b></div>
 <div class="r"><span> <span class="idle">○</span> research <span class="d">· main</span></span></div>
 <div class="r"><span class="d">   Cache spike and paper notes</span></div>
+<div class="r"><span> <span class="idle">○</span> journal <span class="d">· drafts *</span></span><b class="m">7</b></div>
+<div class="r"><span class="d">   Weekly notes, nothing blocked</span></div>
 <div class="r"> </div>
 <div class="r"><span class="d"> agents</span></div>
 <div class="r sel"><span> <span class="teal">●</span> <span class="or">api client: review retry plan</span></span><b class="m">3</b></div>
@@ -137,6 +142,7 @@ footer { font-size: 13px; color: var(--muted); }
       <li><span class="n">4</span><div><b>Label</b><p>What the session is doing, at most 30 characters. It replaces herdr's default <code>machine · workspace · tab</code> line. The dot before it is herdr's own; see <a href="#status">Statuses and dots</a>.</p></div></li>
       <li><span class="n">5</span><div><b>Heat and tab</b><p>Time since the transcript last changed, in coarse steps (<code>now</code>, <code>&lt;1h</code>, <code>today</code>, <code>2d</code>) so it does not flicker, then the tab name.</p></div></li>
       <li><span class="n">6</span><div><b>Stale</b><p>Untouched for a week longer than your newest session. Open the picker to read the review.</p></div></li>
+      <li><span class="n">7</span><div><b>jj status</b><p>The <code>$jj_status</code> token, for a space whose first pane is in a jj repo: its bookmark, else the parent's bookmark, else the short change id, then <code>*</code> when the working copy has changes. herdr's own branch and git status say nothing useful there. It is empty in other repos. It is read with <code>--ignore-working-copy</code>, so it never snapshots and the <code>*</code> reflects jj's last snapshot. <code>herdr-summarize jj-status DIR</code> prints it for a directory.</p></div></li>
     </ol>
     <p class="muted">The sidebar itself is still sorted by herdr (<code>agent_panel_sort = "priority"</code>): unseen and blocked agents first. Sorting by status and heat happens in the picker.</p>
   </section>
@@ -237,7 +243,7 @@ The session explored an in-memory cache for the API client. A prototype and one 
       <li><div><b>The worker checks for a diff.</b> A session is skipped if its transcript file is unchanged, if the new entries are only tool calls, or if the agent is still mid-turn. A pass with nothing new makes no model call.</div></li>
       <li><div><b>A small model reads the new turns.</b> Haiku gets the previous label and description plus only the new conversation, and returns the status, who it is waiting on, and your next move. These always follow the latest turn.</div></li>
       <li><div><b>The summary changes only when it should.</b> Label and description are rewritten when the new conversation is at least 1,500 characters and the model judges it material, or when work finishes or reopens. Otherwise they stay word for word.</div></li>
-      <li><div><b>Tokens are published.</b> The label, heat and stale mark go to herdr as pane and workspace tokens, which the sidebar rows in <code>config.toml</code> display.</div></li>
+      <li><div><b>Tokens are published.</b> The label, heat, stale mark and jj status go to herdr as pane and workspace tokens, which the sidebar rows in <code>config.toml</code> display. The jj status is computed during the passes that already run; it adds no event and no timer.</div></li>
     </ol>
     <ul class="plain">
       <li><b>Heat and stale need no timer.</b> They depend on the clock, but only matter while you are looking, and switching panes fires <code>pane.focused</code>.</li>
@@ -257,6 +263,10 @@ The session explored an in-memory cache for the API client. A prototype and one 
         <tr><td><kbd>prefix</kbd> <kbd>ctrl+l</kbd></td><td>Clear pane</td><td>Moved behind the prefix for that reason.</td></tr>
         <tr><td><kbd>prefix</kbd> <kbd>a</kbd></td><td>Recent-sessions picker</td><td>Added.</td></tr>
         <tr><td><kbd>prefix</kbd> <kbd>alt+g</kbd> / <kbd>alt+j</kbd></td><td>lazygit / lazyjj popup</td><td>Alt needs Ghostty's <code>macos-option-as-alt</code>.</td></tr>
+        <tr><td><kbd>prefix</kbd> <kbd>t</kbd></td><td>herdr-plus projects</td><td>Added. A popup that opens a project template as a workspace.</td></tr>
+        <tr><td><kbd>prefix</kbd> <kbd>space</kbd></td><td>herdr-plus quick actions</td><td>Added. A popup: validate dotfiles, reload herdr, run a summarizer pass.</td></tr>
+        <tr><td><kbd>prefix</kbd> <kbd>alt+r</kbd></td><td>reviewr: toggle the diff pane</td><td>Added. Same alt family as lazygit and lazyjj.</td></tr>
+        <tr><td><kbd>prefix</kbd> <kbd>f</kbd></td><td>fingers: hint-copy from the focused pane</td><td>Added. A trial (see Plugins).</td></tr>
         <tr><td><kbd>prefix</kbd> <kbd>v</kbd> <kbd>%</kbd> <kbd>|</kbd></td><td>Split side by side</td><td>tmux's keys added to herdr's.</td></tr>
         <tr><td><kbd>prefix</kbd> <kbd>-</kbd> <kbd>"</kbd></td><td>Split stacked</td><td></td></tr>
         <tr><td><kbd>prefix</kbd> <kbd>z</kbd>, <kbd>ctrl+z</kbd></td><td>Zoom pane</td><td><kbd>ctrl+z</kbd> no longer suspends jobs inside herdr.</td></tr>
@@ -280,12 +290,15 @@ The session explored an in-memory cache for the API client. A prototype and one 
       <thead><tr><th>Piece</th><th>Installed by</th><th>What it does</th></tr></thead>
       <tbody>
         <tr><td>vim-herdr-navigation</td><td><code>bootstrap.sh</code></td><td><kbd>ctrl+h/j/k/l</kbd> across panes and nvim splits. Needs <code>jq</code>.</td></tr>
-        <tr><td>herdr-plus</td><td><code>bootstrap.sh</code></td><td>Per-worktree layouts and quick actions.</td></tr>
+        <tr><td>herdr-plus</td><td><code>bootstrap.sh</code>, only when Go is present</td><td>Project templates (<kbd>prefix</kbd> <kbd>t</kbd>: dotfiles, claude-materia, Vault, aios), worktree auto-layouts for the two git repos, and quick actions (<kbd>prefix</kbd> <kbd>space</kbd>). Without Go its build step would download the latest release binary instead of building the pin, so bootstrap skips it.</td></tr>
+        <tr><td>herdr-reviewr</td><td><code>bootstrap.sh</code></td><td>A pane beside the agent that shows its diff (uncommitted, branch, last turn, commits), where you collect line comments and send them to the agent's input. <kbd>prefix</kbd> <kbd>alt+r</kbd> toggles it. The stowed config turns <code>auto_open</code> off, so it does not open in every new worktree. How it behaves in jj repos is untested until the git and jj trial has run.<!-- TODO(Phase 6): record the result of the reviewr trial here: ~/dotfiles (git), ~/Vault (colocated jj and git), ~/aios/lib (jj only). If jj repos do not work, say it works for git only. --></td></tr>
+        <tr><td>herdr-fingers (trial)</td><td><code>bootstrap.sh</code>, only when cargo is present</td><td><kbd>prefix</kbd> <kbd>f</kbd> puts hints over paths, URLs, SHAs and numbers in the focused pane; typing a hint copies the match through OSC 52. It is a trial. To remove it: the fingers block in <code>bootstrap.sh</code>; the <kbd>prefix</kbd> <kbd>f</kbd> binding in <code>config.toml</code>; <code>check_fingers_binary</code> in <code>validate.sh</code>; the fingers text and key line in <code>CLAUDE.md</code>; its entry in <code>CHANGELOG.md</code>; its lines in this page; then <code>herdr plugin uninstall nathan-poncet.herdr-fingers</code>.</td></tr>
         <tr><td>Claude integration</td><td><code>bootstrap.sh</code></td><td>A Claude Code hook that reports agent state and session IDs to herdr. The summarizer needs it to find transcripts. Re-run <code>herdr integration install claude</code> after herdr upgrades.</td></tr>
         <tr><td>herdr-summarizer</td><td><code>herdr-summarizer/install.sh</code></td><td>Everything on this page about labels, statuses and reviews. Opt-in.</td></tr>
       </tbody>
     </table></div>
     <ul class="plain">
+      <li><b>Pins:</b> every third-party plugin is installed at a commit that was read before it was pinned. Bootstrap keeps <code>--yes</code> for that reason: the pin is the reviewed state. <code>validate.sh</code> warns when an installed plugin is not at its pin. The review covers a plugin's source and install script, not the release binaries it may download (reviewr's is trusted to its release).</li>
       <li><b>Sounds:</b> herdr's done and request events play herdr's built-in sounds. Toasts are shown by herdr itself.</li>
       <li><b>Restore:</b> agents resume after a server restart (<code>resume_agents_on_restore</code>), and pane scrollback is kept (<code>pane_history</code>).</li>
       <li><b>Look:</b> solarized theme, no outer pane borders, hostname and time at the right of the tab bar.</li>
@@ -299,7 +312,19 @@ The session explored an in-memory cache for the API client. A prototype and one 
                                      # then run validate.sh -q
 ./herdr-summarizer/install.sh        # opt in to the summarizer (checks herdr, claude, fzf and a claude login)
 ./herdr-summarizer/install.sh --uninstall
-./validate.sh                        # read-only: is everything linked, loading and actually in use?</pre>
+./validate.sh                        # read-only: is everything linked, loading and actually in use?
+
+herdr-plugins status                 # per plugin: pinned, installed, upstream HEAD, commits behind
+herdr-plugins check                  # offline; exit 1 when an installed plugin is off its pin
+herdr-plugins review &lt;plugin&gt; [sha]  # read-only: commits and install-time code changes, pin to sha
+herdr-plugins update [&lt;plugin&gt;...]   # the user's: see below</pre>
+    <ul class="plain">
+      <li><b>Where pins are read:</b> <code>herdr-plugins</code> reads the <code>bootstrap.sh</code> of the checkout the script is linked from, whatever the current directory. The last line of <code>herdr-plugins help</code> names it.</li>
+      <li><b>Review:</b> shows the commits, the diff of the manifest and every file its build step runs, the full patch of every other changed text file (up to 600 lines), and lock-file package changes. Only binary images are listed by name. It exits 3, <em>incomplete</em>, when it cannot show everything: a file over the budget, a missing patch, install-time code that fetches something else, a release tag that is not the commit, invisible characters in code. An incomplete review is never a clean one.</li>
+      <li><b>Update:</b> run it yourself, in a terminal, through <code>~/.local/bin/herdr-plugins</code> at the main checkout, on a branch you create there. It refuses to start without a terminal and reads its confirmations from it. For each plugin: one installed off its pin is first offered a reinstall at the pin; one behind upstream is reviewed, then on yes uninstalled and reinstalled at the new commit without <code>--yes</code> (herdr shows the manifest and build step and asks), and only then is its pin moved in <code>bootstrap.sh</code>. Commit that change afterwards.</li>
+      <li><b>Incomplete reviews:</b> <code>update</code> leaves the plugin where it is. After reading the compare page, you can pin past it with <code>HERDR_PLUGINS_INCOMPLETE_OK=&lt;7 to 40 leading characters of the upstream HEAD&gt;</code>; if upstream has moved, review again.</li>
+      <li><b>Agents:</b> they may run <code>status</code>, <code>check</code> and <code>review</code>, and never <code>update</code> (see <code>CLAUDE.md</code>). To check a worktree's pins, run that worktree's own <code>herdr/.local/bin/herdr-plugins</code> by path.</li>
+    </ul>
     <p>After editing <code>config.toml</code>, run <code>herdr config check</code> before reloading with <kbd>prefix</kbd> <kbd>shift+r</kbd>. The check is what catches mistakes; a reload on its own can report success for a config that has problems.</p>
   </section>
 
@@ -312,6 +337,10 @@ The session explored an in-memory cache for the API client. A prototype and one 
         <tr><td>Labels never update</td><td><code>tail ~/.local/state/herdr-summarizer/events.log</code> should show <code>queued</code> lines as turns end. <code>ignored (guard)</code> means a leftover test file: delete <code>~/.local/state/herdr-summarizer/only-sessions</code>.</td></tr>
         <tr><td>A pass fails</td><td><code>~/.local/state/herdr-summarizer/worker.log</code>, and <code>herdr plugin log list --plugin herdr-summarizer</code> for the hook itself.</td></tr>
         <tr><td>One pane has no description</td><td>The Claude integration must be installed so herdr knows the session ID. A session also gets nothing until its first turn ends.</td></tr>
+        <tr><td><code>validate.sh</code> warns that a plugin is not at its pin</td><td>You (not an agent) run <code>herdr-plugins update &lt;plugin&gt;</code> in a terminal at the main checkout: it offers to reinstall at the pin, then to review anything newer.</td></tr>
+        <tr><td><code>herdr-plugins review</code> ends with <code>!! INCOMPLETE REVIEW</code></td><td>Read the compare page it prints. <code>update</code> will not pin past it unless you override it as described under Install and check.</td></tr>
+        <tr><td>A plugin's settings fell back to defaults after an update</td><td>Uninstalling may remove the plugin's config folder and the stowed links with it; <code>update</code> says so. Run <code>stow --no-folding herdr</code> from the main checkout, never from a worktree.</td></tr>
+        <tr><td><kbd>prefix</kbd> <kbd>f</kbd> does nothing</td><td>fingers is built only when cargo is present. <code>validate.sh</code> warns about a missing fingers, and <code>herdr plugin list</code> shows whether it is installed.</td></tr>
         <tr><td>Want to see it run</td><td><code>herdr-summarize</code> does one pass by hand. <code>herdr-summarize list</code> and <code>herdr-summarize show &lt;pane&gt;</code> print what the picker shows.</td></tr>
       </tbody>
     </table></div>
@@ -325,11 +354,14 @@ The session explored an in-memory cache for the API client. A prototype and one 
       <li><b>Links need names.</b> An agent is nested only if its parent drove it through <code>herdr agent</code> commands by name. Agents you start yourself in a new pane are top level.</li>
       <li><b>herdr styles tokens statically.</b> A token's colour is fixed in <code>config.toml</code>, which is why the orange label is a second token (<code>$summary_you</code>) sharing a slot with <code>$summary</code>. herdr also always puts <code> · </code> between tokens on a row.</li>
       <li><b>The plugin registry is shared by all herdr sessions.</b> A named session (<code>herdr --session sandbox</code>) gets its own server and state, but the same plugins. To test a plugin change safely, list the session names it may act on in <code>~/.local/state/herdr-summarizer/only-sessions</code>, and delete the file afterwards.</li>
+      <li><b>jj status is a snapshot.</b> It is read with <code>--ignore-working-copy</code>, so the <code>*</code> lags edits until jj snapshots. A space gets it only when its first pane is in the jj repo.</li>
+      <li><b>reviewr in jj repos is untested.</b> Whether it works in git, colocated (jj and git) or jj-only repos is for the Phase 6 trial to settle.</li>
+      <li><b>Pins pin source, not binaries.</b> A release asset replaced after tagging is not detected; the pin and review cover the source and install script.</li>
       <li><b>Stale is relative.</b> It compares each session with your newest one, so a week away from the machine does not turn everything stale.</li>
     </ul>
   </section>
 
-  <footer>Source of truth is the code: <code>herdr/.config/herdr/config.toml</code>, <code>herdr/.local/bin/herdr-summarize</code> (its header and <code>help</code> text) and <code>herdr-summarizer/</code>. Update this page when those change.</footer>
+  <footer>Source of truth is the code: <code>herdr/.config/herdr/config.toml</code>, <code>herdr/.local/bin/herdr-summarize</code> (its header and <code>help</code> text) and <code>herdr-summarizer/</code>, and for the plugins <code>bootstrap.sh</code> and <code>herdr/.local/bin/herdr-plugins</code> (its header and <code>help</code> text). Update this page when those change.</footer>
 </main>
 </body>
 </html>
