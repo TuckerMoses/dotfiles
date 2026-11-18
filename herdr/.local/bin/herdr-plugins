@@ -199,8 +199,14 @@ def die(msg):
     sys.stderr.write(clean(msg) + "\n")
     sys.exit(2)
 
-def run(cmd):
+def run(cmd, raw=False):
+    """raw: stdout is decoded here without newline translation, so \\r reaches the checks."""
     try:
+        if raw:
+            r = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=TIMEOUT)
+            r.stdout = r.stdout.decode("utf-8", "surrogateescape")
+            r.stderr = r.stderr.decode("utf-8", "replace")
+            return r
         return subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True, timeout=TIMEOUT)
     except subprocess.TimeoutExpired:
         die("herdr-plugins: %s timed out after %ds" % (" ".join(cmd[:3]), TIMEOUT))
@@ -287,7 +293,7 @@ def content(path, ref):
     """A file's text at ref, or None when it does not exist there. The path is percent-encoded,
     so a name with ?, # or % cannot turn into a different request."""
     url = "repos/%s/contents/%s?ref=%s" % (repo, urllib.parse.quote(path, safe="/"), urllib.parse.quote(ref, safe=""))
-    r = run(["gh", "api", "-H", "Accept: application/vnd.github.raw", url])
+    r = run(["gh", "api", "-H", "Accept: application/vnd.github.raw", url], raw=True)
     if r.returncode == 0:
         return r.stdout
     if "404" in r.stderr or "Not Found" in r.stderr:
@@ -456,7 +462,12 @@ for t in texts:
 FETCHER = re.compile(r'\b(curl|wget)\b|\b(?:npm|npx|pnpm|yarn|pip3?|pipx|uv|gem|brew|apt(?:-get)?|cargo\s+install)\b|\bgo\s+(?:install|get|run)\b|\bgit\s+(?:clone|submodule|fetch|pull)\b')
 ALWAYS = re.compile(r'\|\s*(?:sudo\s+)?(?:ba|z|da|k)?sh\b|\|\s*(?:python3?|perl|ruby|node)\b|\b(?:npm|npx|pnpm|yarn|pip3?|pipx|uv|gem|brew|apt(?:-get)?|cargo\s+install)\b|\bgo\s+(?:install|get|run)\b|\bgit\s+(?:clone|submodule)\b')
 def commands(text):
-    return [l.strip() for l in re.sub(r'\\\n', ' ', text).split("\n") if l.strip()]
+    # The shell joins a backslash-newline with nothing (cu\<newline>rl is curl); a space join is
+    # matched too, in case the break sits between two words. Both views are checked.
+    out = []
+    for joined in (re.sub(r'\\\n', '', text), re.sub(r'\\\n', ' ', text)):
+        out += [l.strip() for l in joined.split("\n") if l.strip()]
+    return list(dict.fromkeys(out))
 def fetches(text):
     return [c for c in commands(text) if FETCHER.search(c)]
 steps_text = "\n".join(" ".join(c) for c in steps)
