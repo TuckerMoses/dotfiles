@@ -148,20 +148,37 @@ hidden = set()   # invisible / direction-changing characters seen in GitHub's te
 # Everything printed comes from GitHub (commit messages, file names, patches). Control characters
 # could drive the terminal, and Unicode format characters (bidi overrides, zero-width) could make
 # code read differently from what runs ("Trojan source"). Show both as visible <U+XXXX> markers.
-def clean(s):
+# Invisible: control/format/separator, combining and enclosing marks, unassigned, private use,
+# surrogates, and the blank "filler" letters and variation selectors.
+INVISIBLE_CATS = {"Cc", "Cf", "Zl", "Zp", "Mn", "Me", "Cn", "Co", "Cs"}
+FILLERS = {0x115F, 0x1160, 0x3164, 0xFFA0, 0x2800, 0x180E}
+def invisible(o):
+    return o in FILLERS or 0xFE00 <= o <= 0xFE0F or 0xE0100 <= o <= 0xE01EF
+
+def clean(s, strict=False):
+    """Invisible characters are marked everywhere and make the review incomplete. strict (code that
+    runs at install: manifests, build scripts, build-adjacent patches) also marks every other
+    non-ASCII character, so a look-alike letter is visible, without blocking: real scripts use
+    dashes, arrows and check marks in their messages."""
     out = []
     for c in str(s):
-        if c in "\n\t":
+        o = ord(c)
+        if c in "\n\t" or (32 <= o < 127):
             out.append(c)
-        elif unicodedata.category(c) in ("Cc", "Cf", "Zl", "Zp"):
-            hidden.add("U+%04X" % ord(c))
-            out.append("<U+%04X>" % ord(c))
+        elif invisible(o) or unicodedata.category(c) in INVISIBLE_CATS:
+            hidden.add("U+%04X" % o)
+            out.append("<U+%04X>" % o)
+        elif strict:
+            out.append("<U+%04X>" % o)
         else:
             out.append(c)
     return "".join(out)
 
 def print(*a, **k):
     builtins.print(*(clean(x) for x in a), **k)
+
+def print_code(text):
+    builtins.print(clean(text, strict=True))
 
 def die(msg):
     sys.stderr.write(clean(msg) + "\n")
@@ -334,14 +351,14 @@ for path in ["herdr-plugin.toml"] + scripts:
     d = list(difflib.unified_diff((old or "").splitlines(), (new or "").splitlines(),
                                   "%s@%s" % (path, pin[:7]), "%s@%s" % (path, target[:7]), lineterm=""))
     print("\n--- %s (%s)" % (path, "added" if old is None else "removed" if new is None else "changed"))
-    print("\n".join(d))
+    print_code("\n".join(d))
 for n, f in sorted(files.items()):
     if n in seen or n == "herdr-plugin.toml" or not SUSPECT.search(n):
         continue
     seen.add(n)
     print("\n--- %s (%s, +%d -%d; build-adjacent, not run by the manifest)" % (n, f["status"], f["additions"], f["deletions"]))
     if "patch" in f:
-        print(f["patch"])
+        print_code(f["patch"])
     else:
         print("(no patch from the API)")
         incomplete.append("no patch for %s" % n)
