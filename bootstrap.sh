@@ -110,6 +110,11 @@ fi
 # Every third-party plugin is pinned with --ref to a reviewed commit; these --ref lines are the
 # only record of the pins. Move them with `herdr-plugins update` (herdr/.local/bin/herdr-plugins),
 # which shows what changed in the install-time code first; `herdr plugin update` skips that review.
+# --yes is deliberate: herdr's install prompt guards against unreviewed code, and --ref installs
+# only the commit that was reviewed before it was pinned, so the pin is the review and bootstrap
+# stays unattended (fresh machines, containers). Moving a pin is where the prompts are:
+# `herdr-plugins update` asks before it edits a --ref and reinstalls without --yes. Never add
+# --yes to an install without --ref.
 # vim-herdr-navigation: ctrl+h/j/k/l across panes, vim-split-aware (needs jq)
 if command -v herdr >/dev/null 2>&1; then
   if ! herdr plugin list 2>/dev/null | grep -q vim-herdr-navigation; then
