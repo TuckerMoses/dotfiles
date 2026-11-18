@@ -11,7 +11,7 @@ dotfiles/
 ├── validate.sh                      # Read-only check: everything linked, installed, loading cleanly
 ├── atuin/.config/atuin/config.toml  # Shell history config
 ├── ghostty/.config/ghostty/config   # Terminal emulator config
-├── herdr/.config/herdr/             # Herdr config + .local/bin/herdr-{summarize,recent}
+├── herdr/.config/herdr/             # Herdr config, plugin configs, .local/bin/herdr-{summarize,recent,plugins}
 ├── herdr-summarizer/                # Opt-in herdr plugin (not stowed)
 ├── nvim/.config/nvim/               # Neovim config with Claude Code sync
 ├── starship/.config/starship.toml   # Prompt engine config
@@ -191,3 +191,4 @@ Worktrees should be removed before testing (see above). In general, remove a wor
 - **Stow structure must mirror `$HOME`** — files must be placed exactly where they'd live under `~`.
 - **Prefer appending to existing config sections** over creating new files when possible.
 - **New functionality needs a new `validate.sh` check** — any change that adds behaviour (a package, tool, plugin, key binding, hook, script) also adds at least one check that fails when that behaviour is not live on the machine: the program loads and uses it, not merely "the file exists". Show the check can fail by running its logic against a deliberately broken copy. `validate.sh` stays read-only: checks never install, stow, reload or edit. Removals, docs and refactors that add no behaviour need no new check.
+- **Herdr plugin pins are the user's to move.** Agents may run `herdr-plugins status`, `check` and `review` (safe in any checkout). They must not run `herdr-plugins update` non-interactively, answer its prompts or herdr's install prompt, pipe input into it, or set `HERDR_PLUGINS_INCOMPLETE_OK`: show the user the `review` output and let the user run `update`, which is run only through the stowed `~/.local/bin/herdr-plugins` in the main checkout, on a branch, with the pin bump committed like any change. On `check` drift (exit 1) or a setup error (exit 2), report it; do not reinstall or edit pins.

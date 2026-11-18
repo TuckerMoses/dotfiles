@@ -259,6 +259,19 @@ plugin_config_dir() {
   echo "${d:-$HOME/.config/herdr/plugins/config/$1}"
 }
 
+# The upstream rules the plugin config checks below were copied from, and the commit they were read
+# at. When bootstrap.sh pins another commit, the copies may be stale (false failures, or a new rule
+# missed): re-read the upstream source at the new pin, update the rules and this commit.
+HERDR_PLUS_RULES_AT=f38df3570bea8f7ca71dc1ba11bce3b123d14402
+REVIEWR_RULES_AT=bb71050caa5d3a0b1a414527783eb7a772447f9f
+check_rules_pin() {  # <owner/repo> <commit the copied rules match> <label>
+  local pin
+  pin="$(sed -n "s#^[[:space:]]*herdr plugin install $1 --ref \([0-9a-f]\{7,40\}\).*#\1#p" "$BOOTSTRAP" | head -1)"
+  if [[ -z "$pin" ]]; then return
+  elif [[ "$2" == "$pin"* ]]; then pass "$3 config rules match the pinned ${pin:0:7}"
+  else warn "$3 config rules were copied at ${2:0:7} but bootstrap.sh pins ${pin:0:7}: re-read the upstream rules at the pin, then update them and their *_RULES_AT in validate.sh"; fi
+}
+
 # Every plugin_action key binding must name an action herdr lists. `herdr config check` accepts
 # any name, so a misspelled, renamed or uninstalled action is a key that silently does nothing.
 check_bound_plugin_actions() {  # <config.toml> <`herdr plugin action list` JSON>
@@ -283,6 +296,7 @@ PY
 # These are its own load rules (config.go, project.go, worktree.go, action.go at the installed pin).
 check_herdr_plus_config() {  # <plugin config dir>
   local out
+  check_rules_pin cloudmanic/herdr-plus "$HERDR_PLUS_RULES_AT" herdr-plus
   out="$("$tomlpy" - "$1" 2>&1 <<'PY'
 import glob, os, re, sys, tomllib
 root = sys.argv[1]
@@ -398,17 +412,33 @@ PY
   emit "herdr-plus" <<<"$out"
 }
 
-# Install root herdr runs a plugin from, from `herdr plugin list --json`; empty when not installed.
+# Install root herdr runs a plugin from, from `herdr plugin list --json`: empty when the plugin is not
+# installed, "-" when it is installed but herdr gives no plugin_root, "?" when the JSON cannot be read.
 plugin_root() {  # <plugin list JSON> <plugin id>
   /usr/bin/python3 -c 'import json, sys
 for p in json.loads(sys.argv[1])["result"]["plugins"]:
-    if p.get("plugin_id") == sys.argv[2]: print(p.get("plugin_root", ""))' "$1" "$2" 2>/dev/null
+    if p.get("plugin_id") == sys.argv[2]:
+        print(p.get("plugin_root") or "-"); break' "$1" "$2" 2>/dev/null || echo "?"
+}
+# Run <check fn> on an installed plugin's root; a plugin that is installed but has no usable root fails
+# (it must not read as "not installed"). Not installed is reported by the install check above.
+check_plugin_binary() {  # <plugin list JSON> <plugin id> <check fn>
+  local root
+  root="$(plugin_root "$1" "$2")"
+  case "$root" in
+    "") ;;
+    "?") fail "plugin $2: could not read herdr plugin list --json; binary not checked" ;;
+    "-") fail "plugin $2 installed but herdr reports no plugin_root; binary not checked" ;;
+    *) "$3" "$root" ;;
+  esac
 }
 
 # A plugin bootstrap.sh installs with --ref was reviewed at that commit; `herdr plugin update`
 # moves it past the review. The pin logic is herdr-plugins' own (its `check` is offline and reads
 # the pins from the bootstrap.sh it is linked from). Not installed is skipped: the install check
-# above reports that.
+# above reports that. Drift is a warning, not a failure: the plugin still works, only off its
+# reviewed commit, and `herdr plugin update` or a hand reinstall can cause it on purpose; failing
+# would block the whole validate on a state the user may have chosen.
 check_plugin_pins() {
   local out rc kind repo rest got
   if ! have herdr-plugins; then fail "herdr-plugins not on PATH (stow the herdr package); plugin pins not checked"; return; fi
@@ -427,7 +457,7 @@ check_plugin_pins() {
 # that plugin's `herdr plugin list ... grep -q <name>; then` line (fingers: cargo, herdr-plus: go).
 plugin_needs() {  # <name from the grep -q>
   awk -v w="$1" 'f { if (match($0, /if command -v [A-Za-z0-9_.-]+/)) print substr($0, RSTART + 14, RLENGTH - 14); exit }
-    index($0, "grep -q " w "; then") { f = 1 }' "$BOOTSTRAP"
+    /^[ \t]*if ! herdr plugin list/ && index($0, "grep -q " w "; then") { f = 1 }' "$BOOTSTRAP"
 }
 
 # herdr-plugins (stowed to ~/.local/bin) must be the one on PATH and run from this checkout.
@@ -444,6 +474,8 @@ check_herdr_plugins_cmd() {
 
 # reviewr: its build step downloads a release binary, so a failed download leaves the key dead.
 # `--action <unknown>` makes the binary answer without reading config, herdr or the repo.
+# The probe action must stay one reviewr does not know: an unknown action returns before reviewr
+# reads config or moves symlinks (verified at bb71050), so the probe writes nothing.
 check_reviewr_binary() {  # <plugin root>
   local bin="$1/bin/herdr-reviewr" out
   if [[ ! -x "$bin" ]]; then fail "reviewr: $bin missing (its build step's download failed; reinstall the plugin)"; return; fi
@@ -469,6 +501,7 @@ check_fingers_binary() {  # <plugin root>
 # Keys and values are reviewr's own (src/config.rs, src/theme.rs at the pin in bootstrap.sh).
 check_reviewr_config() {  # <config.toml>
   local out
+  check_rules_pin persiyanov/herdr-reviewr "$REVIEWR_RULES_AT" reviewr
   out="$("$tomlpy" - "$1" 2>&1 <<'PY'
 import os, sys, tomllib
 path = sys.argv[1]
@@ -518,10 +551,8 @@ if have herdr; then
     done
     pjson="$(herdr plugin list --json 2>/dev/null)"
     check_plugin_pins
-    root="$(plugin_root "$pjson" persiyanov.reviewr)"
-    [[ -n "$root" ]] && check_reviewr_binary "$root"
-    root="$(plugin_root "$pjson" nathan-poncet.herdr-fingers)"
-    [[ -n "$root" ]] && check_fingers_binary "$root"
+    check_plugin_binary "$pjson" persiyanov.reviewr check_reviewr_binary
+    check_plugin_binary "$pjson" nathan-poncet.herdr-fingers check_fingers_binary
     if [[ -z "$tomlpy" ]]; then warn "no Python with tomllib (3.11+); key binding and plugin config checks skipped"
     else
       check_bound_plugin_actions "$HOME/.config/herdr/config.toml" "$(herdr plugin action list 2>/dev/null)"
@@ -597,20 +628,25 @@ print(len(bad), len(logs))' 2>/dev/null || echo "0 0")"
     else pass "worker log clean"; fi
     # $jj_status is live: each space whose first pane (its home) is in a jj repo carries it.
     if have jj && [[ -x "$summ" ]]; then
-      homes="$(/usr/bin/python3 -c 'import json, subprocess
+      hrc=0
+      homes="$(/usr/bin/python3 -c 'import json, subprocess, sys
 def h(*a):
-    return json.loads(subprocess.run(["herdr"] + list(a), capture_output=True, text=True, timeout=10).stdout)["result"]
-for w in h("workspace", "list")["workspaces"]:
-    try:
+    r = subprocess.run(["herdr"] + list(a), capture_output=True, text=True, timeout=10)
+    if r.returncode != 0:
+        raise RuntimeError("herdr %s exited %d" % (" ".join(a[:2]), r.returncode))
+    return json.loads(r.stdout)["result"]
+try:
+    for w in h("workspace", "list")["workspaces"]:
         panes = h("pane", "list", "--workspace", w["workspace_id"])["panes"]
-    except Exception:
-        continue
-    if not panes:
-        continue
-    order = lambda p: (len(p["pane_id"].split(":")[-1]), p["pane_id"].split(":")[-1])
-    first = min(panes, key=order)
-    print("\x1f".join([w.get("label") or w["workspace_id"], first.get("cwd") or "",
-                        (w.get("tokens") or {}).get("jj_status", "")]))' 2>/dev/null)"
+        if not panes:
+            continue
+        order = lambda p: (len(p["pane_id"].split(":")[-1]), p["pane_id"].split(":")[-1])
+        first = min(panes, key=order)
+        print("\x1f".join([w.get("label") or w["workspace_id"], first.get("cwd") or "",
+                            (w.get("tokens") or {}).get("jj_status", "")]))
+except Exception as e:
+    print("ERR %s: %s" % (type(e).__name__, e))
+    sys.exit(1)' 2>&1)" || hrc=$?
       njj=0; missing=""; broken=""
       while IFS=$'\x1f' read -r label dir token; do
         [[ -n "$dir" ]] || continue
@@ -620,7 +656,8 @@ for w in h("workspace", "list")["workspaces"]:
         [[ -n "$token" ]] || missing+=" $label"
       done <<<"$homes"
       [[ -n "$broken" ]] && warn "jj failed reading the home of space(s):$broken (try: herdr-summarize jj-status DIR)"
-      if (( njj == 0 )); then info "no open space has its first pane in a jj repo; \$jj_status not checked live"
+      if (( hrc != 0 )); then fail "\$jj_status not checked live: could not read the spaces from herdr (${homes#ERR })"
+      elif (( njj == 0 )); then info "no open space has its first pane in a jj repo; \$jj_status not checked live"
       elif [[ -n "$missing" ]]; then warn "\$jj_status missing on jj space(s):$missing (no summarizer pass since they opened? focus a pane there)"
       else pass "\$jj_status shown on all $njj jj space(s)"; fi
     fi

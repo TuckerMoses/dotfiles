@@ -6,6 +6,17 @@ All notable changes to this dotfiles setup.
 
 Queued work lives in `docs/proposals/`.
 
+## [2026-11-18]
+
+### Added
+- Every third-party herdr plugin is pinned in `bootstrap.sh`: vim-herdr-navigation at `7873100` and herdr-plus at `f38df35` join the two new pins. herdr-plus installs only when Go is present, because without Go its build step downloads the latest release binary rather than building the pin. `herdr-plugins` (stowed to `~/.local/bin`) handles updates:
+  - `status` shows each plugin's pinned, installed and upstream commits
+  - `review <plugin>` shows the new commits and the diff of the manifest and install/build scripts
+  - `update` steps through each plugin that is behind; on yes it reinstalls that plugin without `--yes`, then moves its pin
+  - the review is fail-closed: it exits 3 when it cannot show everything (every non-doc changed file, dependency changes, release tag vs commit, invisible characters in code), and `update` pins past that only when the user sets `HERDR_PLUGINS_INCOMPLETE_OK` to the target commit
+  - `update` moves the pin only after the new commit installs, and puts the old pin back if it does not
+- `validate.sh`: installed plugins match their pins (through `herdr-plugins check`), `herdr-plugins` on PATH is this checkout's, and the copied herdr-plus and reviewr config rules are checked against the commit they were read at
+
 ## [2026-11-17]
 
 ### Added
@@ -13,12 +24,7 @@ Queued work lives in `docs/proposals/`.
 - herdr-reviewr, pinned at `bb71050` (v0.52.2): `prefix+alt+r` toggles a pane with the agent's diff, where line comments are collected and sent to the agent. Its stowed config turns `auto_open` off, so it does not open in every new worktree
 - herdr-fingers (trial), pinned at `2d9fc99`: `prefix+f` puts hints over paths, URLs, SHAs and numbers in the focused pane, and typing a hint copies the match through OSC 52. Bootstrap builds it only when cargo is present. Removing the trial is one revert
 - `$jj_status` in the spaces sidebar row: a space whose first pane is in a jj repo shows its bookmark (else the parent's bookmark, else the short change id), with `*` when `@` has changes. herdr-summarize reads it without snapshotting (`jj --ignore-working-copy`) during the passes it already runs. It is empty in other repos. `herdr-summarize jj-status DIR` prints it
-- Every third-party herdr plugin is pinned in `bootstrap.sh`: vim-herdr-navigation at `7873100` and herdr-plus at `f38df35` join the two new pins. herdr-plus installs only when Go is present, because without Go its build step downloads the latest release binary rather than building the pin. `herdr-plugins` (stowed to `~/.local/bin`) handles updates:
-  - `status` shows each plugin's pinned, installed and upstream commits
-  - `review <plugin>` shows the new commits and the diff of the manifest and install/build scripts
-  - `update` steps through each plugin that is behind; on yes it moves that plugin's pin and reinstalls without `--yes`
 - `validate.sh`:
-  - installed plugins match their pins (through `herdr-plugins check`), and `herdr-plugins` on PATH is this checkout's
   - every `plugin_action` key binding must name an action herdr lists, for all plugins
   - herdr-plus templates and quick actions load
   - reviewr's config is valid and `auto_open` is off

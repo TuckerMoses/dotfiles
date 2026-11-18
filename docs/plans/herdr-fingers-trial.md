@@ -73,5 +73,8 @@ Revert the one commit: bootstrap block, key binding, validate checks, docs line;
   cargo, a missing plugin is a failure.
 - The binary check runs `herdr-fingers --version`, then `scan` on a line holding a SHA, which must produce a hint. It
   runs with `HERDR_PLUGIN_CONFIG_DIR` unset so that it writes no config.
-- Removal is the fingers commit ("herdr-fingers (trial): install pinned at 2d9fc99 ...") plus its lines in `CLAUDE.md`,
-  `CHANGELOG.md` and `docs/herdr.html`.
+- Removal targets, listed because the commit may not survive a squash merge: the fingers block in `bootstrap.sh`; the
+  `prefix+f` binding in `herdr/.config/herdr/config.toml`; the fingers binary check (`check_fingers_binary`) in
+  `validate.sh`; the fingers text and the `prefix+f` key line in `CLAUDE.md`;
+  the fingers entry in `CHANGELOG.md`; its lines in `docs/herdr.html`; then `herdr plugin uninstall
+  nathan-poncet.herdr-fingers`.

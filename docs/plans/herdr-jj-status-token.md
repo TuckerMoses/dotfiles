@@ -73,7 +73,7 @@ None; reload herdr config in Phase 6 and open a workspace in `~/Vault`.
 
 ## As built (2026-11-17)
 - One `jj log` call per working copy per pass, with a template that returns four fields: `@`'s bookmarks, `@-`'s
-  bookmarks, the short change id, and the dirty mark. Bookmark names are cut to 20 characters plus `…` to fit the
+  bookmarks, the short change id, and the dirty mark. Bookmark names are cut to 20 characters, the last being `…`, to fit the
   34-column sidebar; several are joined with `,`.
 - When a workspace's `pane list` fails mid-pass, its token is left as it was rather than cleared.
 - `herdr-summarize jj-status DIR` prints the token and exits 1 when jj fails. `validate.sh` uses it on a throwaway repo

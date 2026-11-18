@@ -1208,7 +1208,9 @@ SIDEBAR
   Second line: heat (now, <1h, today, 2d) and the tab name.
 
   A space whose first pane sits in a jj repo also shows its
-  jj state after the git branch: @'s bookmark, else its
+  jj state after the git branch (the space's home is the cwd
+  herdr reports for its first pane; a jj repo above it counts):
+  @'s bookmark, else its
   parent's, else @'s short change id, then * if @ has changes.
   It is read without snapshotting (jj --ignore-working-copy),
   so * reflects jj's last snapshot, i.e. the last jj command

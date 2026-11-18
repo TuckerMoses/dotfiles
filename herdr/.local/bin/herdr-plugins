@@ -7,10 +7,14 @@
 #   herdr-plugins status                   pinned / installed / upstream HEAD / commits behind
 #   herdr-plugins check                    offline: exit 1 when an installed plugin is off its pin
 #   herdr-plugins review <plugin> [<sha>]  commits and install-time code changes, pin..sha
-#   herdr-plugins update [<plugin>...]     review, ask, bump the pin, reinstall (default: all behind)
+#   herdr-plugins update [<plugin>...]     review, ask, reinstall, then bump the pin (default: all behind)
 #   herdr-plugins help
 #
 # <plugin> is a repo (herdr-reviewr), owner/repo, or a plugin id (persiyanov.reviewr).
+# Exit codes: 0 ok; 1 drift (check) or a plugin not updated; 2 setup error; 3 review incomplete.
+# update refuses an incomplete review unless the user sets HERDR_PLUGINS_INCOMPLETE_OK=<target sha>.
+# Run update only through the stowed ~/.local/bin/herdr-plugins, on a branch of the main checkout, then
+# commit the pin bump; status, check and review are safe anywhere.
 
 set -euo pipefail
 
@@ -33,7 +37,7 @@ die() { echo "herdr-plugins: $*" >&2; exit 2; }
 have() { command -v "$1" >/dev/null 2>&1; }
 
 usage() {
-  sed -n '7,13s/^# \{0,1\}//p' "$self"
+  sed -n '7,17s/^# \{0,1\}//p' "$self"
   echo
   echo "Pins are read from $BOOTSTRAP"
 }
@@ -41,7 +45,7 @@ usage() {
 # ── pins and installed state ─────────────────────────────────────────────────
 pins() {  # "<owner/repo> <sha>" per pinned plugin
   [[ -f "$BOOTSTRAP" ]] || die "no bootstrap.sh at $REPO (is this script linked from the dotfiles checkout?)"
-  sed -n 's/.*herdr plugin install \([^ ]*\) --ref \([0-9a-f]\{7,40\}\).*/\1 \2/p' "$BOOTSTRAP"
+  sed -n 's/^[[:space:]]*herdr plugin install \([^ ]*\) --ref \([0-9a-f]\{7,40\}\).*/\1 \2/p' "$BOOTSTRAP"
 }
 
 # "<owner/repo> <plugin id> <resolved commit>" per installed GitHub plugin; fails when herdr can't list.
@@ -65,11 +69,11 @@ lookup() {  # <installed list> <owner/repo> <field 2|3>
 needs_tool() {  # <owner/repo>
   awk -v r="$1" '/herdr plugin list.*grep -q/ { t = "" }
     /if command -v [A-Za-z0-9_.-]+/ { match($0, /command -v [A-Za-z0-9_.-]+/); t = substr($0, RSTART + 11, RLENGTH - 11) }
-    index($0, "herdr plugin install " r " ") { print t; exit }' "$BOOTSTRAP"
+    /^[ \t]*herdr plugin install / && index($0, "herdr plugin install " r " ") { print t; exit }' "$BOOTSTRAP"
 }
 
 upstream_head() {  # <owner/repo>
-  git ls-remote "https://github.com/$1" HEAD 2>/dev/null | awk '{ print $1; exit }'
+  GIT_TERMINAL_PROMPT=0 git ls-remote "https://github.com/$1" HEAD 2>/dev/null | awk '{ print $1; exit }'
 }
 
 # "<ahead_by> <status>" of <head> relative to <pin>, via the GitHub compare API.
@@ -137,36 +141,44 @@ cmd_check() {
 # ── review ───────────────────────────────────────────────────────────────────
 # Prints the commits pin..target, then the full diff of herdr-plugin.toml and of every file the
 # manifest's macOS/Linux [[build]] commands run (and scripts those run with sh/bash/source),
-# resolved at target, then Cargo/Go dependency files as a stat.
+# resolved at target, then the full patch of every other changed file that is not documentation or
+# an asset (within a line budget), and Cargo.lock/go.sum package changes. Anything it cannot show
+# makes the review incomplete (exit 3).
 review_text() {  # <owner/repo> <pin> <target>; exits 3 when the review is incomplete
   "${TOMLPY:-$PY}" - "$1" "$2" "$3" <<'PY'
 import builtins, difflib, json, re, subprocess, sys, unicodedata, urllib.parse
 repo, pin, target = sys.argv[1:4]
 incomplete = []  # reasons the review cannot be trusted as complete
-hidden = set()   # invisible / direction-changing characters seen in GitHub's text
+hidden = set()   # invisible characters in install-time code, or bidi controls anywhere: block the review
+noted = set()    # invisible characters in commit messages and other metadata: shown, not blocking
+TIMEOUT = 90     # seconds per gh call
 
 # Everything printed comes from GitHub (commit messages, file names, patches). Control characters
 # could drive the terminal, and Unicode format characters (bidi overrides, zero-width) could make
 # code read differently from what runs ("Trojan source"). Show both as visible <U+XXXX> markers.
 # Invisible: control/format/separator, combining and enclosing marks, unassigned, private use,
-# surrogates, and the blank "filler" letters and variation selectors.
+# surrogates, and the blank "filler" letters and variation selectors. They make the review
+# incomplete only in install-time code (print_code) or when they are bidi controls anywhere;
+# in commit messages and other metadata they are shown as markers and noted.
+BIDI = set(range(0x202A, 0x202F)) | set(range(0x2066, 0x206A))
 INVISIBLE_CATS = {"Cc", "Cf", "Zl", "Zp", "Mn", "Me", "Cn", "Co", "Cs"}
 FILLERS = {0x115F, 0x1160, 0x3164, 0xFFA0, 0x2800, 0x180E}
 def invisible(o):
     return o in FILLERS or 0xFE00 <= o <= 0xFE0F or 0xE0100 <= o <= 0xE01EF
 
 def clean(s, strict=False):
-    """Invisible characters are marked everywhere and make the review incomplete. strict (code that
-    runs at install: manifests, build scripts, build-adjacent patches) also marks every other
-    non-ASCII character, so a look-alike letter is visible, without blocking: real scripts use
-    dashes, arrows and check marks in their messages."""
+    """Invisible characters are marked everywhere. They block the review in strict text (code that
+    runs at install: manifests, build scripts, shown patches) and when they are bidi controls;
+    elsewhere they are only noted. strict also marks every other non-ASCII character, so a
+    look-alike letter is visible, without blocking: real scripts use dashes, arrows and check
+    marks in their messages."""
     out = []
     for c in str(s):
         o = ord(c)
         if c in "\n\t" or (32 <= o < 127):
             out.append(c)
         elif invisible(o) or unicodedata.category(c) in INVISIBLE_CATS:
-            hidden.add("U+%04X" % o)
+            (hidden if strict or o in BIDI else noted).add("U+%04X" % o)
             out.append("<U+%04X>" % o)
         elif strict:
             out.append("<U+%04X>" % o)
@@ -184,11 +196,17 @@ def die(msg):
     sys.stderr.write(clean(msg) + "\n")
     sys.exit(2)
 
+def run(cmd):
+    try:
+        return subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True, timeout=TIMEOUT)
+    except subprocess.TimeoutExpired:
+        die("herdr-plugins: %s timed out after %ds" % (" ".join(cmd[:3]), TIMEOUT))
+
 def gh(path, raw=False):
     cmd = ["gh", "api", path]
     if raw:
         cmd += ["-H", "Accept: application/vnd.github.raw"]
-    r = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+    r = run(cmd)
     if r.returncode != 0:
         die("herdr-plugins: gh api %s failed: %s" % (path, (r.stderr.strip().splitlines() or [""])[-1]))
     return r.stdout if raw else json.loads(r.stdout)
@@ -266,8 +284,7 @@ def content(path, ref):
     """A file's text at ref, or None when it does not exist there. The path is percent-encoded,
     so a name with ?, # or % cannot turn into a different request."""
     url = "repos/%s/contents/%s?ref=%s" % (repo, urllib.parse.quote(path, safe="/"), urllib.parse.quote(ref, safe=""))
-    r = subprocess.run(["gh", "api", "-H", "Accept: application/vnd.github.raw", url],
-                       stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+    r = run(["gh", "api", "-H", "Accept: application/vnd.github.raw", url])
     if r.returncode == 0:
         return r.stdout
     if "404" in r.stderr or "Not Found" in r.stderr:
@@ -281,7 +298,8 @@ def blobs(ref):
     return {e["path"] for e in t["tree"] if e["type"] == "blob"}
 
 def build_files(ref, tree):
-    """Files the build runs at ref: command words that are files in the tree, then scripts those run."""
+    """What the build runs at ref: its steps, the files they name (command words that are files in
+    the tree, then scripts those run), each file's text, and the manifest."""
     manifest = content("herdr-plugin.toml", ref)
     if manifest is None:
         if "herdr-plugin.toml" in tree:
@@ -289,7 +307,7 @@ def build_files(ref, tree):
         manifest = ""
     steps = builds(manifest)
     todo = [w for cmd in steps for w in cmd]
-    found, seen = [], set()
+    found, seen, bodies = [], set(), {}
     while todo:
         w = todo.pop(0)
         while w.startswith("./"):
@@ -302,31 +320,76 @@ def build_files(ref, tree):
         if body is None:  # in the tree but unreadable: never treat as absent
             incomplete.append("%s is in the tree at %s but could not be read" % (w, ref[:7]))
             body = ""
+        bodies[w] = body
         for m in re.finditer(r'(?:\b(?:sh|bash|source)\s+|^\s*\.\s+)"?(?:\./)?([\w./-]+)', body, re.M):
             todo.append(m.group(1))
         todo += re.findall(r'[\w./-]+\.(?:sh|bash)\b', body)
-    return steps, found
+    return steps, found, bodies, manifest
+
+def tag_commit(version):
+    """(tag name, commit) of the release tag for a manifest version, annotated tags dereferenced."""
+    for name in ("v" + version, version):
+        r = run(["gh", "api", "repos/%s/git/ref/tags/%s" % (repo, urllib.parse.quote(name, safe=""))])
+        try:
+            o = json.loads(r.stdout)["object"] if r.returncode == 0 else None
+            for _ in range(5):
+                if o is None or o["type"] == "commit":
+                    break
+                r = run(["gh", "api", "repos/%s/git/tags/%s" % (repo, o["sha"])])
+                o = json.loads(r.stdout)["object"] if r.returncode == 0 else None
+        except (ValueError, KeyError):
+            o = None
+        if o is not None and o["type"] == "commit":
+            return name, o["sha"]
+    return None, None
+
+REGISTRY = ("registry+https://github.com/rust-lang/crates.io-index", "sparse+https://index.crates.io")
+LOCKS = {"Cargo.lock", "go.sum"}
+
+def lock_pkgs(path, text):
+    """{(name, version, source)} from a Cargo.lock ([[package]] tables) or go.sum (module lines)."""
+    out = set()
+    if path.endswith("go.sum"):
+        for line in text.splitlines():
+            w = line.split()
+            if len(w) >= 2:
+                out.add((w[0], w[1].replace("/go.mod", ""), ""))
+        return out
+    cur = {}
+    for line in text.splitlines() + ["[[package]]"]:
+        if line.strip() == "[[package]]":
+            if "name" in cur:
+                out.add((cur["name"], cur.get("version", ""), cur.get("source", "")))
+            cur = {}
+            continue
+        m = re.match(r'(name|version|source)\s*=\s*"([^"]*)"', line)
+        if m:
+            cur[m.group(1)] = m.group(2)
+    return out
 
 # Full SHAs first: the contents API does not resolve a short SHA, and a 404 there would read as
 # "file absent".
 pin, target = (gh("repos/%s/commits/%s" % (repo, r))["sha"] for r in (pin, target))
 cmp = gh("repos/%s/compare/%s...%s" % (repo, pin, target))
-steps, scripts = build_files(target, blobs(target))
-_, old_scripts = build_files(pin, blobs(pin))
+steps, scripts, bodies, manifest = build_files(target, blobs(target))
+_, old_scripts, _, _ = build_files(pin, blobs(pin))
 scripts += [s for s in old_scripts if s not in scripts]  # a script the build stopped running is a change too
 seen = set(scripts)
 
 files = {f["filename"]: f for f in cmp.get("files", [])}
 if len(cmp.get("files", [])) >= 300:
     incomplete.append("the compare API lists at most 300 changed files")
-# Build-adjacent paths get full patches even when the manifest does not name them.
+# Every changed file that is not documentation or an asset gets its full patch, within a budget;
+# a file not shown in full makes the review incomplete (fail closed). Build-adjacent paths come first.
 SUSPECT = re.compile(r'(^|/)(build\.rs|Makefile|justfile|[^/]*\.(sh|bash|ps1))$|^(scripts|build|herdr)/')
-deps = {"Cargo.toml", "Cargo.lock", "go.mod", "go.sum"}
+DOC = re.compile(r'\.(md|markdown|txt|rst|png|jpe?g|gif|svg|ico|webp)$|(^|/)(LICENSE|COPYING|NOTICE)[^/]*$|^docs?/', re.I)
+BUDGET = 600
 print("%s  %s -> %s  (%s, %d commits)" % (repo, pin[:7], target[:7], cmp["status"], cmp["ahead_by"]))
 print("https://github.com/%s/compare/%s...%s" % (repo, pin[:12], target[:12]))
 if cmp["status"] != "ahead":
     print("\n!! %s is not a fast-forward from the pin (status %s, %d behind): read the compare page"
           % (target[:7], cmp["status"], cmp.get("behind_by", 0)))
+    incomplete.append("the target is not a fast-forward from the pin (status %s), so the commit list does not describe the change" % cmp["status"])
 print("\n── commits ──")
 for c in cmp.get("commits", []):
     print("  %s %s %s" % (c["sha"][:7], c["commit"]["committer"]["date"][:10], c["commit"]["message"].splitlines()[0][:90]))
@@ -337,10 +400,33 @@ elif len(cmp["commits"]) < cmp["ahead_by"]:
     incomplete.append("the compare API lists %d of %d commits" % (len(cmp["commits"]), cmp["ahead_by"]))
 print("\n── install-time code at %s ──" % target[:7])
 for cmd in steps:
-    print("  [[build]] %s" % " ".join(cmd))
+    print_code("  [[build]] %s" % " ".join(cmd))
 if not steps:
     print("  no [[build]] step for macOS/Linux")
-print("  files it runs: %s" % (", ".join(scripts) or "none from the repo (dependencies below)"))
+print_code("  files it runs: %s" % (", ".join(scripts) or "none from the repo (dependencies below)"))
+# A build that downloads a release runs that binary, not this source.
+texts = [" ".join(cmd) for cmd in steps] + list(bodies.values())
+if any(re.search(r'releases/(download|latest)', t) for t in texts):
+    print("\n── release binary ──")
+    print("  the build downloads a release asset: the code that runs is that binary, not the source above.")
+    print("  This review covers the source and install script at the tag's commit; the binary is trusted to the release (not verified).")
+    m = re.search(r'^version\s*=\s*"([^"]+)"', manifest, re.M)
+    if not m:
+        incomplete.append("the build downloads a release but the manifest has no version to check a tag against")
+    else:
+        name, sha = tag_commit(m.group(1))
+        if name is None:
+            print("  no release tag for version %s" % m.group(1))
+            incomplete.append("the build downloads a release but there is no tag for manifest version %s" % m.group(1))
+        elif sha != target:
+            print("  tag %s is at %s, not at the target %s" % (name, sha[:7], target[:7]))
+            incomplete.append("release tag %s is at %s, not the target %s: the binary may not match this source" % (name, sha[:7], target[:7]))
+        else:
+            print("  tag %s -> %s (the target)" % (name, sha[:7]))
+for t in texts:
+    for line in t.splitlines():
+        if re.search(r'(^|&&|;|\|\||\bexec)\s*cargo\s+(build|install)\b', line) and "--locked" not in line:
+            incomplete.append("a cargo build without --locked (%s): dependency versions are not held to Cargo.lock" % line.strip()[:80])
 # Diffed from the files themselves at both commits, not from the compare API's file list,
 # which can be truncated or omit patches.
 for path in ["herdr-plugin.toml"] + scripts:
@@ -352,32 +438,60 @@ for path in ["herdr-plugin.toml"] + scripts:
                                   "%s@%s" % (path, pin[:7]), "%s@%s" % (path, target[:7]), lineterm=""))
     print("\n--- %s (%s)" % (path, "added" if old is None else "removed" if new is None else "changed"))
     print_code("\n".join(d))
-for n, f in sorted(files.items()):
-    if n in seen or n == "herdr-plugin.toml" or not SUSPECT.search(n):
-        continue
+rest = [(n, f) for n, f in files.items() if n not in seen and n != "herdr-plugin.toml" and n.rsplit("/", 1)[-1] not in LOCKS]
+code = sorted((nf for nf in rest if not DOC.search(nf[0])),
+              key=lambda nf: (not SUSPECT.search(nf[0]), len(nf[1].get("patch", "").splitlines()), nf[0]))
+budget = BUDGET
+for n, f in code:
     seen.add(n)
-    print("\n--- %s (%s, +%d -%d; build-adjacent, not run by the manifest)" % (n, f["status"], f["additions"], f["deletions"]))
-    if "patch" in f:
-        print_code(f["patch"])
-    else:
+    print("\n--- %s (%s, +%d -%d; %s)" % (n, f["status"], f["additions"], f["deletions"],
+          "build-adjacent, not run by the manifest" if SUSPECT.search(n) else "not run by the manifest"))
+    patch = f.get("patch")
+    if patch is None:
         print("(no patch from the API)")
         incomplete.append("no patch for %s" % n)
+        continue
+    nl = len(patch.splitlines())
+    if nl > budget:
+        print("(not shown: %d lines, %d left of the %d-line budget)" % (nl, budget, BUDGET))
+        incomplete.append("%s not shown in full (over the %d-line patch budget)" % (n, BUDGET))
+        continue
+    budget -= nl
+    print_code(patch)
 print("\n── dependencies ──")
-dep = [f for n, f in files.items() if n.rsplit("/", 1)[-1] in deps]
-for f in dep:
-    print("  %-28s %-9s +%d -%d" % (f["filename"], f["status"], f["additions"], f["deletions"]))
-if not dep:
-    print("  (no Cargo.toml/Cargo.lock/go.mod/go.sum changes)")
-rest = [f for n, f in files.items() if n not in seen and n != "herdr-plugin.toml" and f not in dep]
-print("\n── other files: %d changed (+%d -%d) ──" % (len(rest), sum(f["additions"] for f in rest), sum(f["deletions"] for f in rest)))
-for f in rest:
+locks = sorted(n for n in files if n.rsplit("/", 1)[-1] in LOCKS)
+nonreg = []
+for n in locks:
+    old, new = lock_pkgs(n, content(n, pin) or ""), lock_pkgs(n, content(n, target) or "")
+    added, removed = sorted(new - old), sorted(old - new)
+    print("  %s: +%d -%d packages" % (n, len(added), len(removed)))
+    lines = ["    + %s %s%s" % (a, b, " (%s)" % c if c and not c.startswith(REGISTRY) else "") for a, b, c in added] + \
+            ["    - %s %s" % (a, b) for a, b, c in removed]
+    for line in lines[:40]:
+        print_code(line)
+    if len(lines) > 40:
+        print("    ... and %d more" % (len(lines) - 40))
+    nonreg += ["%s %s" % (a, b) for a, b, c in added if c and not c.startswith(REGISTRY)]
+if nonreg:
+    incomplete.append("a lock file adds package(s) from outside the crates.io registry: %s" % ", ".join(nonreg[:5]))
+if not locks:
+    print("  (no Cargo.lock/go.sum changes)")
+else:
+    print("  only package names and versions are listed; the dependencies' own source is not reviewed")
+docs = [f for n, f in rest if DOC.search(n)]
+print("\n── docs and assets: %d changed (+%d -%d) ──" % (len(docs), sum(f["additions"] for f in docs), sum(f["deletions"] for f in docs)))
+for f in docs:
     print("  %-50s +%d -%d" % (f["filename"], f["additions"], f["deletions"]))
+if noted:
+    print("\n(invisible characters in commit text or file names, shown above as <U+...>: %s)" % ", ".join(sorted(noted)))
 if hidden:
-    incomplete.append("invisible or direction-changing characters (%s), shown above as <U+...>: "
+    incomplete.append("invisible or direction-changing characters in install-time code (%s), shown above as <U+...>: "
                       "code may not read as it runs" % ", ".join(sorted(hidden)))
+incomplete = list(dict.fromkeys(incomplete))
 if incomplete:
     print("\n!! INCOMPLETE REVIEW: %s." % "; ".join(incomplete))
-    print("!! Read the compare page above before pinning. update refuses to pin unless HERDR_PLUGINS_INCOMPLETE_OK=1.")
+    print("!! Read the compare page above before pinning. update refuses to pin unless the user sets "
+          "HERDR_PLUGINS_INCOMPLETE_OK=%s." % target[:12])
     sys.exit(3)
 PY
 }
@@ -410,7 +524,7 @@ set_pin() {  # <owner/repo> <old sha> <new sha>: rewrite exactly one line of boo
 
 cmd_update() {
   have gh || die "update needs the GitHub CLI (gh) to show what changed"
-  local inst repo pin head targets="" t id tool ans moved="" failed="" rrc
+  local inst repo pin head targets="" t id tool ans ok moved="" failed="" rrc
   inst="$(installed)" || { inst=""; echo "(herdr plugin list failed; nothing will be reinstalled)" >&2; }
   if [[ $# -eq 0 ]]; then
     while read -r repo pin; do targets="$targets $repo"; done < <(pins)
@@ -424,33 +538,39 @@ cmd_update() {
     if [[ "$head" == "$pin"* ]]; then echo "$repo: up to date at ${pin:0:7}"; continue; fi
     echo
     rrc=0; review_text "$repo" "$pin" "$head" | page || rrc=$?
-    if (( rrc == 3 )) && [[ "${HERDR_PLUGINS_INCOMPLETE_OK:-}" != 1 ]]; then
-      echo "$repo: review incomplete (see above); left at ${pin:0:7}. After reading the compare page: HERDR_PLUGINS_INCOMPLETE_OK=1 herdr-plugins update ${repo#*/}"
+    ok="${HERDR_PLUGINS_INCOMPLETE_OK:-}"
+    if (( rrc == 3 )) && { (( ${#ok} < 7 )) || [[ "$head" != "$ok"* ]]; }; then
+      echo "$repo: review incomplete (see above); left at ${pin:0:7}."
+      echo "Pinning past it is the user's decision, made after reading the compare page. The user runs: HERDR_PLUGINS_INCOMPLETE_OK=${head:0:12} herdr-plugins update ${repo#*/}"
       failed="$failed $repo"; continue
     elif (( rrc != 0 && rrc != 3 )); then echo "$repo: review failed; skipped"; failed="$failed $repo"; continue; fi
     echo
     printf 'Pin %s at %s? [y/N] ' "$repo" "${head:0:7}"
     read -r ans || ans=""
     case "$ans" in y|Y|yes) ;; *) echo "$repo: left at ${pin:0:7}"; continue ;; esac
-    set_pin "$repo" "$pin" "$head"; moved="$moved $repo"
-    echo "$repo: bootstrap.sh now pins ${head:0:7}"
     id="$(lookup "$inst" "$repo" 2)"
-    if [[ -z "$id" ]]; then echo "$repo: not installed here; ./bootstrap.sh installs it at the new pin"; continue; fi
+    if [[ -z "$id" ]]; then
+      set_pin "$repo" "$pin" "$head"; moved="$moved $repo"
+      echo "$repo: not installed here, so only bootstrap.sh moved, to ${head:0:7}; ./bootstrap.sh installs it at the new pin"; continue
+    fi
     tool="$(needs_tool "$repo")"
     if [[ -n "$tool" ]] && ! have "$tool"; then
-      echo "$repo: not reinstalled: bootstrap.sh needs $tool for it and $tool is not on PATH"
+      echo "$repo: not reinstalled: bootstrap.sh needs $tool for it and $tool is not on PATH; bootstrap.sh left at ${pin:0:7}"
       failed="$failed $repo"; continue
     fi
-    # No --yes: herdr shows the plugin's manifest and build step and asks.
+    # The pin moves only once the new commit has installed. No --yes: herdr shows the plugin's
+    # manifest and build step and asks.
     if ! herdr plugin uninstall "$id"; then
-      echo "$repo: uninstall of $id FAILED; still installed at ${pin:0:7}, the new pin stays in bootstrap.sh. Retry with:"
-      echo "    herdr plugin uninstall $id && herdr plugin install $repo --ref $head"
+      echo "$repo: uninstall of $id FAILED; still installed at ${pin:0:7}, bootstrap.sh left at ${pin:0:7}. Retry with:"
+      echo "    herdr-plugins update ${repo#*/}"
       failed="$failed $repo"
     elif herdr plugin install "$repo" --ref "$head"; then
-      echo "$repo: installed at ${head:0:7}"
+      set_pin "$repo" "$pin" "$head"; moved="$moved $repo"
+      echo "$repo: installed at ${head:0:7}; bootstrap.sh now pins it"
     else
-      echo "$repo: install at ${head:0:7} FAILED (now uninstalled); the new pin stays in bootstrap.sh. Retry with:"
-      echo "    herdr plugin install $repo --ref $head"
+      echo "$repo: install at ${head:0:7} FAILED (build or download); bootstrap.sh left at ${pin:0:7}. Putting the old pin back:"
+      if herdr plugin install "$repo" --ref "$pin"; then echo "$repo: reinstalled at ${pin:0:7}"
+      else echo "$repo: could not reinstall ${pin:0:7} either (now uninstalled). Retry: herdr plugin install $repo --ref $pin"; fi
       failed="$failed $repo"
     fi
   done

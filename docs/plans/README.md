@@ -2,6 +2,8 @@
 
 The record of what was built. Each file here is the implementation plan for a change that is on `master`.
 
+Where a plan's "As built" differs from its Goal, Steps or Validation, "As built" is what exists; the earlier sections are the intent before the build.
+
 Plans are not a queue. The queue is `docs/proposals/`: every proposal there is approved, and `/build-proposals`
 writes a plan for each one at the moment it executes it, then deletes the proposal and adds the plan here. See
 `docs/proposals/README.md`.

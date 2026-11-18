@@ -70,7 +70,7 @@ clear_pane = "prefix+ctrl+l"
 edit_scrollback = ["prefix+e", "prefix+/"]
 
 # ── vim-herdr-navigation: ctrl+h/j/k/l across panes, vim-split-aware (port of vim-tmux-navigator) ──
-# Install: herdr plugin install paulbkim-dev/vim-herdr-navigation --yes   (needs jq)
+# Installed by bootstrap.sh, pinned there with --ref   (needs jq)
 # Same trade-off as the tmux setup: ctrl+l (clear) and ctrl+k (kill-line) no longer reach non-vim shells.
 [[keys.command]]
 key = "ctrl+h"

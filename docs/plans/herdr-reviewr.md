@@ -78,10 +78,16 @@ repos do not work, it ships for git and the guide says so.
 Windows; PR-tab hosts other than GitHub; rebinding reviewr's internal keys.
 
 ## As built (2026-11-17)
-- Key `prefix+alt+r`. Bootstrap installs with `--ref bb71050` and `--yes`, because the pin is the review. The
-  first install on the main machine was done by hand without `--yes`.
+- Key `prefix+alt+r`. Bootstrap installs with `--ref bb71050` and `--yes`. The pin is a reviewed commit, but it is
+  not the whole review: `herdr/install.sh` downloads the release binary for the manifest's version and checks it only
+  against the `.sha256` of the same release. So the review covers the source and install script at the pin, and the
+  binary itself is trusted to the release, not verified. bb71050 is the commit the `v0.52.2` tag points to (checked
+  with `gh api` on 2026-11-18: the tag is annotated and dereferences to bb71050caa5d). `herdr-plugins review` now
+  checks that the tag for the manifest version points at the commit being pinned. The first install on the main
+  machine was done by hand without `--yes`.
 - reviewr has no `--version`. `validate.sh` probes the binary with `--action validate-probe`, which must answer
-  "unknown action".
+  "unknown action". An unknown action returns before reviewr reads its config or re-points symlinks, which is why the
+  probe writes nothing (verified at bb71050); the probe must stay an action reviewr does not know.
 - The config check enforces reviewr's own key and value lists, copied from `src/config.rs` and `src/theme.rs` at the
   pin. A bump of the pin must refresh those lists. `catppuccin` is reviewr's name for Mocha.
 - A pin check, shared with fingers, warns when the installed commit differs from the `--ref` in `bootstrap.sh`.
