@@ -36,7 +36,7 @@ Read at the pinned commit `bb71050caa5d3a0b1a414527783eb7a772447f9f` (release v0
    fi
    ```
    The pin in a variable or inline; the grep name must be the plugin id `persiyanov.reviewr` (`herdr plugin list`
-   prints ids). Bootstrap keeps `--yes` because the pin is the review (superseded, see As built); first install on this machine is done by hand
+   prints ids). Bootstrap keeps `--yes` because the pin is the review (superseded: the pin is a reviewed source commit, and the binary its build downloads is trusted to the release, see As built); first install on this machine is done by hand
    without `--yes` in Phase 6.
 2. Stowed plugin config `herdr/.config/herdr/plugins/config/persiyanov.reviewr/config.toml`:
    `auto_open = false`, `theme = "catppuccin"` (Catppuccin Mocha is the repo palette; use the theme name reviewr

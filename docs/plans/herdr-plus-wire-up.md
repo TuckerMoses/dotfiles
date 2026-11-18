@@ -48,7 +48,7 @@ Facts read from the installed source (`config.go`, `README.md`, `herdr-plugin.to
    - `prefix+space` → `cloudmanic.herdr-plus.quick-actions` ("quick actions")
    Both are absent from herdr's built-in defaults and from this config. Confirm with `herdr config check` on the
    edited file (`HERDR_CONFIG_PATH=<file> herdr config check`).
-3. `bootstrap.sh`: no install change (it already installs herdr-plus). Update its comment to say the config comes
+3. (Superseded by docs/plans/herdr-plugin-pins.md: bootstrap now pins herdr-plus with `--ref` and installs it only when Go is present.) `bootstrap.sh`: no install change (it already installs herdr-plus). Update its comment to say the config comes
    from the herdr package.
 4. `validate.sh`, herdr section: the new checks below.
 

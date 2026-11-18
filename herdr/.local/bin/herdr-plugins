@@ -8,15 +8,15 @@
 #   herdr-plugins status                   pinned / installed / upstream HEAD / commits behind
 #   herdr-plugins check                    offline: exit 1 when an installed plugin is off its pin
 #   herdr-plugins review <plugin> [<sha>]  commits and install-time code changes, pin..sha
-#   herdr-plugins update [<plugin>...]     review, ask, reinstall, then bump the pin (default: all pinned)
+#   herdr-plugins update [<plugin> [<sha>]]  the user's: review, ask, reinstall, bump the pin (no <plugin>: all, at HEAD)
 #   herdr-plugins help
 #
 # <plugin> is a repo (herdr-reviewr), owner/repo, or a plugin id (persiyanov.reviewr).
-# Exit codes: 0 ok; 1 drift (check) or a plugin not updated (update); 2 setup error; 3 review incomplete (review only).
-# update is the user's, run in a terminal at the main checkout on a branch made there, through the stowed
-# ~/.local/bin/herdr-plugins; commit the pin bump after. It also reinstalls a plugin installed off its pin at the pin.
-# It refuses an incomplete review unless the user sets HERDR_PLUGINS_INCOMPLETE_OK=<7 to 40 leading
-# characters of the upstream HEAD this run reviews>; if upstream moved, review again.
+# Exit codes: 0 ok; 1 drift (check) or an update that failed (unreadable upstream, refused or failed review, failed install or pin write); 2 setup error; 3 review incomplete (review only).
+# update is the user's: run it in a terminal at the main checkout (not a linked worktree), on a branch made there, through
+# the stowed ~/.local/bin/herdr-plugins; commit the pin bump after. <sha> moves that one plugin to a commit other than
+# upstream HEAD (a tagged release). It reinstalls a plugin installed off its pin at the pin. It refuses an incomplete
+# review unless the user sets HERDR_PLUGINS_INCOMPLETE_OK=<7 to 40 leading characters of the commit this run reviews>.
 
 set -euo pipefail
 
@@ -143,13 +143,14 @@ cmd_check() {
 # ── review ───────────────────────────────────────────────────────────────────
 # Prints the commits pin..target, then the full diff of herdr-plugin.toml and of every file the
 # manifest's macOS/Linux [[build]] commands run (and scripts those run with sh/bash/source),
-# resolved at target, then the full patch of every other changed text file (within a line budget),
-# and Cargo.lock/go.sum package changes. Binary images are listed by stats alone. Anything it
+# resolved at target, then the full patch of every other changed text file (within a line budget:
+# build-adjacent paths first, then the plugin's source and build manifests, then the rest, smallest
+# first), and Cargo.lock/go.sum package changes. Binary media are listed by stats alone. Anything it
 # cannot show, or install-time code that fetches something it does not cover, makes the review
 # incomplete (exit 3).
 review_text() {  # <owner/repo> <pin> <target>; exits 3 when the review is incomplete
   "${TOMLPY:-$PY}" - "$1" "$2" "$3" <<'PY'
-import builtins, difflib, json, re, subprocess, sys, unicodedata, urllib.parse
+import builtins, difflib, fnmatch, json, posixpath, re, subprocess, sys, unicodedata, urllib.parse
 repo, pin, target = sys.argv[1:4]
 incomplete = []  # reasons the review cannot be trusted as complete
 hidden = set()   # invisible characters in install-time code, or bidi controls anywhere: block the review
@@ -391,20 +392,45 @@ files = {f["filename"]: f for f in cmp.get("files", [])}
 if len(cmp.get("files", [])) >= 300:
     incomplete.append("the compare API lists at most 300 changed files")
 # Every changed text file gets its full patch, within a budget; a file not shown in full makes the
-# review incomplete (fail closed). Build-adjacent paths come first.
+# review incomplete (fail closed), whatever its tier. Shown first: (0) build-adjacent paths; (1) the
+# plugin's source and build manifests (.rs, .go, Cargo.toml, go.mod, rust-toolchain.toml; not tests)
+# and any changed file a changed source file embeds (include_str!, include_bytes!, //go:embed);
+# (2) everything else (tests, docs, CI, formulas, website), the smallest patch first. Ordering
+# only: a dropped file is a dropped file in every tier.
 SUSPECT = re.compile(r'(^|/)(build\.rs|Makefile|justfile|[^/]*\.(sh|bash|ps1))$|^(scripts|build|herdr)/')
-# Only binary images are listed by stats alone: an image name AND no patch from GitHub (it has
-# none for binary files). Any text file can be compiled in (include_str!, go:embed) from a file
-# that did not change, which a review of the changed files cannot see, so every changed text
-# file (docs, licenses, a "png" that is really text) gets its full patch.
-IMAGE = re.compile(r'\.(png|jpe?g|gif|ico|webp)$', re.I)
+SOURCE = re.compile(r'\.(rs|go)$|(^|/)(Cargo\.toml|go\.mod|rust-toolchain\.toml)$')
+TESTISH = re.compile(r'_test\.go$|(^|/)(tests?|testdata|examples?|benches|docs?)/')
+EMBED = re.compile(r'include_(?:str|bytes)!\s*\(\s*"([^"]+)"|//go:embed\s+(.+)')
+TIERS = ("build-adjacent", "source", "other")
+# Only binary media (images, audio, video, PDFs, fonts) are listed by stats alone: a media name AND
+# no patch from GitHub (it has none for binary files) AND 0 added and 0 deleted lines AND not a
+# build-adjacent path (SUSPECT). Any text file can be compiled in (include_str!, go:embed) from a
+# file that did not change, which a review of the changed files cannot see, so every other changed
+# file (docs, licenses, a "png" that is really text) gets its full patch. Archives, executables
+# and wasm are not on the list: they fall to the code path and make the review incomplete.
+MEDIA = re.compile(r'\.(png|jpe?g|gif|ico|webp|avif|bmp|tiff?|mp4|m4v|mov|webm|mkv|avi|mp3|m4a|ogg|wav|flac|pdf|woff2?|ttf|otf|eot)$', re.I)
 def is_asset(n):
     # GitHub also omits patches for large text files, but reports 0/0 lines only for binary ones;
     # anything else falls to the code path, where a missing patch makes the review incomplete.
     f = files.get(n, {})
-    return (bool(IMAGE.search(n)) and "patch" not in f and not SUSPECT.search(n)
+    return (bool(MEDIA.search(n)) and "patch" not in f and not SUSPECT.search(n)
             and f.get("additions", 1) == 0 and f.get("deletions", 1) == 0)
-BUDGET = 600
+def embedded(sources):
+    """Changed files that changed source files embed: the sources are read at the target (at most
+    60); an embed of a directory or a glob names every changed file under or matching it."""
+    out = set()
+    for n in sources[:60]:
+        if files[n]["status"] == "removed":
+            continue
+        for m in EMBED.finditer(content(n, target) or ""):
+            for ref in (m.group(1) or m.group(2) or "").split():
+                ref = ref.strip('"`')
+                if ref.startswith("all:"):
+                    ref = ref[4:]
+                full = posixpath.normpath(posixpath.join(posixpath.dirname(n), ref))
+                out |= {c for c in files if c == full or c.startswith(full + "/") or fnmatch.fnmatch(c, full)}
+    return out
+BUDGET = 1000
 print("%s  %s -> %s  (%s, %d commits)" % (repo, pin[:7], target[:7], cmp["status"], cmp["ahead_by"]))
 print("https://github.com/%s/compare/%s...%s" % (repo, pin[:12], target[:12]))
 if cmp["status"] != "ahead":
@@ -441,7 +467,8 @@ if any(re.search(r'releases/(download|latest)', t) for t in texts):
             incomplete.append("the build downloads a release but there is no tag for manifest version %s" % m.group(1))
         elif sha != target:
             print("  tag %s is at %s, not at the target %s" % (name, sha[:7], target[:7]))
-            incomplete.append("release tag %s is at %s, not the target %s: the binary may not match this source" % (name, sha[:7], target[:7]))
+            incomplete.append("release tag %s is at %s, not the target %s: the binary may not match this source (to move to the tagged commit: herdr-plugins update %s %s)"
+                              % (name, sha[:7], target[:7], repo.split("/")[1], sha[:12]))
         else:
             print("  tag %s -> %s (the target)" % (name, sha[:7]))
 for t in texts:
@@ -496,13 +523,17 @@ for path in ["herdr-plugin.toml"] + scripts:
     print("\n--- %s (%s)" % (path, "added" if old is None else "removed" if new is None else "changed"))
     print_code("\n".join(d))
 rest = [(n, f) for n, f in files.items() if n not in seen and n != "herdr-plugin.toml" and n.rsplit("/", 1)[-1] not in LOCKS]
-code = sorted((nf for nf in rest if not is_asset(nf[0])),
-              key=lambda nf: (not SUSPECT.search(nf[0]), len(nf[1].get("patch", "").splitlines()), nf[0]))
+cand = [nf for nf in rest if not is_asset(nf[0])]
+src = [n for n, f in cand if not SUSPECT.search(n) and SOURCE.search(n) and not TESTISH.search(n)]
+src_set = set(src) | embedded(src)
+def tier(n):
+    return 0 if SUSPECT.search(n) else 1 if n in src_set else 2
+code = sorted(cand, key=lambda nf: (tier(nf[0]), len(nf[1].get("patch", "").splitlines()), nf[0]))
 budget = BUDGET
+dropped = []  # (name, tier, patch lines) of changed files over the budget
 for n, f in code:
     seen.add(n)
-    print("\n--- %s (%s, +%d -%d; %s)" % (n, f["status"], f["additions"], f["deletions"],
-          "build-adjacent, not run by the manifest" if SUSPECT.search(n) else "not run by the manifest"))
+    print("\n--- %s (%s, +%d -%d; %s, not run by the manifest)" % (n, f["status"], f["additions"], f["deletions"], TIERS[tier(n)]))
     patch = f.get("patch")
     if patch is None:
         print("(no patch from the API)")
@@ -511,10 +542,15 @@ for n, f in code:
     nl = len(patch.splitlines())
     if nl > budget:
         print("(not shown: %d lines, %d left of the %d-line budget)" % (nl, budget, BUDGET))
-        incomplete.append("%s not shown in full (over the %d-line patch budget)" % (n, BUDGET))
+        dropped.append((n, tier(n), nl))
         continue
     budget -= nl
     print_code(patch)
+if dropped:
+    incomplete.append("%d changed file(s) not shown in full, %d patch lines over the %d-line budget (%s): %s"
+                      % (len(dropped), sum(d[2] for d in dropped) - budget, BUDGET,
+                         ", ".join("%d %s" % (sum(1 for d in dropped if d[1] == t), TIERS[t]) for t in range(3) if any(d[1] == t for d in dropped)),
+                         ", ".join(d[0] for d in dropped[:8]) + (" ..." if len(dropped) > 8 else "")))
 print("\n── dependencies ──")
 locks = sorted(n for n in files if n.rsplit("/", 1)[-1] in LOCKS)
 nonreg = []
@@ -541,7 +577,7 @@ if not locks:
 else:
     print("  only package names and versions are listed; the dependencies' own source is not reviewed")
 docs = [f for n, f in rest if is_asset(n)]
-print("\n── binary images: %d changed (+%d -%d) ──" % (len(docs), sum(f["additions"] for f in docs), sum(f["deletions"] for f in docs)))
+print("\n── binary media: %d changed (+%d -%d) ──" % (len(docs), sum(f["additions"] for f in docs), sum(f["deletions"] for f in docs)))
 for f in docs:
     print("  %-50s +%d -%d" % (f["filename"], f["additions"], f["deletions"]))
 if noted:
@@ -552,8 +588,8 @@ if hidden:
 incomplete = list(dict.fromkeys(incomplete))
 if incomplete:
     print("\n!! INCOMPLETE REVIEW: %s." % "; ".join(incomplete))
-    print("!! Read the compare page above before pinning. update will refuse this review; only the user can "
-          "override it, after reading the compare page. Agents: stop and report this output.")
+    print("!! Read the compare page above before pinning. update will refuse this review unless the user "
+          "overrides it, after reading the compare page. Agents: do not pin or install this plugin; report this output.")
     sys.exit(3)
 PY
 }
@@ -603,7 +639,7 @@ config_linked() {  # <plugin id>
 }
 
 relink_hint() {  # <owner/repo> <plugin id>
-  config_linked "$2" || echo "$1: its stowed config under ~/.config/herdr/plugins/config/$2 is no longer linked; re-run 'stow --no-folding herdr' from the main checkout"
+  config_linked "$2" || echo "$1: its stowed config under ~/.config/herdr/plugins/config/$2 is no longer linked; re-run 'stow --no-folding herdr' from the main checkout (if stow reports a conflict, move the plugin's own file aside, it holds defaults, then re-run stow)"
 }
 
 # Uninstall <id>, install <repo> at <to>; when the install fails, put <from> back. 0 only when <to> is
@@ -631,10 +667,22 @@ cmd_update() {
   # update is the user's. Piped input cannot pass this check and the confirmations are read from the
   # terminal, not stdin. An agent that spawns a pty is stopped by CLAUDE.md, not by this.
   [[ -t 0 && -t 1 ]] || die "update needs a terminal; the user runs it"
+  # In a linked worktree update would reinstall on the live machine and rewrite a bootstrap.sh that
+  # goes away with the worktree. status, check and review read only, so they work from one.
+  local gdir cdir
+  gdir="$(cd "$REPO" && cd "$(git rev-parse --git-dir 2>/dev/null)" 2>/dev/null && pwd -P)" || gdir=""
+  cdir="$(cd "$REPO" && cd "$(git rev-parse --git-common-dir 2>/dev/null)" 2>/dev/null && pwd -P)" || cdir=""
+  [[ -z "$gdir" || "$gdir" == "$cdir" ]] || die "$REPO is a linked git worktree. update edits bootstrap.sh and reinstalls on the live machine; run it from the main checkout's stowed herdr-plugins (the first entry of 'git worktree list')"
   have gh || die "update needs the GitHub CLI (gh) to show what changed"
-  local inst repo pin head targets="" t id got ok moved="" failed="" rrc
+  local inst repo pin head targets="" t id got ok moved="" failed="" rrc want=""
   # An unreadable plugin list is not an empty one: update could otherwise move the pin of an installed plugin.
   inst="$(installed)" || die "herdr plugin list --json failed (is herdr installed and its server running?); update needs to know what is installed"
+  # A last argument that is 7 to 40 hex characters, after exactly one plugin, is the commit to move that
+  # plugin to (a tagged release, say) instead of upstream HEAD.
+  if [[ $# -ge 2 && "${!#}" =~ ^[0-9a-f]{7,40}$ ]]; then
+    [[ $# -eq 2 ]] || die "update takes one <plugin> before a <sha>"
+    want="$2"; set -- "$1"
+  fi
   if [[ $# -eq 0 ]]; then
     while read -r repo pin; do targets="$targets $repo"; done < <(pins)
   else
@@ -653,15 +701,19 @@ cmd_update() {
         relink_hint "$repo" "$id"
       else failed="$failed $repo"; continue; fi
     fi
-    head="$(upstream_head "$repo")"
-    if [[ -z "$head" ]]; then echo "$repo: could not read upstream HEAD; skipped"; continue; fi
-    if [[ "$head" == "$pin"* ]]; then echo "$repo: up to date at ${pin:0:7}"; continue; fi
+    if [[ -n "$want" ]]; then
+      head="$(gh api "repos/$repo/commits/$want" --jq .sha 2>/dev/null || true)"
+      [[ "$head" =~ ^[0-9a-f]{40}$ ]] || head=""
+      if [[ -z "$head" ]]; then echo "$repo: could not resolve $want; skipped"; failed="$failed $repo"; continue; fi
+    else head="$(upstream_head "$repo")"; fi
+    if [[ -z "$head" ]]; then echo "$repo: could not read upstream HEAD; skipped"; failed="$failed $repo"; continue; fi
+    if [[ "$head" == "$pin"* ]]; then echo "$repo: ${want:+$want is }up to date at ${pin:0:7}"; continue; fi
     echo
     rrc=0; review_text "$repo" "$pin" "$head" | page || rrc=$?
     ok="${HERDR_PLUGINS_INCOMPLETE_OK:-}"
     if (( rrc == 3 )) && { (( ${#ok} < 7 )) || [[ "$head" != "$ok"* ]]; }; then
       echo "$repo: review incomplete (see above); left at ${pin:0:7}."
-      echo "Pinning past it is the user's decision, made after reading the compare page. The user runs: HERDR_PLUGINS_INCOMPLETE_OK=${head:0:12} herdr-plugins update ${repo#*/}"
+      echo "Pinning past it is the user's decision, made after reading the compare page; if upstream moved since, review again. The user runs: HERDR_PLUGINS_INCOMPLETE_OK=${head:0:12} herdr-plugins update ${repo#*/}${want:+ ${head:0:12}}"
       failed="$failed $repo"; continue
     elif (( rrc != 0 && rrc != 3 )); then echo "$repo: review failed; skipped"; failed="$failed $repo"; continue; fi
     echo
@@ -669,7 +721,7 @@ cmd_update() {
     if [[ -z "$id" ]]; then
       if set_pin "$repo" "$pin" "$head"; then
         moved="$moved $repo"
-        echo "$repo: not installed here, so only bootstrap.sh moved, to ${head:0:7}; ./bootstrap.sh installs it at the new pin"
+        echo "$repo: not installed here, so only bootstrap.sh moved, to ${head:0:7} (nothing was built to test it); ./bootstrap.sh installs it at the new pin"
       else failed="$failed $repo"; fi
       continue
     fi

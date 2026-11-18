@@ -10,7 +10,7 @@ proposal: "session 2026-11-17 (herdr plugin research)"
 ## Goal
 Install `nathan-poncet/herdr-fingers` (a Rust port of tmux-fingers) pinned to a reviewed commit and bind a key: hints
 over paths, URLs, SHAs, UUIDs and numbers in the focused pane; typing one copies it (Shift pastes, Ctrl opens).
-A trial: removal is one revert.
+A trial: removal is one revert (superseded: the commit may not survive a squash merge; the removal targets under As built replace this).
 
 ## Context
 Copying a path or SHA out of agent output today is copy mode (`prefix+[`) plus a manual selection.
@@ -63,7 +63,7 @@ Read at pinned commit `2d9fc997ce1a95976b975da758dccc7b6e011336` (HEAD on 2026-1
 
 ## Removal
 Revert the one commit: bootstrap block, key binding, validate checks, docs line; then
-`herdr plugin uninstall nathan-poncet.herdr-fingers`.
+`herdr plugin uninstall nathan-poncet.herdr-fingers`. (Superseded, see As built: the target list there is the removal.)
 
 ## Left out
 `herdr-tiny-fingers`, `herdr-pluck` (not evaluated unless this fails); custom patterns; `clipboard = "system"`.

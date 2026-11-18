@@ -2,7 +2,7 @@
 
 The record of what was built. Each file here is the implementation plan for a change that is on `master`.
 
-A plan's Goal, Steps and Validation record what was planned and are not maintained; what exists is its "As built" and the code. Step lines known to be superseded are marked "(superseded, see As built)".
+A plan's Goal, Steps and Validation record what was planned and are not maintained; what exists is its "As built" and the code. Plans written by `/build-proposals` have an "As built" section; the older ones do not, so check them against the code. Everything outside "As built" is as planned, and "As built" wins on any conflict, Removal sections included. Step lines known to be superseded are marked "(superseded, see As built)" or name what replaced them.
 
 Plans are not a queue. The queue is `docs/proposals/`: every proposal there is approved, and `/build-proposals`
 writes a plan for each one at the moment it executes it, then deletes the proposal and adds the plan here. See

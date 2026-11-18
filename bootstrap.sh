@@ -108,11 +108,13 @@ fi
 
 # ── Herdr plugins ────────────────────────────────────────────────────────────
 # Every third-party plugin is pinned with --ref to a reviewed commit; these --ref lines are the
-# only record of the pins. Move them with `herdr-plugins update` (herdr/.local/bin/herdr-plugins),
-# which shows what changed in the install-time code first; `herdr plugin update` skips that review.
+# only record of the pins. The user moves them with `herdr-plugins update` (herdr/.local/bin/herdr-plugins;
+# CLAUDE.md has the rule for agents); it shows what changed in the install-time code first, which
+# `herdr plugin update` skips.
 # --yes is deliberate: herdr's install prompt guards against unreviewed code, and --ref installs
-# only the commit that was reviewed before it was pinned, so the pin is the review and bootstrap
-# stays unattended (fresh machines, containers). Moving a pin is where the prompts are:
+# only a source commit that was reviewed before it was pinned (a binary its build downloads is
+# trusted to the release), so bootstrap stays unattended (fresh machines, containers).
+# Moving a pin is where the prompts are:
 # `herdr-plugins update` asks before it edits a --ref and reinstalls without --yes. Never add
 # --yes to an install without --ref.
 # vim-herdr-navigation: ctrl+h/j/k/l across panes, vim-split-aware (needs jq)
@@ -133,7 +135,7 @@ if command -v herdr >/dev/null 2>&1; then
   # herdr-reviewr: review an agent's diff, send line comments back (prefix+alt+r). Pinned to the
   # v0.52.2 tag commit. Its build step downloads that release's binary (checked only against the
   # release's own .sha256): the review covers the source and install script at the pin, and the
-  # binary is trusted to the release, not verified. Bump with `herdr-plugins update`.
+  # binary is trusted to the release, not verified. The user bumps it with `herdr-plugins update`.
   if ! herdr plugin list 2>/dev/null | grep -q persiyanov.reviewr; then
     echo "==> Installing herdr plugin herdr-reviewr"
     herdr plugin install persiyanov/herdr-reviewr --ref bb71050caa5d3a0b1a414527783eb7a772447f9f --yes || echo "    (install failed: herdr server not running, or a build, toolchain or network error above; re-run ./bootstrap.sh)"
