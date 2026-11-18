@@ -140,15 +140,32 @@ cmd_check() {
 # resolved at target, then Cargo/Go dependency files as a stat.
 review_text() {  # <owner/repo> <pin> <target>; exits 3 when the review is incomplete
   "${TOMLPY:-$PY}" - "$1" "$2" "$3" <<'PY'
-import builtins, difflib, json, re, subprocess, sys
+import builtins, difflib, json, re, subprocess, sys, unicodedata, urllib.parse
 repo, pin, target = sys.argv[1:4]
 incomplete = []  # reasons the review cannot be trusted as complete
+hidden = set()   # invisible / direction-changing characters seen in GitHub's text
 
-# Everything printed comes from GitHub (commit messages, file names, patches): drop control
-# characters so it cannot drive the terminal (keeps newlines and tabs).
-CTRL = re.compile(r'[\x00-\x08\x0b-\x1f\x7f-\x9f]')
+# Everything printed comes from GitHub (commit messages, file names, patches). Control characters
+# could drive the terminal, and Unicode format characters (bidi overrides, zero-width) could make
+# code read differently from what runs ("Trojan source"). Show both as visible <U+XXXX> markers.
+def clean(s):
+    out = []
+    for c in str(s):
+        if c in "\n\t":
+            out.append(c)
+        elif unicodedata.category(c) in ("Cc", "Cf", "Zl", "Zp"):
+            hidden.add("U+%04X" % ord(c))
+            out.append("<U+%04X>" % ord(c))
+        else:
+            out.append(c)
+    return "".join(out)
+
 def print(*a, **k):
-    builtins.print(*(CTRL.sub("?", str(x)) for x in a), **k)
+    builtins.print(*(clean(x) for x in a), **k)
+
+def die(msg):
+    sys.stderr.write(clean(msg) + "\n")
+    sys.exit(2)
 
 def gh(path, raw=False):
     cmd = ["gh", "api", path]
@@ -156,8 +173,40 @@ def gh(path, raw=False):
         cmd += ["-H", "Accept: application/vnd.github.raw"]
     r = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
     if r.returncode != 0:
-        sys.exit("herdr-plugins: gh api %s failed: %s" % (path, r.stderr.strip().splitlines()[-1:] or ""))
+        die("herdr-plugins: gh api %s failed: %s" % (path, (r.stderr.strip().splitlines() or [""])[-1]))
     return r.stdout if raw else json.loads(r.stdout)
+
+PLATFORMS = {"macos", "linux", "windows"}
+
+def applies(b):
+    """Whether a [[build]] step runs here. Unknown platform names count as applying, so they are shown."""
+    plats = b.get("platforms")
+    if plats is None:
+        return True
+    names = {p.lower() for p in plats}
+    return bool(names & {"macos", "linux"}) or bool(names - PLATFORMS)
+
+def valid_steps(out):
+    """Strict schema: a list of tables, command and platforms lists of strings. Anything else
+    makes the review incomplete rather than silently dropping a step."""
+    if not isinstance(out, list) or not all(isinstance(b, dict) for b in out):
+        incomplete.append("[build] is not a list of tables")
+        return []
+    steps = []
+    for b in out:
+        cmd, plats = b.get("command", []), b.get("platforms")
+        if not isinstance(cmd, list) or not all(isinstance(w, str) for w in cmd) or not cmd:
+            incomplete.append("a [[build]] command that is not a non-empty list of strings: %r" % (cmd,))
+            continue
+        if plats is not None and (not isinstance(plats, list) or not all(isinstance(p, str) for p in plats)):
+            incomplete.append("a [[build]] platforms value that is not a list of strings: %r" % (plats,))
+            steps.append(cmd)  # shown, since it may apply
+            continue
+        if plats is not None and {p.lower() for p in plats} - PLATFORMS:
+            incomplete.append("unknown [[build]] platform(s) %s" % sorted(set(plats)))
+        if applies(b):
+            steps.append(cmd)
+    return steps
 
 def builds(manifest):
     """[[build]] command lists for macOS/Linux. tomllib when available; otherwise a line parser
@@ -172,8 +221,7 @@ def builds(manifest):
         except Exception as e:
             incomplete.append("manifest does not parse as TOML (%s)" % e)
             out = []
-        return [b.get("command", []) for b in out
-                if not b.get("platforms") or set(b["platforms"]) & {"macos", "linux"}]
+        return valid_steps(out)
     incomplete.append("no Python with tomllib: [[build]] steps read by a line parser")
     out, cur, table = [], None, None
     for line in manifest.splitlines():
@@ -195,19 +243,19 @@ def builds(manifest):
                 cur[m.group(1)] = re.findall(r'"([^"]*)"', m.group(2))
     if table == "[[build]]" and cur is not None:
         out.append(cur)
-    return [b.get("command", []) for b in out
-            if not b.get("platforms") or set(b["platforms"]) & {"macos", "linux"}]
+    return valid_steps(out)
 
 def content(path, ref):
-    """A file's text at ref, or None when it does not exist there."""
-    r = subprocess.run(["gh", "api", "-H", "Accept: application/vnd.github.raw",
-                        "repos/%s/contents/%s?ref=%s" % (repo, path, ref)],
+    """A file's text at ref, or None when it does not exist there. The path is percent-encoded,
+    so a name with ?, # or % cannot turn into a different request."""
+    url = "repos/%s/contents/%s?ref=%s" % (repo, urllib.parse.quote(path, safe="/"), urllib.parse.quote(ref, safe=""))
+    r = subprocess.run(["gh", "api", "-H", "Accept: application/vnd.github.raw", url],
                        stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
     if r.returncode == 0:
         return r.stdout
     if "404" in r.stderr or "Not Found" in r.stderr:
         return None
-    sys.exit("herdr-plugins: reading %s at %s failed: %s" % (path, ref[:7], r.stderr.strip()))
+    die("herdr-plugins: reading %s at %s failed: %s" % (path, ref[:7], r.stderr.strip()))
 
 def blobs(ref):
     t = gh("repos/%s/git/trees/%s?recursive=1" % (repo, ref))
@@ -217,7 +265,11 @@ def blobs(ref):
 
 def build_files(ref, tree):
     """Files the build runs at ref: command words that are files in the tree, then scripts those run."""
-    manifest = content("herdr-plugin.toml", ref) or ""
+    manifest = content("herdr-plugin.toml", ref)
+    if manifest is None:
+        if "herdr-plugin.toml" in tree:
+            incomplete.append("herdr-plugin.toml is in the tree at %s but could not be read" % ref[:7])
+        manifest = ""
     steps = builds(manifest)
     todo = [w for cmd in steps for w in cmd]
     found, seen = [], set()
@@ -229,7 +281,10 @@ def build_files(ref, tree):
             continue
         seen.add(w)
         found.append(w)
-        body = content(w, ref) or ""
+        body = content(w, ref)
+        if body is None:  # in the tree but unreadable: never treat as absent
+            incomplete.append("%s is in the tree at %s but could not be read" % (w, ref[:7]))
+            body = ""
         for m in re.finditer(r'(?:\b(?:sh|bash|source)\s+|^\s*\.\s+)"?(?:\./)?([\w./-]+)', body, re.M):
             todo.append(m.group(1))
         todo += re.findall(r'[\w./-]+\.(?:sh|bash)\b', body)
@@ -300,6 +355,9 @@ rest = [f for n, f in files.items() if n not in seen and n != "herdr-plugin.toml
 print("\n── other files: %d changed (+%d -%d) ──" % (len(rest), sum(f["additions"] for f in rest), sum(f["deletions"] for f in rest)))
 for f in rest:
     print("  %-50s +%d -%d" % (f["filename"], f["additions"], f["deletions"]))
+if hidden:
+    incomplete.append("invisible or direction-changing characters (%s), shown above as <U+...>: "
+                      "code may not read as it runs" % ", ".join(sorted(hidden)))
 if incomplete:
     print("\n!! INCOMPLETE REVIEW: %s." % "; ".join(incomplete))
     print("!! Read the compare page above before pinning. update refuses to pin unless HERDR_PLUGINS_INCOMPLETE_OK=1.")
