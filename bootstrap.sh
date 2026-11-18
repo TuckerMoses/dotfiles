@@ -125,6 +125,14 @@ if command -v herdr >/dev/null 2>&1; then
     echo "==> Installing herdr plugin herdr-reviewr"
     herdr plugin install persiyanov/herdr-reviewr --ref bb71050caa5d3a0b1a414527783eb7a772447f9f --yes || echo "    (herdr server not running; install later)"
   fi
+  # herdr-fingers (trial): hint-copy paths, SHAs, URLs from the focused pane (prefix+f). Pinned to a
+  # reviewed commit; builds with cargo (Rust >= 1.85). Remove the trial by reverting its commit.
+  if ! herdr plugin list 2>/dev/null | grep -q herdr-fingers; then
+    if command -v cargo >/dev/null 2>&1; then
+      echo "==> Installing herdr plugin herdr-fingers (cargo build, a minute or two)"
+      herdr plugin install nathan-poncet/herdr-fingers --ref 2d9fc997ce1a95976b975da758dccc7b6e011336 --yes || echo "    (herdr server not running; install later)"
+    else echo "    (skipping herdr-fingers: needs Rust/cargo, https://rustup.rs)"; fi
+  fi
   # Claude Code integration: agent state + session refs via hook (re-run after herdr upgrades)
   if ! herdr integration status 2>/dev/null | grep -i "claude" | grep -qiv "not installed"; then
     echo "==> Installing herdr Claude integration"

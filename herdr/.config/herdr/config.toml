@@ -145,6 +145,14 @@ type = "plugin_action"
 command = "persiyanov.reviewr.toggle"
 description = "review diff"
 
+# ── herdr-fingers (trial): hint-copy from the focused pane ─────────────────────
+# Type a hint to copy it (Shift pastes, Ctrl opens). Copies via OSC 52, which Ghostty accepts.
+[[keys.command]]
+key = "prefix+f"
+type = "plugin_action"
+command = "nathan-poncet.herdr-fingers.start"
+description = "hint copy"
+
 # ── herdr-summarizer tokens ─────────────────────────────────────────────────
 # $summary (pane or space label), $summary_you (the same label, used instead when the session
 # needs you and has an unseen turn, so it renders orange), $stale (untouched a week longer than

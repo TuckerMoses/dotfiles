@@ -430,6 +430,19 @@ check_reviewr_binary() {  # <plugin root>
   else fail "reviewr: $bin does not run as reviewr: $(echo "${out:-no output}" | head -1)"; fi
 }
 
+# herdr-fingers (trial) builds with cargo at install; without the binary prefix+f does nothing.
+# `scan` reads a screen dump on stdin and prints the hints; with HERDR_PLUGIN_CONFIG_DIR unset it
+# uses built-in defaults and writes nothing.
+check_fingers_binary() {  # <plugin root>
+  local bin="$1/target/release/herdr-fingers" out
+  if [[ ! -x "$bin" ]]; then fail "herdr-fingers: $bin missing (the cargo build failed or never ran; reinstall the plugin)"; return; fi
+  out="$("$bin" --version 2>&1)"
+  if [[ "$out" != herdr-fingers* ]]; then fail "herdr-fingers: $bin does not run: $(echo "${out:-no output}" | head -1)"; return; fi
+  out="$(echo "commit 2d9fc997ce1a95976b975da758dccc7b6e011336" | env -u HERDR_PLUGIN_CONFIG_DIR "$bin" scan --width 80 2>&1)"
+  if [[ "$out" == *2d9fc997ce1a* ]]; then pass "herdr-fingers: binary runs and hints a SHA (${out%%$'\t'*})"
+  else fail "herdr-fingers: scan found no hint in a line holding a SHA: $(echo "${out:-no output}" | head -1)"; fi
+}
+
 # reviewr rejects the whole config.toml (and blocks its pane) on an unknown key or a bad value.
 # Keys and values are reviewr's own (src/config.rs, src/theme.rs at the pin in bootstrap.sh).
 check_reviewr_config() {  # <config.toml>
@@ -473,7 +486,9 @@ if have herdr; then
     plugins="$(herdr plugin list 2>/dev/null)"
     for want in $(sed -n 's/.*herdr plugin list.*grep -q \([a-z][a-z0-9.-]*\); then$/\1/p' "$BOOTSTRAP"); do
       line="$(echo "$plugins" | grep -E "^- [^ ]*$want " || true)"
-      if [[ -z "$line" ]]; then fail "plugin $want not installed (run ./bootstrap.sh)"
+      # bootstrap skips herdr-fingers without cargo, so missing it then is expected
+      if [[ -z "$line" && "$want" == herdr-fingers ]] && ! have cargo; then warn "plugin herdr-fingers not installed (needs Rust/cargo: https://rustup.rs, then ./bootstrap.sh)"
+      elif [[ -z "$line" ]]; then fail "plugin $want not installed (run ./bootstrap.sh)"
       elif echo "$line" | grep -q ' enabled '; then pass "plugin $want enabled"
       else fail "plugin $want installed but disabled"; fi
     done
@@ -481,6 +496,8 @@ if have herdr; then
     check_plugin_pins "$pjson"
     root="$(plugin_root "$pjson" persiyanov.reviewr)"
     [[ -n "$root" ]] && check_reviewr_binary "$root"
+    root="$(plugin_root "$pjson" nathan-poncet.herdr-fingers)"
+    [[ -n "$root" ]] && check_fingers_binary "$root"
     if [[ -z "$tomlpy" ]]; then warn "no Python with tomllib (3.11+); key binding and plugin config checks skipped"
     else
       check_bound_plugin_actions "$HOME/.config/herdr/config.toml" "$(herdr plugin action list 2>/dev/null)"
