@@ -72,13 +72,17 @@ if [[ "$(uname)" == "Linux" ]]; then
     fi
   fi
 
+  # fetch <curl args>: a download that gives up on a dead connection (under 1 KB/s for a
+  # minute) and retries, where plain curl would wait on it forever.
+  fetch() { curl -fsSL --retry 5 --connect-timeout 20 --speed-limit 1024 --speed-time 60 "$@"; }
+
   # release_bin <cmd> <url> <sha256|-> <path-in-tarball>: one binary from a .tar.gz
   release_bin() {
     local cmd="$1" url="$2" sum="$3" member="$4" tmp
     command -v "$cmd" &>/dev/null && return 0
     echo "==> Installing $cmd..."
     tmp="$(mktemp -d)"
-    curl -fsSL --retry 3 -o "$tmp/a.tgz" "$url"
+    fetch -o "$tmp/a.tgz" "$url"
     if [[ "$sum" != "-" ]] && [[ "$(sha256sum "$tmp/a.tgz" | awk '{print $1}')" != "$sum" ]]; then
       echo "    $cmd: checksum mismatch for $url" >&2; rm -rf "$tmp"; return 1
     fi
@@ -107,13 +111,13 @@ if [[ "$(uname)" == "Linux" ]]; then
   # Starship (cross-platform installer; -y: no prompt, -b: no sudo)
   if ! command -v starship &>/dev/null; then
     echo "==> Installing starship..."
-    curl -fsSL https://starship.rs/install.sh | sh -s -- -y -b "$LOCAL_BIN" >/dev/null
+    fetch https://starship.rs/install.sh | sh -s -- -y -b "$LOCAL_BIN" >/dev/null
   fi
 
   # Herdr (its installer verifies the release checksum)
   if ! command -v herdr &>/dev/null; then
     echo "==> Installing herdr..."
-    curl -fsSL https://herdr.dev/install.sh | HERDR_INSTALL_DIR="$LOCAL_BIN" sh >/dev/null
+    fetch https://herdr.dev/install.sh | HERDR_INSTALL_DIR="$LOCAL_BIN" sh >/dev/null
   fi
 
   # JetBrains Mono Nerd Font (macOS gets the brew cask)
@@ -123,7 +127,7 @@ if [[ "$(uname)" == "Linux" ]]; then
     font_dir="$HOME/.local/share/fonts/JetBrainsMonoNerdFont"
     mkdir -p "$font_dir"
     tmp="$(mktemp -d)"
-    curl -fsSL --retry 3 -o "$tmp/f.zip" https://github.com/ryanoasis/nerd-fonts/releases/latest/download/JetBrainsMono.zip
+    fetch -o "$tmp/f.zip" https://github.com/ryanoasis/nerd-fonts/releases/latest/download/JetBrainsMono.zip
     unzip -oq "$tmp/f.zip" '*.ttf' -d "$font_dir"
     rm -rf "$tmp"
     fc-cache -f "$font_dir" >/dev/null

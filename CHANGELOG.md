@@ -20,6 +20,7 @@ Queued work lives in `docs/proposals/`.
 - tmux copy mode on Linux uses `wl-copy`, then `xclip`, then tmux's own buffer, where it used to assume `xclip`
 - bootstrap on a machine with no `~/.zshrc`: the Oh My Zsh installer wrote a template there, which made stow abort
 - bootstrap reinstalled the herdr plugins on some re-runs: `herdr plugin list | grep -q` failed under `pipefail` when grep exited first
+- bootstrap's Linux downloads give up on a dead connection (under 1 KB/s for a minute) and retry; plain `curl` waited on one forever, which hung an emulated test guest for six hours
 - bootstrap skips herdr's Claude integration with a hint when `~/.claude` does not exist, and `validate.sh` reports that case as not checked, where both used to fail
 
 ## [2026-11-14]

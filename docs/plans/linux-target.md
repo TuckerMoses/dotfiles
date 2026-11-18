@@ -221,6 +221,11 @@ It cannot run until a PR exists, so it ships untested by this run and the PR say
   file, so the workflow writes one for `report`.
 - In a guest run, the `commit` in `meta` is read when the run starts and the bundle is taken after the guest
   boots. The skill tells the orchestrator not to commit in between; the suite does not enforce it.
+- Two problems surfaced when the orchestrator re-ran the suite on the integration branch. `local` raised macOS
+  "Keychain Not Found" dialogs: under `env -i` git still read Xcode's gitconfig (`credential.helper=osxkeychain`)
+  and the throwaway `$HOME` has no keychain; `local` now sets `GIT_CONFIG_NOSYSTEM=1` and an empty helper. And an
+  emulated guest hung for six hours in a `curl` with no stall timeout; bootstrap's Linux downloads now go
+  through `fetch`, which gives up under 1 KB/s for a minute and retries.
 - The throwaway `$HOME` must be at most 72 characters long (macOS limits unix socket paths to 104 bytes); the
   suite exits 3 otherwise.
 - `nvim/.config/nvim/lazy-lock.json` on `master` is stale (lazy.nvim rewrites it on first install), which
