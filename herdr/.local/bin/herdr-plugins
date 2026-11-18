@@ -78,6 +78,19 @@ upstream_head() {  # <owner/repo>
   GIT_TERMINAL_PROMPT=0 git ls-remote "https://github.com/$1" HEAD 2>/dev/null | awk '{ print $1; exit }'
 }
 
+# Whether <sha> belongs to the upstream repo itself: an ancestor of (or equal to) the default
+# branch, or the commit a tag points at. GitHub's commits/<sha> also resolves commits that exist
+# only in a fork (an unmerged pull request), so resolving is not enough.
+upstream_commit() {  # <owner/repo> <full sha>
+  local branch st
+  branch="$(gh api "repos/$1" --jq .default_branch 2>/dev/null)" || return 1
+  [[ "$branch" =~ ^[A-Za-z0-9._/-]+$ ]] || return 1
+  st="$(gh api "repos/$1/compare/$2...$branch" --jq .status 2>/dev/null || true)"
+  case "$st" in ahead|identical) return 0 ;; esac   # the branch is ahead of (contains) <sha>
+  GIT_TERMINAL_PROMPT=0 git ls-remote --tags "https://github.com/$1" 2>/dev/null |
+    awk -v s="$2" '$1 == s { found = 1 } END { exit !found }'
+}
+
 # "<ahead_by> <status>" of <head> relative to <pin>, via the GitHub compare API.
 behind_by() {  # <owner/repo> <pin> <head>
   have gh || return 1
@@ -705,6 +718,10 @@ cmd_update() {
       head="$(gh api "repos/$repo/commits/$want" --jq .sha 2>/dev/null || true)"
       [[ "$head" =~ ^[0-9a-f]{40}$ ]] || head=""
       if [[ -z "$head" ]]; then echo "$repo: could not resolve $want; skipped"; failed="$failed $repo"; continue; fi
+      if ! upstream_commit "$repo" "$head"; then
+        echo "$repo: ${head:0:7} is not on the upstream default branch and no tag points at it (GitHub also resolves commits that exist only in forks); skipped"
+        failed="$failed $repo"; continue
+      fi
     else head="$(upstream_head "$repo")"; fi
     if [[ -z "$head" ]]; then echo "$repo: could not read upstream HEAD; skipped"; failed="$failed $repo"; continue; fi
     if [[ "$head" == "$pin"* ]]; then echo "$repo: ${want:+$want is }up to date at ${pin:0:7}"; continue; fi
