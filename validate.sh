@@ -398,6 +398,73 @@ PY
   emit "herdr-plus" <<<"$out"
 }
 
+# Install root herdr runs a plugin from, from `herdr plugin list --json`; empty when not installed.
+plugin_root() {  # <plugin list JSON> <plugin id>
+  /usr/bin/python3 -c 'import json, sys
+for p in json.loads(sys.argv[1])["result"]["plugins"]:
+    if p.get("plugin_id") == sys.argv[2]: print(p.get("plugin_root", ""))' "$1" "$2" 2>/dev/null
+}
+
+# A plugin bootstrap.sh installs with --ref was reviewed at that commit; `herdr plugin update`
+# moves it past the review. Not installed is skipped: the install check above reports that.
+check_plugin_pins() {  # <plugin list JSON>
+  local repo ref got
+  while read -r repo ref; do
+    got="$(/usr/bin/python3 -c 'import json, sys
+for p in json.loads(sys.argv[1])["result"]["plugins"]:
+    s = p.get("source", {})
+    if "%s/%s" % (s.get("owner"), s.get("repo")) == sys.argv[2]: print(s.get("resolved_commit", "?"))' "$1" "$repo" 2>/dev/null)"
+    [[ -z "$got" ]] && continue
+    if [[ "$got" == "$ref"* ]]; then pass "plugin $repo at its pinned commit ${ref:0:7}"
+    else warn "plugin $repo is at ${got:0:7}, bootstrap.sh pins ${ref:0:7}: review the new commits and bump the pin, or reinstall at the pin"; fi
+  done < <(sed -n 's/.*herdr plugin install \([^ ]*\) --ref \([0-9a-f]\{7,40\}\).*/\1 \2/p' "$BOOTSTRAP")
+}
+
+# reviewr: its build step downloads a release binary, so a failed download leaves the key dead.
+# `--action <unknown>` makes the binary answer without reading config, herdr or the repo.
+check_reviewr_binary() {  # <plugin root>
+  local bin="$1/bin/herdr-reviewr" out
+  if [[ ! -x "$bin" ]]; then fail "reviewr: $bin missing (its build step's download failed; reinstall the plugin)"; return; fi
+  out="$(env -u HERDR_REVIEW_LOG "$bin" --action validate-probe 2>&1)"
+  if [[ "$out" == *"unknown action"* ]]; then pass "reviewr: binary runs"
+  else fail "reviewr: $bin does not run as reviewr: $(echo "${out:-no output}" | head -1)"; fi
+}
+
+# reviewr rejects the whole config.toml (and blocks its pane) on an unknown key or a bad value.
+# Keys and values are reviewr's own (src/config.rs, src/theme.rs at the pin in bootstrap.sh).
+check_reviewr_config() {  # <config.toml>
+  local out
+  out="$("$tomlpy" - "$1" 2>&1 <<'PY'
+import os, sys, tomllib
+path = sys.argv[1]
+if not os.path.exists(path):
+    print(f"FAIL reviewr: {path} missing (stow the herdr package)"); sys.exit()
+try:
+    with open(path, "rb") as f:
+        cfg = tomllib.load(f)
+except Exception as e:
+    print(f"FAIL reviewr: config.toml does not parse: {e}"); sys.exit()
+keys = {"theme", "default_scope", "markdown_view", "diff_view", "navigator_position", "toggle_placement",
+        "toggle_direction", "auto_open", "follow_file_across_tabs", "scrolloff", "github_host", "gitlab_host",
+        "azure_devops_host", "editor", "url_opener", "review_prefix", "keybindings"}
+themes = {"catppuccin", "catppuccin-frappe", "catppuccin-macchiato", "catppuccin-latte", "tokyo-night",
+          "tokyo-night-day", "dracula", "nord", "gruvbox", "gruvbox-light", "one-dark", "one-light", "solarized",
+          "solarized-light", "monokai", "rose-pine", "rose-pine-dawn", "ayu", "everforest", "github-light"}
+values = {"theme": themes, "default_scope": {"uncommitted", "branch", "last-turn"},
+          "toggle_placement": {"split", "overlay", "zoomed", "tab"}, "toggle_direction": {"right", "down"}}
+bad = [f"unknown key {k}" for k in cfg if k not in keys]
+bad += [f"{k} = {cfg[k]!r} (one of {', '.join(sorted(v))})" for k, v in values.items() if k in cfg and cfg[k] not in v]
+if cfg.get("auto_open", True) is not False:
+    bad.append("auto_open must be false (a reviewr pane would open in every new worktree)")
+for b in bad:
+    print(f"FAIL reviewr: config.toml: {b}")
+if not bad:
+    print("PASS reviewr: config.toml valid, auto_open off")
+PY
+)"
+  emit "reviewr config" <<<"$out"
+}
+
 if have herdr; then
   out="$(herdr config check 2>&1)"
   if echo "$out" | grep -q 'config: ok'; then pass "config.toml valid"; else fail "config.toml: $(echo "$out" | tail -2 | tr '\n' ' ')"; fi
@@ -410,10 +477,15 @@ if have herdr; then
       elif echo "$line" | grep -q ' enabled '; then pass "plugin $want enabled"
       else fail "plugin $want installed but disabled"; fi
     done
+    pjson="$(herdr plugin list --json 2>/dev/null)"
+    check_plugin_pins "$pjson"
+    root="$(plugin_root "$pjson" persiyanov.reviewr)"
+    [[ -n "$root" ]] && check_reviewr_binary "$root"
     if [[ -z "$tomlpy" ]]; then warn "no Python with tomllib (3.11+); key binding and plugin config checks skipped"
     else
       check_bound_plugin_actions "$HOME/.config/herdr/config.toml" "$(herdr plugin action list 2>/dev/null)"
       if echo "$plugins" | grep -q '^- cloudmanic.herdr-plus '; then check_herdr_plus_config "$(plugin_config_dir cloudmanic.herdr-plus)"; fi
+      check_reviewr_config "$(plugin_config_dir persiyanov.reviewr)/config.toml"
     fi
     out="$(herdr integration status 2>&1 | grep -i claude || true)"
     if [[ -z "$out" ]] || echo "$out" | grep -qi 'not installed'; then fail "Claude integration not installed (herdr integration install claude)"

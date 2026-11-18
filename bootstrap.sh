@@ -119,6 +119,12 @@ if command -v herdr >/dev/null 2>&1; then
     echo "==> Installing herdr plugin herdr-plus"
     herdr plugin install cloudmanic/herdr-plus --yes || echo "    (herdr server not running; install later)"
   fi
+  # herdr-reviewr: review an agent's diff, send line comments back (prefix+alt+r). Pinned to a
+  # reviewed commit (v0.52.2): its build step downloads a release binary, so read the diff before bumping.
+  if ! herdr plugin list 2>/dev/null | grep -q persiyanov.reviewr; then
+    echo "==> Installing herdr plugin herdr-reviewr"
+    herdr plugin install persiyanov/herdr-reviewr --ref bb71050caa5d3a0b1a414527783eb7a772447f9f --yes || echo "    (herdr server not running; install later)"
+  fi
   # Claude Code integration: agent state + session refs via hook (re-run after herdr upgrades)
   if ! herdr integration status 2>/dev/null | grep -i "claude" | grep -qiv "not installed"; then
     echo "==> Installing herdr Claude integration"

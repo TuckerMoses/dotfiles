@@ -137,6 +137,14 @@ type = "plugin_action"
 command = "cloudmanic.herdr-plus.quick-actions"
 description = "quick actions"
 
+# ── herdr-reviewr: the agent's diff beside it, line comments sent to its input ──
+# Settings: plugins/config/persiyanov.reviewr/config.toml in this package. Same alt family as the popups.
+[[keys.command]]
+key = "prefix+alt+r"
+type = "plugin_action"
+command = "persiyanov.reviewr.toggle"
+description = "review diff"
+
 # ── herdr-summarizer tokens ─────────────────────────────────────────────────
 # $summary (pane or space label), $summary_you (the same label, used instead when the session
 # needs you and has an unseen turn, so it renders orange), $stale (untouched a week longer than
