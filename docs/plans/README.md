@@ -14,6 +14,10 @@ writes a plan for each one at the moment it executes it, then deletes the propos
 | [neovim-claude-sync](neovim-claude-sync.md) | `done` | Keep Neovim in sync with Claude Code file changes (3 tiers) |
 | [tmux-session-persistence](tmux-session-persistence.md) | `done` | Persist tmux sessions across reboots with resurrect + continuum |
 | [claude-context-management](claude-context-management.md) | `done` | Global CLAUDE.md via Stow so every Claude Code session has context |
+| [herdr-plus-wire-up](herdr-plus-wire-up.md) | `done` | herdr-plus project templates, worktree layouts and quick actions; `prefix+t`, `prefix+space` |
+| [herdr-reviewr](herdr-reviewr.md) | `done` | Review an agent's diff and send line comments back (`prefix+alt+r`), pinned |
+| [herdr-fingers-trial](herdr-fingers-trial.md) | `done` | Trial: hint-copy paths, SHAs and URLs from a pane (`prefix+f`), pinned |
+| [herdr-jj-status-token](herdr-jj-status-token.md) | `done` | `$jj_status` in the spaces sidebar row for jj repos |
 
 ## Running the queue
 
