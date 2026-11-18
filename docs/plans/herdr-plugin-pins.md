@@ -91,3 +91,16 @@ Automatic scheduled checks; updating herdr itself; the local herdr-summarizer pl
   single-line `[[build]]` `command` arrays only, which covers all four plugins today; a multi-line array would be
   missed.
 - `validate.sh` checks that the `herdr-plugins` on PATH is this checkout's and reads this checkout's `bootstrap.sh`.
+- Hardened after an automated security review (2026-11-18):
+  - The manifest and every build file are diffed from their contents at both commits. They are no longer taken from
+    the compare API's file list, which can be truncated or leave out patches.
+  - Scripts the build ran at the old pin are diffed as well.
+  - Build-adjacent paths always get full patches: `build.rs`, `Makefile`, `justfile`, `*.sh`/`*.ps1`, and anything
+    under `scripts/`, `build/` or `herdr/`.
+  - A review is marked incomplete in any of these cases: the commit or file list is truncated, a tree is truncated,
+    a patch is missing, the manifest doesn't parse, or the build steps were read without `tomllib` (the line parser
+    is only a fallback now). An incomplete review exits 3, and `update` refuses to pin unless
+    `HERDR_PLUGINS_INCOMPLETE_OK=1` is set.
+  - Both refs are resolved to full SHAs first, because the contents API 404s on a short SHA.
+  - Control characters are removed from everything GitHub returns before it is printed, and the pager runs without
+    `-R`.

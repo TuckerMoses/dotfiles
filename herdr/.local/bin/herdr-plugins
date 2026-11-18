@@ -23,6 +23,11 @@ done
 REPO="$(cd "$(dirname "$self")/../../.." && pwd)"
 BOOTSTRAP="$REPO/bootstrap.sh"
 PY=/usr/bin/python3; [[ -x "$PY" ]] || PY=python3
+# review parses manifests with a real TOML parser when one exists (Python 3.11+ tomllib)
+TOMLPY=""
+for p in python3.14 python3.13 python3.12 python3.11 python3 /usr/bin/python3; do
+  if command -v "$p" >/dev/null 2>&1 && "$p" -c 'import tomllib' 2>/dev/null; then TOMLPY="$(command -v "$p")"; break; fi
+done
 
 die() { echo "herdr-plugins: $*" >&2; exit 2; }
 have() { command -v "$1" >/dev/null 2>&1; }
@@ -133,10 +138,17 @@ cmd_check() {
 # Prints the commits pin..target, then the full diff of herdr-plugin.toml and of every file the
 # manifest's macOS/Linux [[build]] commands run (and scripts those run with sh/bash/source),
 # resolved at target, then Cargo/Go dependency files as a stat.
-review_text() {  # <owner/repo> <pin> <target>
-  "$PY" - "$1" "$2" "$3" <<'PY'
-import json, re, subprocess, sys
+review_text() {  # <owner/repo> <pin> <target>; exits 3 when the review is incomplete
+  "${TOMLPY:-$PY}" - "$1" "$2" "$3" <<'PY'
+import builtins, difflib, json, re, subprocess, sys
 repo, pin, target = sys.argv[1:4]
+incomplete = []  # reasons the review cannot be trusted as complete
+
+# Everything printed comes from GitHub (commit messages, file names, patches): drop control
+# characters so it cannot drive the terminal (keeps newlines and tabs).
+CTRL = re.compile(r'[\x00-\x08\x0b-\x1f\x7f-\x9f]')
+def print(*a, **k):
+    builtins.print(*(CTRL.sub("?", str(x)) for x in a), **k)
 
 def gh(path, raw=False):
     cmd = ["gh", "api", path]
@@ -148,7 +160,21 @@ def gh(path, raw=False):
     return r.stdout if raw else json.loads(r.stdout)
 
 def builds(manifest):
-    """[[build]] command lists for macOS/Linux, from a manifest's text (no tomllib needed)."""
+    """[[build]] command lists for macOS/Linux. tomllib when available; otherwise a line parser
+    that handles single-line arrays only, and marks the review incomplete when it may miss one."""
+    try:
+        import tomllib
+    except ImportError:
+        tomllib = None
+    if tomllib:
+        try:
+            out = tomllib.loads(manifest).get("build", [])
+        except Exception as e:
+            incomplete.append("manifest does not parse as TOML (%s)" % e)
+            out = []
+        return [b.get("command", []) for b in out
+                if not b.get("platforms") or set(b["platforms"]) & {"macos", "linux"}]
+    incomplete.append("no Python with tomllib: [[build]] steps read by a line parser")
     out, cur, table = [], None, None
     for line in manifest.splitlines():
         s = line.strip()
@@ -159,6 +185,8 @@ def builds(manifest):
             continue
         if table != "[[build]]":
             continue
+        if re.match(r'(command|platforms)\s*=\s*\[[^\]]*$', s):
+            incomplete.append("a multi-line [[build]] array the line parser cannot read")
         m = re.match(r'(command|platforms)\s*=\s*(\[.*\])\s*(#.*)?$', s)
         if m:
             try:
@@ -170,28 +198,57 @@ def builds(manifest):
     return [b.get("command", []) for b in out
             if not b.get("platforms") or set(b["platforms"]) & {"macos", "linux"}]
 
-cmp = gh("repos/%s/compare/%s...%s" % (repo, pin, target))
-tree = {t["path"] for t in gh("repos/%s/git/trees/%s?recursive=1" % (repo, target))["tree"] if t["type"] == "blob"}
-manifest = gh("repos/%s/contents/herdr-plugin.toml?ref=%s" % (repo, target), raw=True)
+def content(path, ref):
+    """A file's text at ref, or None when it does not exist there."""
+    r = subprocess.run(["gh", "api", "-H", "Accept: application/vnd.github.raw",
+                        "repos/%s/contents/%s?ref=%s" % (repo, path, ref)],
+                       stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+    if r.returncode == 0:
+        return r.stdout
+    if "404" in r.stderr or "Not Found" in r.stderr:
+        return None
+    sys.exit("herdr-plugins: reading %s at %s failed: %s" % (path, ref[:7], r.stderr.strip()))
 
-# Files the build runs: command words that are files in the tree, then scripts those run.
-steps = builds(manifest)
-todo = [w for cmd in steps for w in cmd]
-scripts, seen = [], set()
-while todo:
-    w = todo.pop(0)
-    while w.startswith("./"):
-        w = w[2:]
-    if w in seen or w not in tree:
-        continue
-    seen.add(w)
-    scripts.append(w)
-    body = gh("repos/%s/contents/%s?ref=%s" % (repo, w, target), raw=True)
-    for m in re.finditer(r'(?:\b(?:sh|bash|source)\s+|^\s*\.\s+)"?(?:\./)?([\w./-]+)', body, re.M):
-        todo.append(m.group(1))
-    todo += re.findall(r'[\w./-]+\.(?:sh|bash)\b', body)
+def blobs(ref):
+    t = gh("repos/%s/git/trees/%s?recursive=1" % (repo, ref))
+    if t.get("truncated"):
+        incomplete.append("the file tree at %s is truncated" % ref[:7])
+    return {e["path"] for e in t["tree"] if e["type"] == "blob"}
+
+def build_files(ref, tree):
+    """Files the build runs at ref: command words that are files in the tree, then scripts those run."""
+    manifest = content("herdr-plugin.toml", ref) or ""
+    steps = builds(manifest)
+    todo = [w for cmd in steps for w in cmd]
+    found, seen = [], set()
+    while todo:
+        w = todo.pop(0)
+        while w.startswith("./"):
+            w = w[2:]
+        if w in seen or w not in tree:
+            continue
+        seen.add(w)
+        found.append(w)
+        body = content(w, ref) or ""
+        for m in re.finditer(r'(?:\b(?:sh|bash|source)\s+|^\s*\.\s+)"?(?:\./)?([\w./-]+)', body, re.M):
+            todo.append(m.group(1))
+        todo += re.findall(r'[\w./-]+\.(?:sh|bash)\b', body)
+    return steps, found
+
+# Full SHAs first: the contents API does not resolve a short SHA, and a 404 there would read as
+# "file absent".
+pin, target = (gh("repos/%s/commits/%s" % (repo, r))["sha"] for r in (pin, target))
+cmp = gh("repos/%s/compare/%s...%s" % (repo, pin, target))
+steps, scripts = build_files(target, blobs(target))
+_, old_scripts = build_files(pin, blobs(pin))
+scripts += [s for s in old_scripts if s not in scripts]  # a script the build stopped running is a change too
+seen = set(scripts)
 
 files = {f["filename"]: f for f in cmp.get("files", [])}
+if len(cmp.get("files", [])) >= 300:
+    incomplete.append("the compare API lists at most 300 changed files")
+# Build-adjacent paths get full patches even when the manifest does not name them.
+SUSPECT = re.compile(r'(^|/)(build\.rs|Makefile|justfile|[^/]*\.(sh|bash|ps1))$|^(scripts|build|herdr)/')
 deps = {"Cargo.toml", "Cargo.lock", "go.mod", "go.sum"}
 print("%s  %s -> %s  (%s, %d commits)" % (repo, pin[:7], target[:7], cmp["status"], cmp["ahead_by"]))
 print("https://github.com/%s/compare/%s...%s" % (repo, pin[:12], target[:12]))
@@ -205,21 +262,34 @@ if not cmp.get("commits"):
     print("  (none)")
 elif len(cmp["commits"]) < cmp["ahead_by"]:
     print("  (the API lists %d of %d; see the compare page)" % (len(cmp["commits"]), cmp["ahead_by"]))
+    incomplete.append("the compare API lists %d of %d commits" % (len(cmp["commits"]), cmp["ahead_by"]))
 print("\n── install-time code at %s ──" % target[:7])
 for cmd in steps:
     print("  [[build]] %s" % " ".join(cmd))
 if not steps:
     print("  no [[build]] step for macOS/Linux")
 print("  files it runs: %s" % (", ".join(scripts) or "none from the repo (dependencies below)"))
+# Diffed from the files themselves at both commits, not from the compare API's file list,
+# which can be truncated or omit patches.
 for path in ["herdr-plugin.toml"] + scripts:
-    f = files.get(path)
-    if f is None:
+    old, new = content(path, pin), content(path, target)
+    if old == new:
         print("\n%s: unchanged" % path)
-    elif "patch" not in f:
-        print("\n%s: %s, +%d -%d (no patch from the API; see the compare page)" % (path, f["status"], f["additions"], f["deletions"]))
-    else:
-        print("\n--- %s (%s, +%d -%d)" % (path, f["status"], f["additions"], f["deletions"]))
+        continue
+    d = list(difflib.unified_diff((old or "").splitlines(), (new or "").splitlines(),
+                                  "%s@%s" % (path, pin[:7]), "%s@%s" % (path, target[:7]), lineterm=""))
+    print("\n--- %s (%s)" % (path, "added" if old is None else "removed" if new is None else "changed"))
+    print("\n".join(d))
+for n, f in sorted(files.items()):
+    if n in seen or n == "herdr-plugin.toml" or not SUSPECT.search(n):
+        continue
+    seen.add(n)
+    print("\n--- %s (%s, +%d -%d; build-adjacent, not run by the manifest)" % (n, f["status"], f["additions"], f["deletions"]))
+    if "patch" in f:
         print(f["patch"])
+    else:
+        print("(no patch from the API)")
+        incomplete.append("no patch for %s" % n)
 print("\n── dependencies ──")
 dep = [f for n, f in files.items() if n.rsplit("/", 1)[-1] in deps]
 for f in dep:
@@ -230,12 +300,15 @@ rest = [f for n, f in files.items() if n not in seen and n != "herdr-plugin.toml
 print("\n── other files: %d changed (+%d -%d) ──" % (len(rest), sum(f["additions"] for f in rest), sum(f["deletions"] for f in rest)))
 for f in rest:
     print("  %-50s +%d -%d" % (f["filename"], f["additions"], f["deletions"]))
-if len(cmp.get("files", [])) >= 300:
-    print("  (the API lists at most 300 files; see the compare page)")
+if incomplete:
+    print("\n!! INCOMPLETE REVIEW: %s." % "; ".join(incomplete))
+    print("!! Read the compare page above before pinning. update refuses to pin unless HERDR_PLUGINS_INCOMPLETE_OK=1.")
+    sys.exit(3)
 PY
 }
 
-page() { if [[ -t 1 ]]; then ${PAGER:-less -FRX}; else cat; fi; }
+# Output is already free of control characters; no -R, so less shows anything left as text.
+page() { if [[ -t 1 ]]; then less -FX; else cat; fi; }
 
 cmd_review() {
   [[ $# -ge 1 ]] || die "usage: herdr-plugins review <plugin> [<sha>]"
@@ -262,7 +335,7 @@ set_pin() {  # <owner/repo> <old sha> <new sha>: rewrite exactly one line of boo
 
 cmd_update() {
   have gh || die "update needs the GitHub CLI (gh) to show what changed"
-  local inst repo pin head targets="" t id tool ans moved="" failed=""
+  local inst repo pin head targets="" t id tool ans moved="" failed="" rrc
   inst="$(installed)" || { inst=""; echo "(herdr plugin list failed; nothing will be reinstalled)" >&2; }
   if [[ $# -eq 0 ]]; then
     while read -r repo pin; do targets="$targets $repo"; done < <(pins)
@@ -275,7 +348,11 @@ cmd_update() {
     if [[ -z "$head" ]]; then echo "$repo: could not read upstream HEAD; skipped"; continue; fi
     if [[ "$head" == "$pin"* ]]; then echo "$repo: up to date at ${pin:0:7}"; continue; fi
     echo
-    if ! review_text "$repo" "$pin" "$head" | page; then echo "$repo: review failed; skipped"; failed="$failed $repo"; continue; fi
+    rrc=0; review_text "$repo" "$pin" "$head" | page || rrc=$?
+    if (( rrc == 3 )) && [[ "${HERDR_PLUGINS_INCOMPLETE_OK:-}" != 1 ]]; then
+      echo "$repo: review incomplete (see above); left at ${pin:0:7}. After reading the compare page: HERDR_PLUGINS_INCOMPLETE_OK=1 herdr-plugins update ${repo#*/}"
+      failed="$failed $repo"; continue
+    elif (( rrc != 0 && rrc != 3 )); then echo "$repo: review failed; skipped"; failed="$failed $repo"; continue; fi
     echo
     printf 'Pin %s at %s? [y/N] ' "$repo" "${head:0:7}"
     read -r ans || ans=""
