@@ -99,7 +99,7 @@ for pkg in tmux zsh ghostty starship nvim atuin; do
 done
 
 # herdr: --no-folding because ~/.config/herdr also holds sockets, logs and session state
-# that must stay real files, so only config.toml is linked.
+# that must stay real files, so only the package's own files (config.toml, plugin configs) are linked.
 if [[ -d "$DOTFILES_DIR/herdr" ]]; then
   echo "    stowing herdr (--no-folding)"
   mkdir -p "$HOME/.config/herdr"
@@ -113,7 +113,8 @@ if command -v herdr >/dev/null 2>&1; then
     echo "==> Installing herdr plugin vim-herdr-navigation"
     herdr plugin install paulbkim-dev/vim-herdr-navigation --yes || echo "    (herdr server not running; install later)"
   fi
-  # herdr-plus: per-worktree layouts and quick actions
+  # herdr-plus: project templates, worktree layouts and quick actions (prefix+t, prefix+space);
+  # its config is stowed by the herdr package into ~/.config/herdr/plugins/config/cloudmanic.herdr-plus/
   if ! herdr plugin list 2>/dev/null | grep -q herdr-plus; then
     echo "==> Installing herdr plugin herdr-plus"
     herdr plugin install cloudmanic/herdr-plus --yes || echo "    (herdr server not running; install later)"
