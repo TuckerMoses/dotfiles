@@ -406,18 +406,40 @@ for p in json.loads(sys.argv[1])["result"]["plugins"]:
 }
 
 # A plugin bootstrap.sh installs with --ref was reviewed at that commit; `herdr plugin update`
-# moves it past the review. Not installed is skipped: the install check above reports that.
-check_plugin_pins() {  # <plugin list JSON>
-  local repo ref got
-  while read -r repo ref; do
-    got="$(/usr/bin/python3 -c 'import json, sys
-for p in json.loads(sys.argv[1])["result"]["plugins"]:
-    s = p.get("source", {})
-    if "%s/%s" % (s.get("owner"), s.get("repo")) == sys.argv[2]: print(s.get("resolved_commit", "?"))' "$1" "$repo" 2>/dev/null)"
-    [[ -z "$got" ]] && continue
-    if [[ "$got" == "$ref"* ]]; then pass "plugin $repo at its pinned commit ${ref:0:7}"
-    else warn "plugin $repo is at ${got:0:7}, bootstrap.sh pins ${ref:0:7}: review the new commits and bump the pin, or reinstall at the pin"; fi
-  done < <(sed -n 's/.*herdr plugin install \([^ ]*\) --ref \([0-9a-f]\{7,40\}\).*/\1 \2/p' "$BOOTSTRAP")
+# moves it past the review. The pin logic is herdr-plugins' own (its `check` is offline and reads
+# the pins from the bootstrap.sh it is linked from). Not installed is skipped: the install check
+# above reports that.
+check_plugin_pins() {
+  local out rc kind repo rest got
+  if ! have herdr-plugins; then fail "herdr-plugins not on PATH (stow the herdr package); plugin pins not checked"; return; fi
+  out="$(herdr-plugins check 2>&1)"; rc=$?
+  while read -r kind repo rest; do
+    case "$kind" in
+      ok) pass "plugin $repo at its pinned commit ${rest##* }" ;;
+      drift) got="${rest#at }"; got="${got%%,*}"
+        warn "plugin $repo is at $got, bootstrap.sh pins ${rest##* }: review the new commits and move the pin (herdr-plugins update ${repo#*/}), or reinstall at the pin" ;;
+    esac
+  done <<<"$out"
+  if (( rc > 1 )); then fail "herdr-plugins check: $(echo "$out" | tail -1)"; fi
+}
+
+# The tool bootstrap.sh requires before installing a plugin: an `if command -v <tool>` right after
+# that plugin's `herdr plugin list ... grep -q <name>; then` line (fingers: cargo, herdr-plus: go).
+plugin_needs() {  # <name from the grep -q>
+  awk -v w="$1" 'f { if (match($0, /if command -v [A-Za-z0-9_.-]+/)) print substr($0, RSTART + 14, RLENGTH - 14); exit }
+    index($0, "grep -q " w "; then") { f = 1 }' "$BOOTSTRAP"
+}
+
+# herdr-plugins (stowed to ~/.local/bin) must be the one on PATH and run from this checkout.
+check_herdr_plugins_cmd() {
+  local hp out
+  if ! hp="$(command -v herdr-plugins)"; then fail "herdr-plugins not on PATH (stow the herdr package; is ~/.local/bin on PATH?)"; return; fi
+  if [[ "$(real "$hp")" != "$(real "$DOTFILES_DIR/herdr/.local/bin/herdr-plugins")" ]]; then
+    fail "herdr-plugins on PATH ($hp) is not this checkout's (stow the herdr package)"; return; fi
+  out="$(herdr-plugins help 2>&1)"
+  local from; from="$(echo "$out" | sed -n 's/^Pins are read from //p')"
+  if [[ -n "$from" && "$(real "$from")" == "$(real "$BOOTSTRAP")" ]]; then pass "herdr-plugins on PATH, reads pins from this checkout"
+  else fail "herdr-plugins help: $(echo "${out:-no output}" | tail -1)"; fi
 }
 
 # reviewr: its build step downloads a release binary, so a failed download leaves the key dead.
@@ -478,6 +500,7 @@ PY
   emit "reviewr config" <<<"$out"
 }
 
+check_herdr_plugins_cmd
 if have herdr; then
   out="$(herdr config check 2>&1)"
   if echo "$out" | grep -q 'config: ok'; then pass "config.toml valid"; else fail "config.toml: $(echo "$out" | tail -2 | tr '\n' ' ')"; fi
@@ -486,14 +509,15 @@ if have herdr; then
     plugins="$(herdr plugin list 2>/dev/null)"
     for want in $(sed -n 's/.*herdr plugin list.*grep -q \([a-z][a-z0-9.-]*\); then$/\1/p' "$BOOTSTRAP"); do
       line="$(echo "$plugins" | grep -E "^- [^ ]*$want " || true)"
-      # bootstrap skips herdr-fingers without cargo, so missing it then is expected
-      if [[ -z "$line" && "$want" == herdr-fingers ]] && ! have cargo; then warn "plugin herdr-fingers not installed (needs Rust/cargo: https://rustup.rs, then ./bootstrap.sh)"
+      # bootstrap skips a plugin whose build tool is missing, so missing it then is expected
+      need="$(plugin_needs "$want")"
+      if [[ -z "$line" && -n "$need" ]] && ! have "$need"; then warn "plugin $want not installed (bootstrap.sh skips it without $need on PATH; install $need, then ./bootstrap.sh)"
       elif [[ -z "$line" ]]; then fail "plugin $want not installed (run ./bootstrap.sh)"
       elif echo "$line" | grep -q ' enabled '; then pass "plugin $want enabled"
       else fail "plugin $want installed but disabled"; fi
     done
     pjson="$(herdr plugin list --json 2>/dev/null)"
-    check_plugin_pins "$pjson"
+    check_plugin_pins
     root="$(plugin_root "$pjson" persiyanov.reviewr)"
     [[ -n "$root" ]] && check_reviewr_binary "$root"
     root="$(plugin_root "$pjson" nathan-poncet.herdr-fingers)"

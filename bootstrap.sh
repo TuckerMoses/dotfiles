@@ -107,17 +107,23 @@ if [[ -d "$DOTFILES_DIR/herdr" ]]; then
 fi
 
 # ── Herdr plugins ────────────────────────────────────────────────────────────
+# Every third-party plugin is pinned with --ref to a reviewed commit; these --ref lines are the
+# only record of the pins. Move them with `herdr-plugins update` (herdr/.local/bin/herdr-plugins),
+# which shows what changed in the install-time code first; `herdr plugin update` skips that review.
 # vim-herdr-navigation: ctrl+h/j/k/l across panes, vim-split-aware (needs jq)
 if command -v herdr >/dev/null 2>&1; then
   if ! herdr plugin list 2>/dev/null | grep -q vim-herdr-navigation; then
     echo "==> Installing herdr plugin vim-herdr-navigation"
-    herdr plugin install paulbkim-dev/vim-herdr-navigation --yes || echo "    (herdr server not running; install later)"
+    herdr plugin install paulbkim-dev/vim-herdr-navigation --ref 7873100eb47212269005c693effb2a844986b30f --yes || echo "    (herdr server not running; install later)"
   fi
   # herdr-plus: project templates, worktree layouts and quick actions (prefix+t, prefix+space);
   # its config is stowed by the herdr package into ~/.config/herdr/plugins/config/cloudmanic.herdr-plus/
+  # Needs Go: without it, its build step downloads the latest release binary instead of building the pin.
   if ! herdr plugin list 2>/dev/null | grep -q herdr-plus; then
-    echo "==> Installing herdr plugin herdr-plus"
-    herdr plugin install cloudmanic/herdr-plus --yes || echo "    (herdr server not running; install later)"
+    if command -v go >/dev/null 2>&1; then
+      echo "==> Installing herdr plugin herdr-plus (go build)"
+      herdr plugin install cloudmanic/herdr-plus --ref f38df3570bea8f7ca71dc1ba11bce3b123d14402 --yes || echo "    (herdr server not running; install later)"
+    else echo "    (skipping herdr-plus: needs Go to build the pinned source, https://go.dev/dl)"; fi
   fi
   # herdr-reviewr: review an agent's diff, send line comments back (prefix+alt+r). Pinned to a
   # reviewed commit (v0.52.2): its build step downloads a release binary, so read the diff before bumping.
