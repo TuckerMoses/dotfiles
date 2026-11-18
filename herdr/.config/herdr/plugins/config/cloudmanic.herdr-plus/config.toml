@@ -1,0 +1,8 @@
+# herdr-plus settings — stowed from ~/dotfiles/herdr. Read fresh each time a picker opens.
+# Both pickers float over the layout (like the lazygit/lazyjj popups) instead of zooming.
+
+[projects]
+placement = "popup"        # prefix+t
+
+[quick_actions]
+placement = "popup"        # prefix+space

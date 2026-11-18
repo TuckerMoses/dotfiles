@@ -1,0 +1,5 @@
+# herdr-plus quick action (prefix+space) — stowed from ~/dotfiles/herdr.
+name = "Reload herdr config"
+description = "herdr server reload-config (same as prefix+shift+r)"
+type = "command"
+command = "\"${HERDR_BIN_PATH:-herdr}\" server reload-config"

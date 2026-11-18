@@ -1,0 +1,6 @@
+# herdr-plus quick action (prefix+space) — stowed from ~/dotfiles/herdr.
+# The picker pane closes when the command exits, so it waits for enter to keep the report up.
+name = "Validate dotfiles"
+description = "validate.sh -q: warnings and failures only"
+type = "command"
+command = "\"$HOME/dotfiles/validate.sh\" -q; printf '\\n(enter closes) '; read -r _ </dev/tty"

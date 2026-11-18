@@ -99,7 +99,7 @@ for pkg in tmux zsh ghostty starship nvim atuin; do
 done
 
 # herdr: --no-folding because ~/.config/herdr also holds sockets, logs and session state
-# that must stay real files, so only config.toml is linked.
+# that must stay real files, so only the package's own files (config.toml, plugin configs) are linked.
 if [[ -d "$DOTFILES_DIR/herdr" ]]; then
   echo "    stowing herdr (--no-folding)"
   mkdir -p "$HOME/.config/herdr"
@@ -113,10 +113,25 @@ if command -v herdr >/dev/null 2>&1; then
     echo "==> Installing herdr plugin vim-herdr-navigation"
     herdr plugin install paulbkim-dev/vim-herdr-navigation --yes || echo "    (herdr server not running; install later)"
   fi
-  # herdr-plus: per-worktree layouts and quick actions
+  # herdr-plus: project templates, worktree layouts and quick actions (prefix+t, prefix+space);
+  # its config is stowed by the herdr package into ~/.config/herdr/plugins/config/cloudmanic.herdr-plus/
   if ! herdr plugin list 2>/dev/null | grep -q herdr-plus; then
     echo "==> Installing herdr plugin herdr-plus"
     herdr plugin install cloudmanic/herdr-plus --yes || echo "    (herdr server not running; install later)"
+  fi
+  # herdr-reviewr: review an agent's diff, send line comments back (prefix+alt+r). Pinned to a
+  # reviewed commit (v0.52.2): its build step downloads a release binary, so read the diff before bumping.
+  if ! herdr plugin list 2>/dev/null | grep -q persiyanov.reviewr; then
+    echo "==> Installing herdr plugin herdr-reviewr"
+    herdr plugin install persiyanov/herdr-reviewr --ref bb71050caa5d3a0b1a414527783eb7a772447f9f --yes || echo "    (herdr server not running; install later)"
+  fi
+  # herdr-fingers (trial): hint-copy paths, SHAs, URLs from the focused pane (prefix+f). Pinned to a
+  # reviewed commit; builds with cargo (Rust >= 1.85). Remove the trial by reverting its commit.
+  if ! herdr plugin list 2>/dev/null | grep -q herdr-fingers; then
+    if command -v cargo >/dev/null 2>&1; then
+      echo "==> Installing herdr plugin herdr-fingers (cargo build, a minute or two)"
+      herdr plugin install nathan-poncet/herdr-fingers --ref 2d9fc997ce1a95976b975da758dccc7b6e011336 --yes || echo "    (herdr server not running; install later)"
+    else echo "    (skipping herdr-fingers: needs Rust/cargo, https://rustup.rs)"; fi
   fi
   # Claude Code integration: agent state + session refs via hook (re-run after herdr upgrades)
   if ! herdr integration status 2>/dev/null | grep -i "claude" | grep -qiv "not installed"; then

@@ -234,6 +234,250 @@ fi
 
 # ── herdr ────────────────────────────────────────────────────────────────────
 section "herdr"
+# The TOML checks below need Python's tomllib (3.11+); macOS's /usr/bin/python3 can be older.
+tomlpy=""
+for p in /usr/bin/python3 python3 python3.14 python3.13 python3.12 python3.11; do
+  if have "$p" && "$p" -c 'import tomllib' 2>/dev/null; then tomlpy="$(command -v "$p")"; break; fi
+done
+# Python checks print one "PASS|WARN|FAIL|INFO message" per line; anything else is a crash,
+# reported once with its last line (the exception).
+emit() {
+  local l crash=""
+  while IFS= read -r l; do
+    case "$l" in
+      PASS\ *) pass "${l#PASS }" ;; WARN\ *) warn "${l#WARN }" ;;
+      FAIL\ *) fail "${l#FAIL }" ;; INFO\ *) info "${l#INFO }" ;;
+      ?*) crash="$l" ;;
+    esac
+  done
+  [[ -z "$crash" ]] || fail "$1 check could not run: $crash"
+}
+# The config dir herdr hands a plugin (HERDR_PLUGIN_CONFIG_DIR), from `herdr plugin list`.
+plugin_config_dir() {
+  local d
+  d="$(echo "$plugins" | awk -v id="$1" '$1 == "-" { f = ($2 == id); next } f && /^  config: / { sub(/^  config: /, ""); print; exit }')"
+  echo "${d:-$HOME/.config/herdr/plugins/config/$1}"
+}
+
+# Every plugin_action key binding must name an action herdr lists. `herdr config check` accepts
+# any name, so a misspelled, renamed or uninstalled action is a key that silently does nothing.
+check_bound_plugin_actions() {  # <config.toml> <`herdr plugin action list` JSON>
+  local out
+  out="$("$tomlpy" - "$1" "$2" 2>&1 <<'PY'
+import json, sys, tomllib
+with open(sys.argv[1], "rb") as f:
+    cfg = tomllib.load(f)
+listed = {a["plugin_id"] + "." + a["action_id"] for a in json.loads(sys.argv[2])["result"]["actions"]}
+binds = [k for k in cfg.get("keys", {}).get("command", []) if k.get("type") == "plugin_action"]
+bad = [k for k in binds if k.get("command") not in listed]
+for k in bad:
+    print(f"FAIL key {k.get('key')} runs plugin action {k.get('command')}, which herdr does not list (plugin missing, or action renamed)")
+if not bad:
+    print(f"PASS all {len(binds)} plugin_action key bindings name an action herdr lists")
+PY
+)"
+  emit "key bindings" <<<"$out"
+}
+
+# herdr-plus loads every template in a directory or none: one bad file empties the whole picker.
+# These are its own load rules (config.go, project.go, worktree.go, action.go at the installed pin).
+check_herdr_plus_config() {  # <plugin config dir>
+  local out
+  out="$("$tomlpy" - "$1" 2>&1 <<'PY'
+import glob, os, re, sys, tomllib
+root = sys.argv[1]
+home = os.path.expanduser("~")
+fails = 0
+
+def say(level, msg):
+    global fails
+    fails += level == "FAIL"
+    print(f"{level} herdr-plus: {msg}")
+
+def expand(s):  # herdr-plus expandPath: ~ and $VAR/${VAR}; empty means home
+    s = str(s).strip()
+    if s in ("", "~"):
+        return home
+    if s.startswith("~/"):
+        s = os.path.join(home, s[2:])
+    return os.path.normpath(re.sub(r"\$\{(\w+)\}|\$(\w+)", lambda m: os.environ.get(m.group(1) or m.group(2), ""), s))
+
+def load(path):
+    try:
+        with open(path, "rb") as f:
+            return tomllib.load(f)
+    except Exception as e:
+        say("FAIL", f"{os.path.relpath(path, root)} does not parse: {e}")
+
+def tab_problem(tabs):  # validateTabs
+    if not tabs:
+        return "needs at least one [[tabs]] entry"
+    for i, t in enumerate(tabs, 1):
+        name = str(t.get("name", "")).strip()
+        if not name:
+            return f"tab {i} has no name"
+        panes = t.get("panes", [])
+        if panes and str(t.get("command", "")).strip():
+            return f"tab {name} sets both command and [[tabs.panes]]"
+        if len(panes) > 4:
+            return f"tab {name} has {len(panes)} panes (at most 4)"
+        for j, p in enumerate(panes[1:], 2):
+            if p.get("split", "") not in ("", "down", "right"):
+                return f"tab {name} pane {j} has split {p.get('split')!r} (down or right)"
+            if not 0 <= p.get("ratio", 0) < 1:
+                return f"tab {name} pane {j} has ratio {p.get('ratio')} (between 0 and 1)"
+
+def nested_dirs(tabs, base):  # tab and pane working_dirs, relative ones joined onto base
+    for t in tabs:
+        for raw in [t.get("working_dir", "")] + [p.get("working_dir", "") for p in t.get("panes", [])]:
+            if str(raw).strip():
+                d = expand(raw)
+                if os.path.isabs(d):
+                    yield raw, d
+                elif base:
+                    yield raw, os.path.join(base, d)
+
+cfg = load(os.path.join(root, "config.toml")) if os.path.exists(os.path.join(root, "config.toml")) else {}
+for section in ("projects", "quick_actions"):
+    placement = (cfg or {}).get(section, {}).get("placement", "")
+    if placement and placement not in ("overlay", "popup", "split", "tab", "zoomed"):
+        say("WARN", f"config.toml [{section}] placement {placement!r} is not a herdr placement; the default is used")
+
+counts = {}
+for kind, required in (("projects", "name"), ("worktrees", "repo")):
+    files = sorted(glob.glob(os.path.join(root, kind, "*.toml")))
+    counts[kind] = len(files)
+    for path in files:
+        rel = os.path.relpath(path, root)
+        d = load(path)
+        if d is None:
+            continue
+        if not str(d.get(required, "")).strip():
+            say("FAIL", f"{rel}: {required} is required")
+            continue
+        problem = tab_problem(d.get("tabs", []))
+        if problem:
+            say("FAIL", f"{rel}: {problem}")
+            continue
+        base = None
+        if kind == "projects" and str(d.get("working_dir", "")).strip() != "{prompt}":
+            base = expand(d.get("working_dir", ""))
+            if not os.path.isdir(base):
+                say("WARN", f"{rel}: working_dir {d.get('working_dir')} does not exist here; herdr-plus will refuse to open it")
+                continue
+        for raw, path_ in nested_dirs(d.get("tabs", []), base):
+            if not os.path.isdir(path_):
+                say("WARN", f"{rel}: working_dir {raw} does not exist here; herdr-plus will refuse to open it")
+
+qa = os.path.join(root, "quick-actions")
+files = sorted(glob.glob(os.path.join(qa, "*.toml")))
+counts["quick actions"] = len(files)
+if not os.path.isdir(qa):
+    say("INFO", "no quick-actions/ directory; herdr-plus seeds its example actions on first use")
+for path in files:
+    rel = os.path.relpath(path, root)
+    a = load(path)
+    if a is None:
+        continue
+    kind = a.get("type", "") or "command"
+    if not str(a.get("name", "")).strip():
+        say("FAIL", f"{rel}: name is required")
+    elif not str(a.get("command", "")).strip():
+        say("FAIL", f"{rel}: command is required")
+    elif kind not in ("command", "select", "form"):
+        say("FAIL", f"{rel}: unknown type {kind!r} (command, select or form)")
+    elif kind == "select" and not str(a.get("options_command", "")).strip() and not any(o.get("label") for o in a.get("options", [])):
+        say("FAIL", f"{rel}: a select action needs an option with a label, or options_command")
+    elif a["command"].count("{{") != a["command"].count("}}"):
+        say("FAIL", f"{rel}: command has unbalanced {{{{ }}}} (it is a Go template)")
+
+if not fails:
+    print("PASS herdr-plus loads " + ", ".join(f"{n} {k}" for k, n in counts.items()))
+PY
+)"
+  emit "herdr-plus" <<<"$out"
+}
+
+# Install root herdr runs a plugin from, from `herdr plugin list --json`; empty when not installed.
+plugin_root() {  # <plugin list JSON> <plugin id>
+  /usr/bin/python3 -c 'import json, sys
+for p in json.loads(sys.argv[1])["result"]["plugins"]:
+    if p.get("plugin_id") == sys.argv[2]: print(p.get("plugin_root", ""))' "$1" "$2" 2>/dev/null
+}
+
+# A plugin bootstrap.sh installs with --ref was reviewed at that commit; `herdr plugin update`
+# moves it past the review. Not installed is skipped: the install check above reports that.
+check_plugin_pins() {  # <plugin list JSON>
+  local repo ref got
+  while read -r repo ref; do
+    got="$(/usr/bin/python3 -c 'import json, sys
+for p in json.loads(sys.argv[1])["result"]["plugins"]:
+    s = p.get("source", {})
+    if "%s/%s" % (s.get("owner"), s.get("repo")) == sys.argv[2]: print(s.get("resolved_commit", "?"))' "$1" "$repo" 2>/dev/null)"
+    [[ -z "$got" ]] && continue
+    if [[ "$got" == "$ref"* ]]; then pass "plugin $repo at its pinned commit ${ref:0:7}"
+    else warn "plugin $repo is at ${got:0:7}, bootstrap.sh pins ${ref:0:7}: review the new commits and bump the pin, or reinstall at the pin"; fi
+  done < <(sed -n 's/.*herdr plugin install \([^ ]*\) --ref \([0-9a-f]\{7,40\}\).*/\1 \2/p' "$BOOTSTRAP")
+}
+
+# reviewr: its build step downloads a release binary, so a failed download leaves the key dead.
+# `--action <unknown>` makes the binary answer without reading config, herdr or the repo.
+check_reviewr_binary() {  # <plugin root>
+  local bin="$1/bin/herdr-reviewr" out
+  if [[ ! -x "$bin" ]]; then fail "reviewr: $bin missing (its build step's download failed; reinstall the plugin)"; return; fi
+  out="$(env -u HERDR_REVIEW_LOG "$bin" --action validate-probe 2>&1)"
+  if [[ "$out" == *"unknown action"* ]]; then pass "reviewr: binary runs"
+  else fail "reviewr: $bin does not run as reviewr: $(echo "${out:-no output}" | head -1)"; fi
+}
+
+# herdr-fingers (trial) builds with cargo at install; without the binary prefix+f does nothing.
+# `scan` reads a screen dump on stdin and prints the hints; with HERDR_PLUGIN_CONFIG_DIR unset it
+# uses built-in defaults and writes nothing.
+check_fingers_binary() {  # <plugin root>
+  local bin="$1/target/release/herdr-fingers" out
+  if [[ ! -x "$bin" ]]; then fail "herdr-fingers: $bin missing (the cargo build failed or never ran; reinstall the plugin)"; return; fi
+  out="$("$bin" --version 2>&1)"
+  if [[ "$out" != herdr-fingers* ]]; then fail "herdr-fingers: $bin does not run: $(echo "${out:-no output}" | head -1)"; return; fi
+  out="$(echo "commit 2d9fc997ce1a95976b975da758dccc7b6e011336" | env -u HERDR_PLUGIN_CONFIG_DIR "$bin" scan --width 80 2>&1)"
+  if [[ "$out" == *2d9fc997ce1a* ]]; then pass "herdr-fingers: binary runs and hints a SHA (${out%%$'\t'*})"
+  else fail "herdr-fingers: scan found no hint in a line holding a SHA: $(echo "${out:-no output}" | head -1)"; fi
+}
+
+# reviewr rejects the whole config.toml (and blocks its pane) on an unknown key or a bad value.
+# Keys and values are reviewr's own (src/config.rs, src/theme.rs at the pin in bootstrap.sh).
+check_reviewr_config() {  # <config.toml>
+  local out
+  out="$("$tomlpy" - "$1" 2>&1 <<'PY'
+import os, sys, tomllib
+path = sys.argv[1]
+if not os.path.exists(path):
+    print(f"FAIL reviewr: {path} missing (stow the herdr package)"); sys.exit()
+try:
+    with open(path, "rb") as f:
+        cfg = tomllib.load(f)
+except Exception as e:
+    print(f"FAIL reviewr: config.toml does not parse: {e}"); sys.exit()
+keys = {"theme", "default_scope", "markdown_view", "diff_view", "navigator_position", "toggle_placement",
+        "toggle_direction", "auto_open", "follow_file_across_tabs", "scrolloff", "github_host", "gitlab_host",
+        "azure_devops_host", "editor", "url_opener", "review_prefix", "keybindings"}
+themes = {"catppuccin", "catppuccin-frappe", "catppuccin-macchiato", "catppuccin-latte", "tokyo-night",
+          "tokyo-night-day", "dracula", "nord", "gruvbox", "gruvbox-light", "one-dark", "one-light", "solarized",
+          "solarized-light", "monokai", "rose-pine", "rose-pine-dawn", "ayu", "everforest", "github-light"}
+values = {"theme": themes, "default_scope": {"uncommitted", "branch", "last-turn"},
+          "toggle_placement": {"split", "overlay", "zoomed", "tab"}, "toggle_direction": {"right", "down"}}
+bad = [f"unknown key {k}" for k in cfg if k not in keys]
+bad += [f"{k} = {cfg[k]!r} (one of {', '.join(sorted(v))})" for k, v in values.items() if k in cfg and cfg[k] not in v]
+if cfg.get("auto_open", True) is not False:
+    bad.append("auto_open must be false (a reviewr pane would open in every new worktree)")
+for b in bad:
+    print(f"FAIL reviewr: config.toml: {b}")
+if not bad:
+    print("PASS reviewr: config.toml valid, auto_open off")
+PY
+)"
+  emit "reviewr config" <<<"$out"
+}
+
 if have herdr; then
   out="$(herdr config check 2>&1)"
   if echo "$out" | grep -q 'config: ok'; then pass "config.toml valid"; else fail "config.toml: $(echo "$out" | tail -2 | tr '\n' ' ')"; fi
@@ -242,10 +486,24 @@ if have herdr; then
     plugins="$(herdr plugin list 2>/dev/null)"
     for want in $(sed -n 's/.*herdr plugin list.*grep -q \([a-z][a-z0-9.-]*\); then$/\1/p' "$BOOTSTRAP"); do
       line="$(echo "$plugins" | grep -E "^- [^ ]*$want " || true)"
-      if [[ -z "$line" ]]; then fail "plugin $want not installed (run ./bootstrap.sh)"
+      # bootstrap skips herdr-fingers without cargo, so missing it then is expected
+      if [[ -z "$line" && "$want" == herdr-fingers ]] && ! have cargo; then warn "plugin herdr-fingers not installed (needs Rust/cargo: https://rustup.rs, then ./bootstrap.sh)"
+      elif [[ -z "$line" ]]; then fail "plugin $want not installed (run ./bootstrap.sh)"
       elif echo "$line" | grep -q ' enabled '; then pass "plugin $want enabled"
       else fail "plugin $want installed but disabled"; fi
     done
+    pjson="$(herdr plugin list --json 2>/dev/null)"
+    check_plugin_pins "$pjson"
+    root="$(plugin_root "$pjson" persiyanov.reviewr)"
+    [[ -n "$root" ]] && check_reviewr_binary "$root"
+    root="$(plugin_root "$pjson" nathan-poncet.herdr-fingers)"
+    [[ -n "$root" ]] && check_fingers_binary "$root"
+    if [[ -z "$tomlpy" ]]; then warn "no Python with tomllib (3.11+); key binding and plugin config checks skipped"
+    else
+      check_bound_plugin_actions "$HOME/.config/herdr/config.toml" "$(herdr plugin action list 2>/dev/null)"
+      if echo "$plugins" | grep -q '^- cloudmanic.herdr-plus '; then check_herdr_plus_config "$(plugin_config_dir cloudmanic.herdr-plus)"; fi
+      check_reviewr_config "$(plugin_config_dir persiyanov.reviewr)/config.toml"
+    fi
     out="$(herdr integration status 2>&1 | grep -i claude || true)"
     if [[ -z "$out" ]] || echo "$out" | grep -qi 'not installed'; then fail "Claude integration not installed (herdr integration install claude)"
     elif echo "$out" | grep -qi 'outdated'; then warn "Claude integration outdated (herdr integration install claude)"
