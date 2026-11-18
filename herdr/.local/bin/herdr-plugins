@@ -1,0 +1,324 @@
+#!/usr/bin/env bash
+# ── herdr-plugins ────────────────────────────────────────────────────────────
+# Pins for the third-party herdr plugins bootstrap.sh installs, and one place to move them.
+# The pins' only source is the `herdr plugin install <owner/repo> --ref <sha>` lines in the
+# bootstrap.sh of the checkout this script is linked from (found through its own path).
+#
+#   herdr-plugins status                   pinned / installed / upstream HEAD / commits behind
+#   herdr-plugins check                    offline: exit 1 when an installed plugin is off its pin
+#   herdr-plugins review <plugin> [<sha>]  commits and install-time code changes, pin..sha
+#   herdr-plugins update [<plugin>...]     review, ask, bump the pin, reinstall (default: all behind)
+#   herdr-plugins help
+#
+# <plugin> is a repo (herdr-reviewr), owner/repo, or a plugin id (persiyanov.reviewr).
+
+set -euo pipefail
+
+# ── locate the repo ──────────────────────────────────────────────────────────
+self="$0"
+while [[ -L "$self" ]]; do
+  link="$(readlink "$self")"
+  case "$link" in /*) self="$link" ;; *) self="$(dirname "$self")/$link" ;; esac
+done
+REPO="$(cd "$(dirname "$self")/../../.." && pwd)"
+BOOTSTRAP="$REPO/bootstrap.sh"
+PY=/usr/bin/python3; [[ -x "$PY" ]] || PY=python3
+
+die() { echo "herdr-plugins: $*" >&2; exit 2; }
+have() { command -v "$1" >/dev/null 2>&1; }
+
+usage() {
+  sed -n '7,13s/^# \{0,1\}//p' "$self"
+  echo
+  echo "Pins are read from $BOOTSTRAP"
+}
+
+# ── pins and installed state ─────────────────────────────────────────────────
+pins() {  # "<owner/repo> <sha>" per pinned plugin
+  [[ -f "$BOOTSTRAP" ]] || die "no bootstrap.sh at $REPO (is this script linked from the dotfiles checkout?)"
+  sed -n 's/.*herdr plugin install \([^ ]*\) --ref \([0-9a-f]\{7,40\}\).*/\1 \2/p' "$BOOTSTRAP"
+}
+
+# "<owner/repo> <plugin id> <resolved commit>" per installed GitHub plugin; fails when herdr can't list.
+installed() {
+  local json
+  have herdr || return 1
+  json="$(herdr plugin list --json 2>/dev/null)" || return 1
+  "$PY" -c 'import json, sys
+for p in json.loads(sys.argv[1])["result"]["plugins"]:
+    s = p.get("source", {})
+    if s.get("kind") == "github":
+        print("%s/%s %s %s" % (s.get("owner"), s.get("repo"), p.get("plugin_id", "?"), s.get("resolved_commit", "?")))' "$json"
+}
+
+lookup() {  # <installed list> <owner/repo> <field 2|3>
+  awk -v r="$2" -v f="$3" '$1 == r { print $f; exit }' <<<"$1"
+}
+
+# The tool bootstrap.sh requires before installing <owner/repo> (its `if command -v <tool>` guard
+# inside that plugin's block), so update never installs where bootstrap would skip.
+needs_tool() {  # <owner/repo>
+  awk -v r="$1" '/herdr plugin list.*grep -q/ { t = "" }
+    /if command -v [A-Za-z0-9_.-]+/ { match($0, /command -v [A-Za-z0-9_.-]+/); t = substr($0, RSTART + 11, RLENGTH - 11) }
+    index($0, "herdr plugin install " r " ") { print t; exit }' "$BOOTSTRAP"
+}
+
+upstream_head() {  # <owner/repo>
+  git ls-remote "https://github.com/$1" HEAD 2>/dev/null | awk '{ print $1; exit }'
+}
+
+# "<ahead_by> <status>" of <head> relative to <pin>, via the GitHub compare API.
+behind_by() {  # <owner/repo> <pin> <head>
+  have gh || return 1
+  gh api "repos/$1/compare/$2...$3" --jq '"\(.ahead_by) \(.status)"' 2>/dev/null
+}
+
+# Resolve a user's <plugin> name to "<owner/repo> <pin>".
+resolve() {  # <name> <installed list or empty>
+  local repo pin id
+  while read -r repo pin; do
+    if [[ "$1" == "$repo" || "$1" == "${repo#*/}" ]]; then echo "$repo $pin"; return; fi
+    id="$(lookup "$2" "$repo" 2)"
+    [[ -z "$id" ]] && id="$(manifest_id "$repo" "$pin")"
+    if [[ -n "$id" && "$1" == "$id" ]]; then echo "$repo $pin"; return; fi
+  done < <(pins)
+  die "no pinned plugin named $1 (pinned: $(pins | awk '{ print $1 }' | tr '\n' ' '))"
+}
+
+manifest_id() {  # <owner/repo> <sha>: the manifest id at that commit, for plugins not installed
+  have gh || return 0
+  gh api "repos/$1/contents/herdr-plugin.toml?ref=$2" -H 'Accept: application/vnd.github.raw' 2>/dev/null |
+    sed -n 's/^id *= *"\([^"]*\)".*/\1/p' | head -1
+}
+
+# ── status ───────────────────────────────────────────────────────────────────
+cmd_status() {
+  local inst repo pin got head behind n st
+  inst="$(installed)" || { inst=""; echo "(herdr plugin list failed; installed column unknown)" >&2; }
+  printf '%-34s %-8s %-16s %-9s %s\n' PLUGIN PINNED INSTALLED UPSTREAM BEHIND
+  while read -r repo pin; do
+    got="$(lookup "$inst" "$repo" 3)"
+    if [[ -z "$got" ]]; then got="not installed"
+    elif [[ "$got" == "$pin"* ]]; then got="${got:0:7}"
+    else got="${got:0:7} (drift)"; fi
+    head="$(upstream_head "$repo")"
+    if [[ -z "$head" ]]; then behind="?"; head="?"
+    elif [[ "$head" == "$pin"* ]]; then behind="up to date"
+    else
+      read -r n st < <(behind_by "$repo" "$pin" "$head" || echo "? ?")
+      case "$st" in
+        ahead) behind="$n commits behind" ;;
+        diverged) behind="diverged ($n new upstream; pin not on the default branch)" ;;
+        *) behind="?" ;;
+      esac
+    fi
+    printf '%-34s %-8s %-16s %-9s %s\n' "$repo" "${pin:0:7}" "$got" "${head:0:7}" "$behind"
+  done < <(pins)
+}
+
+# ── check (offline) ──────────────────────────────────────────────────────────
+cmd_check() {
+  local inst repo pin got drift=0
+  inst="$(installed)" || die "herdr plugin list --json failed (is herdr installed and its server running?)"
+  while read -r repo pin; do
+    got="$(lookup "$inst" "$repo" 3)"
+    if [[ -z "$got" ]]; then echo "absent $repo not installed, pinned ${pin:0:7}"
+    elif [[ "$got" == "$pin"* ]]; then echo "ok $repo at its pin ${pin:0:7}"
+    else echo "drift $repo at ${got:0:7}, pinned ${pin:0:7}"; drift=1; fi
+  done < <(pins)
+  return "$drift"
+}
+
+# ── review ───────────────────────────────────────────────────────────────────
+# Prints the commits pin..target, then the full diff of herdr-plugin.toml and of every file the
+# manifest's macOS/Linux [[build]] commands run (and scripts those run with sh/bash/source),
+# resolved at target, then Cargo/Go dependency files as a stat.
+review_text() {  # <owner/repo> <pin> <target>
+  "$PY" - "$1" "$2" "$3" <<'PY'
+import json, re, subprocess, sys
+repo, pin, target = sys.argv[1:4]
+
+def gh(path, raw=False):
+    cmd = ["gh", "api", path]
+    if raw:
+        cmd += ["-H", "Accept: application/vnd.github.raw"]
+    r = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+    if r.returncode != 0:
+        sys.exit("herdr-plugins: gh api %s failed: %s" % (path, r.stderr.strip().splitlines()[-1:] or ""))
+    return r.stdout if raw else json.loads(r.stdout)
+
+def builds(manifest):
+    """[[build]] command lists for macOS/Linux, from a manifest's text (no tomllib needed)."""
+    out, cur, table = [], None, None
+    for line in manifest.splitlines():
+        s = line.strip()
+        if s.startswith("["):
+            if table == "[[build]]" and cur is not None:
+                out.append(cur)
+            table, cur = s, {}
+            continue
+        if table != "[[build]]":
+            continue
+        m = re.match(r'(command|platforms)\s*=\s*(\[.*\])\s*(#.*)?$', s)
+        if m:
+            try:
+                cur[m.group(1)] = json.loads(m.group(2))
+            except ValueError:
+                cur[m.group(1)] = re.findall(r'"([^"]*)"', m.group(2))
+    if table == "[[build]]" and cur is not None:
+        out.append(cur)
+    return [b.get("command", []) for b in out
+            if not b.get("platforms") or set(b["platforms"]) & {"macos", "linux"}]
+
+cmp = gh("repos/%s/compare/%s...%s" % (repo, pin, target))
+tree = {t["path"] for t in gh("repos/%s/git/trees/%s?recursive=1" % (repo, target))["tree"] if t["type"] == "blob"}
+manifest = gh("repos/%s/contents/herdr-plugin.toml?ref=%s" % (repo, target), raw=True)
+
+# Files the build runs: command words that are files in the tree, then scripts those run.
+steps = builds(manifest)
+todo = [w for cmd in steps for w in cmd]
+scripts, seen = [], set()
+while todo:
+    w = todo.pop(0)
+    while w.startswith("./"):
+        w = w[2:]
+    if w in seen or w not in tree:
+        continue
+    seen.add(w)
+    scripts.append(w)
+    body = gh("repos/%s/contents/%s?ref=%s" % (repo, w, target), raw=True)
+    for m in re.finditer(r'(?:\b(?:sh|bash|source)\s+|^\s*\.\s+)"?(?:\./)?([\w./-]+)', body, re.M):
+        todo.append(m.group(1))
+    todo += re.findall(r'[\w./-]+\.(?:sh|bash)\b', body)
+
+files = {f["filename"]: f for f in cmp.get("files", [])}
+deps = {"Cargo.toml", "Cargo.lock", "go.mod", "go.sum"}
+print("%s  %s -> %s  (%s, %d commits)" % (repo, pin[:7], target[:7], cmp["status"], cmp["ahead_by"]))
+print("https://github.com/%s/compare/%s...%s" % (repo, pin[:12], target[:12]))
+if cmp["status"] != "ahead":
+    print("\n!! %s is not a fast-forward from the pin (status %s, %d behind): read the compare page"
+          % (target[:7], cmp["status"], cmp.get("behind_by", 0)))
+print("\n── commits ──")
+for c in cmp.get("commits", []):
+    print("  %s %s %s" % (c["sha"][:7], c["commit"]["committer"]["date"][:10], c["commit"]["message"].splitlines()[0][:90]))
+if not cmp.get("commits"):
+    print("  (none)")
+elif len(cmp["commits"]) < cmp["ahead_by"]:
+    print("  (the API lists %d of %d; see the compare page)" % (len(cmp["commits"]), cmp["ahead_by"]))
+print("\n── install-time code at %s ──" % target[:7])
+for cmd in steps:
+    print("  [[build]] %s" % " ".join(cmd))
+if not steps:
+    print("  no [[build]] step for macOS/Linux")
+print("  files it runs: %s" % (", ".join(scripts) or "none from the repo (dependencies below)"))
+for path in ["herdr-plugin.toml"] + scripts:
+    f = files.get(path)
+    if f is None:
+        print("\n%s: unchanged" % path)
+    elif "patch" not in f:
+        print("\n%s: %s, +%d -%d (no patch from the API; see the compare page)" % (path, f["status"], f["additions"], f["deletions"]))
+    else:
+        print("\n--- %s (%s, +%d -%d)" % (path, f["status"], f["additions"], f["deletions"]))
+        print(f["patch"])
+print("\n── dependencies ──")
+dep = [f for n, f in files.items() if n.rsplit("/", 1)[-1] in deps]
+for f in dep:
+    print("  %-28s %-9s +%d -%d" % (f["filename"], f["status"], f["additions"], f["deletions"]))
+if not dep:
+    print("  (no Cargo.toml/Cargo.lock/go.mod/go.sum changes)")
+rest = [f for n, f in files.items() if n not in seen and n != "herdr-plugin.toml" and f not in dep]
+print("\n── other files: %d changed (+%d -%d) ──" % (len(rest), sum(f["additions"] for f in rest), sum(f["deletions"] for f in rest)))
+for f in rest:
+    print("  %-50s +%d -%d" % (f["filename"], f["additions"], f["deletions"]))
+if len(cmp.get("files", [])) >= 300:
+    print("  (the API lists at most 300 files; see the compare page)")
+PY
+}
+
+page() { if [[ -t 1 ]]; then ${PAGER:-less -FRX}; else cat; fi; }
+
+cmd_review() {
+  [[ $# -ge 1 ]] || die "usage: herdr-plugins review <plugin> [<sha>]"
+  have gh || die "review needs the GitHub CLI (gh)"
+  local repo pin target
+  read -r repo pin < <(resolve "$1" "$(installed || true)") || exit 2
+  target="${2:-$(upstream_head "$repo")}"
+  [[ -n "$target" ]] || die "could not read the upstream HEAD of $repo"
+  if [[ "$target" == "$pin"* ]]; then echo "$repo: pinned at ${pin:0:7}, which is ${2:-upstream HEAD}; nothing to review"; return; fi
+  review_text "$repo" "$pin" "$target" | page
+}
+
+# ── update ───────────────────────────────────────────────────────────────────
+set_pin() {  # <owner/repo> <old sha> <new sha>: rewrite exactly one line of bootstrap.sh
+  local tmp changed
+  tmp="$(mktemp)"
+  sed "s|herdr plugin install $1 --ref $2 |herdr plugin install $1 --ref $3 |" "$BOOTSTRAP" >"$tmp"
+  changed="$(diff "$BOOTSTRAP" "$tmp" | grep -c '^>' || true)"
+  if [[ "$changed" != 1 ]] || [[ "$(diff "$BOOTSTRAP" "$tmp" | grep -c '^<' || true)" != 1 ]]; then
+    rm -f "$tmp"; die "expected to change exactly one line of $BOOTSTRAP for $1, would change $changed; left it alone"
+  fi
+  cat "$tmp" >"$BOOTSTRAP"; rm -f "$tmp"
+}
+
+cmd_update() {
+  have gh || die "update needs the GitHub CLI (gh) to show what changed"
+  local inst repo pin head targets="" t id tool ans moved="" failed=""
+  inst="$(installed)" || { inst=""; echo "(herdr plugin list failed; nothing will be reinstalled)" >&2; }
+  if [[ $# -eq 0 ]]; then
+    while read -r repo pin; do targets="$targets $repo"; done < <(pins)
+  else
+    for t in "$@"; do read -r repo pin < <(resolve "$t" "$inst") || exit 2; targets="$targets $repo"; done
+  fi
+  for repo in $targets; do
+    pin="$(pins | awk -v r="$repo" '$1 == r { print $2; exit }')"
+    head="$(upstream_head "$repo")"
+    if [[ -z "$head" ]]; then echo "$repo: could not read upstream HEAD; skipped"; continue; fi
+    if [[ "$head" == "$pin"* ]]; then echo "$repo: up to date at ${pin:0:7}"; continue; fi
+    echo
+    if ! review_text "$repo" "$pin" "$head" | page; then echo "$repo: review failed; skipped"; failed="$failed $repo"; continue; fi
+    echo
+    printf 'Pin %s at %s? [y/N] ' "$repo" "${head:0:7}"
+    read -r ans || ans=""
+    case "$ans" in y|Y|yes) ;; *) echo "$repo: left at ${pin:0:7}"; continue ;; esac
+    set_pin "$repo" "$pin" "$head"; moved="$moved $repo"
+    echo "$repo: bootstrap.sh now pins ${head:0:7}"
+    id="$(lookup "$inst" "$repo" 2)"
+    if [[ -z "$id" ]]; then echo "$repo: not installed here; ./bootstrap.sh installs it at the new pin"; continue; fi
+    tool="$(needs_tool "$repo")"
+    if [[ -n "$tool" ]] && ! have "$tool"; then
+      echo "$repo: not reinstalled: bootstrap.sh needs $tool for it and $tool is not on PATH"
+      failed="$failed $repo"; continue
+    fi
+    # No --yes: herdr shows the plugin's manifest and build step and asks.
+    if ! herdr plugin uninstall "$id"; then
+      echo "$repo: uninstall of $id FAILED; still installed at ${pin:0:7}, the new pin stays in bootstrap.sh. Retry with:"
+      echo "    herdr plugin uninstall $id && herdr plugin install $repo --ref $head"
+      failed="$failed $repo"
+    elif herdr plugin install "$repo" --ref "$head"; then
+      echo "$repo: installed at ${head:0:7}"
+    else
+      echo "$repo: install at ${head:0:7} FAILED (now uninstalled); the new pin stays in bootstrap.sh. Retry with:"
+      echo "    herdr plugin install $repo --ref $head"
+      failed="$failed $repo"
+    fi
+  done
+  if [[ -n "$moved" ]]; then
+    echo; git -C "$REPO" --no-pager diff -- bootstrap.sh
+    echo
+    echo "Commit bootstrap.sh in $REPO."
+    if [[ " $moved " == *" persiyanov/herdr-reviewr "* ]]; then
+      echo "reviewr moved: re-check validate.sh's reviewr config allowlist (check_reviewr_config) against its src/config.rs and src/theme.rs at the new pin."
+    fi
+  fi
+  [[ -z "$failed" ]] || return 1
+}
+
+# ── main ─────────────────────────────────────────────────────────────────────
+case "${1:-help}" in
+  status) shift; cmd_status "$@" ;;
+  check) shift; cmd_check "$@" ;;
+  review) shift; cmd_review "$@" ;;
+  update) shift; cmd_update "$@" ;;
+  help|-h|--help) usage ;;
+  *) usage >&2; exit 2 ;;
+esac
