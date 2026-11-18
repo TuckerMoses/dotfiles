@@ -77,6 +77,14 @@ done
 section "Configs parse and load"
 if have zsh; then
   if err="$(zsh -n "$HOME/.zshrc" 2>&1)"; then pass "zsh: ~/.zshrc syntax"; else fail "zsh: $err"; fi
+  # An interactive start must print nothing on stderr and must load zsh-vi-mode
+  # (sourced from brew or from the Oh My Zsh custom plugin, whichever exists).
+  out="$(cd "$HOME" && zsh -i -c 'print -r -- "zvm-loaded=${+functions[zvm_init]}"' </dev/null 2>&1)"
+  errs="$(echo "$out" | grep -v '^zvm-loaded=' || true)"
+  if [[ -n "$errs" ]]; then fail "zsh: interactive start writes to stderr: $(echo "$errs" | head -2 | tr '\n' ' ')"
+  else pass "zsh: interactive start is clean"; fi
+  if echo "$out" | grep -qx 'zvm-loaded=1'; then pass "zsh: zsh-vi-mode loaded"
+  else fail "zsh: zsh-vi-mode not loaded (brew install zsh-vi-mode, or re-run ./bootstrap.sh)"; fi
 fi
 
 if have tmux; then
@@ -85,9 +93,16 @@ if have tmux; then
   # are only shown to the first attached client, so they would be missed.
   sock="dotfiles-validate-$$"
   errs="$(tmux -L "$sock" -f /dev/null new-session -d 'sleep 5' \; source-file "$HOME/.tmux.conf" 2>&1)"
+  ybind="$(tmux -L "$sock" list-keys -T copy-mode-vi 2>/dev/null | grep -E '^bind-key +-T copy-mode-vi +y ' || true)"
   tmux -L "$sock" kill-server 2>/dev/null
   if [[ -z "$errs" ]]; then pass "tmux: ~/.tmux.conf loads cleanly (throwaway server)"
   else fail "tmux: $(echo "$errs" | head -3 | tr '\n' ' ')"; fi
+  # The copy-mode y binding pipes to a clipboard command chosen at load time; it must exist here.
+  ycmd="$(echo "$ybind" | sed -n 's/.*copy-pipe-and-cancel *//p' | tr -d "\"'" | awk '{print $1}')"
+  if [[ -z "$ybind" ]]; then fail "tmux: copy-mode y is not bound"
+  elif [[ -z "$ycmd" ]]; then warn "tmux: copy-mode y copies to tmux's own buffer only (no pbcopy, wl-copy or xclip)"
+  elif have "$ycmd"; then pass "tmux: copy-mode y copies with $ycmd"
+  else fail "tmux: copy-mode y pipes to $ycmd, which is not installed"; fi
 fi
 
 ghostty=""
@@ -97,6 +112,15 @@ if [[ -n "$ghostty" ]]; then
   if err="$("$ghostty" +validate-config 2>&1)"; then pass "ghostty: config valid"
   else fail "ghostty: $(echo "$err" | head -3 | tr '\n' ' ')"; fi
 else info "ghostty not installed; config not checked"; fi
+
+# The Nerd Font the Ghostty config names (the JetBrains Mono Nerd Font family).
+font="$(sed -n 's/^font-family *= *//p' "$DOTFILES_DIR/ghostty/.config/ghostty/config" | head -1 | tr -d '"')"
+font="${font:-JetBrainsMono Nerd Font}"
+if [[ "$OS" == "Darwin" ]]; then
+  if have brew && brew list --cask font-jetbrains-mono-nerd-font >/dev/null 2>&1; then pass "font: JetBrains Mono Nerd Font installed (brew cask)"
+  else fail "font: JetBrains Mono Nerd Font not installed (brew install --cask font-jetbrains-mono-nerd-font)"; fi
+elif have fc-list && fc-list : family 2>/dev/null | tr ',' '\n' | grep -ixF "$font" >/dev/null; then pass "font: $font installed (fontconfig)"
+else fail "font: $font not found by fc-list (run ./bootstrap.sh)"; fi
 
 if have starship; then
   err="$(starship print-config 2>&1 >/dev/null | grep -iE 'unable|error|invalid' || true)"
@@ -177,13 +201,16 @@ if [[ "$OS" == "Darwin" ]]; then
     if [[ -s "$f" ]]; then fail "ghostty also loads ${f/#$HOME/~} after the dotfiles config, overriding it"
     else info "ghostty: ${f/#$HOME/~} exists but is empty (harmless; anything added there overrides the dotfiles config)"; fi
   done
-  gpid="$(pgrep -f 'Ghostty.app/Contents/MacOS/ghostty' | head -1)"
-  if [[ -n "$gpid" ]]; then
-    gstart="$(/usr/bin/python3 -c 'import sys,time; print(int(time.mktime(time.strptime(sys.argv[1].strip(), "%a %b %d %H:%M:%S %Y"))))' "$(ps -o lstart= -p "$gpid")" 2>/dev/null || echo 0)"
-    gconf="$(mtime "$HOME/.config/ghostty/config")"
-    if (( gstart < gconf )); then warn "ghostty started before its config changed $(when "$gconf"): reload it (cmd+shift+,) unless you already have"
-    else pass "ghostty started after the last config change"; fi
-  fi
+fi
+# A running Ghostty keeps the config it started with.
+if [[ "$OS" == "Darwin" ]]; then gpid="$(pgrep -f 'Ghostty.app/Contents/MacOS/ghostty' | head -1)"
+else gpid="$(pgrep -x ghostty | head -1)"; fi
+if [[ -n "$gpid" ]]; then
+  gstart="$(/usr/bin/python3 -c 'import sys,time; print(int(time.mktime(time.strptime(sys.argv[1].strip(), "%a %b %d %H:%M:%S %Y"))))' "$(ps -o lstart= -p "$gpid")" 2>/dev/null || echo 0)"
+  gconf="$(mtime "$HOME/.config/ghostty/config")"
+  if [[ "$OS" == "Darwin" ]]; then greload="cmd+shift+,"; else greload="ctrl+shift+,"; fi
+  if (( gstart < gconf )); then warn "ghostty started before its config changed $(when "$gconf"): reload it ($greload) unless you already have"
+  else pass "ghostty started after the last config change"; fi
 fi
 
 # nvim: its config dir comes from the repo, but it also loads plugin, ftplugin,
@@ -240,14 +267,16 @@ if have herdr; then
   if herdr workspace list >/dev/null 2>&1; then
     pass "server running"
     plugins="$(herdr plugin list 2>/dev/null)"
-    for want in $(sed -n 's/.*herdr plugin list.*grep -q \([a-z][a-z0-9.-]*\); then$/\1/p' "$BOOTSTRAP"); do
+    for want in $(sed -n -e 's/.*herdr plugin list.*grep -q \([a-z][a-z0-9.-]*\); then$/\1/p' \
+                         -e 's/.*grep -q \([a-z][a-z0-9.-]*\) <<<"\$herdr_plugins"; then$/\1/p' "$BOOTSTRAP"); do
       line="$(echo "$plugins" | grep -E "^- [^ ]*$want " || true)"
       if [[ -z "$line" ]]; then fail "plugin $want not installed (run ./bootstrap.sh)"
       elif echo "$line" | grep -q ' enabled '; then pass "plugin $want enabled"
       else fail "plugin $want installed but disabled"; fi
     done
     out="$(herdr integration status 2>&1 | grep -i claude || true)"
-    if [[ -z "$out" ]] || echo "$out" | grep -qi 'not installed'; then fail "Claude integration not installed (herdr integration install claude)"
+    if [[ ! -d "$HOME/.claude" ]] && ! have claude; then info "Claude Code not set up (no ~/.claude); integration not checked"
+    elif [[ -z "$out" ]] || echo "$out" | grep -qi 'not installed'; then fail "Claude integration not installed (herdr integration install claude)"
     elif echo "$out" | grep -qi 'outdated'; then warn "Claude integration outdated (herdr integration install claude)"
     else pass "Claude integration current"; fi
   else warn "server not running; plugins and integration not checked"; fi
@@ -264,7 +293,8 @@ if [[ -x "$summ" ]]; then
      && "$summ" help >/dev/null 2>&1; then pass "herdr-summarize compiles and runs"
   else fail "herdr-summarize does not compile or run (try: herdr-summarize help)"; fi
 fi
-if [[ "$OS" == "Darwin" ]] && launchctl print "gui/$(id -u)/dev.dotfiles.herdr-summarizer" >/dev/null 2>&1; then
+if [[ "$OS" != "Darwin" ]]; then info "launchd: macOS only (old launchd job not checked)"
+elif launchctl print "gui/$(id -u)/dev.dotfiles.herdr-summarizer" >/dev/null 2>&1; then
   fail "the old launchd job is still loaded (run herdr-summarizer/install.sh to remove it)"
 fi
 if have herdr && herdr workspace list >/dev/null 2>&1; then
