@@ -388,7 +388,11 @@ SUSPECT = re.compile(r'(^|/)(build\.rs|Makefile|justfile|[^/]*\.(sh|bash|ps1))$|
 # file (docs, licenses, a "png" that is really text) gets its full patch.
 IMAGE = re.compile(r'\.(png|jpe?g|gif|ico|webp)$', re.I)
 def is_asset(n):
-    return bool(IMAGE.search(n)) and "patch" not in files.get(n, {}) and not SUSPECT.search(n)
+    # GitHub also omits patches for large text files, but reports 0/0 lines only for binary ones;
+    # anything else falls to the code path, where a missing patch makes the review incomplete.
+    f = files.get(n, {})
+    return (bool(IMAGE.search(n)) and "patch" not in f and not SUSPECT.search(n)
+            and f.get("additions", 1) == 0 and f.get("deletions", 1) == 0)
 BUDGET = 600
 print("%s  %s -> %s  (%s, %d commits)" % (repo, pin[:7], target[:7], cmp["status"], cmp["ahead_by"]))
 print("https://github.com/%s/compare/%s...%s" % (repo, pin[:12], target[:12]))
