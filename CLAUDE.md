@@ -45,7 +45,7 @@ To add a new tool's config:
 | **nvim** | `.config/nvim/` | Neovim with Claude Code sync (auto-reload, diffview.nvim, claudecode.nvim) |
 | **starship** | `.config/starship.toml` | Starship cross-shell prompt (minimal single-line, language detection) |
 | **tmux** | `.tmux.conf` | Tmux multiplexer (vim-tmux-navigator, Catppuccin status bar, TPM plugins) |
-| **herdr** | `.config/herdr/config.toml`, `.config/herdr/plugins/config/{cloudmanic.herdr-plus,persiyanov.reviewr}/`, `.local/bin/herdr-{summarize,recent}` | Herdr terminal workspace manager (tmux-style keys, vim-herdr-navigation, sounds, pane descriptions + `prefix+a` recent-sessions picker; plugins herdr-plus, herdr-reviewr and herdr-fingers (trial), the last two pinned in `bootstrap.sh`) — stowed with `--no-folding` |
+| **herdr** | `.config/herdr/config.toml`, `.config/herdr/plugins/config/{cloudmanic.herdr-plus,persiyanov.reviewr}/`, `.local/bin/herdr-{summarize,recent,plugins}` | Herdr terminal workspace manager (tmux-style keys, vim-herdr-navigation, sounds, pane descriptions + `prefix+a` recent-sessions picker; plugins herdr-plus, herdr-reviewr and herdr-fingers (trial)). Every plugin is pinned with `--ref` in `bootstrap.sh`; move pins only with `herdr-plugins update`, never `herdr plugin update` — stowed with `--no-folding` |
 | **herdr-summarizer** | *(not stowed)* `install.sh`, `plugin/` | Opt-in herdr plugin: on agent turn-end, agent-detected, pane-moved and pane-focused events it runs `herdr-summarize` (labels, status, stale reviews, descriptions). No timer. `install.sh` links it; never run by `bootstrap.sh` |
 | **zsh** | `.zshrc` | Zsh shell via Oh My Zsh (plugins: git, wd, fzf-tab, autosuggestions, syntax-highlighting) |
 

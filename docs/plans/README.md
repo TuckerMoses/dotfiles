@@ -18,6 +18,7 @@ writes a plan for each one at the moment it executes it, then deletes the propos
 | [herdr-reviewr](herdr-reviewr.md) | `done` | Review an agent's diff and send line comments back (`prefix+alt+r`), pinned |
 | [herdr-fingers-trial](herdr-fingers-trial.md) | `done` | Trial: hint-copy paths, SHAs and URLs from a pane (`prefix+f`), pinned |
 | [herdr-jj-status-token](herdr-jj-status-token.md) | `done` | `$jj_status` in the spaces sidebar row for jj repos |
+| [herdr-plugin-pins](herdr-plugin-pins.md) | `done` | Every herdr plugin pinned in `bootstrap.sh`; `herdr-plugins status/review/update` moves the pins |
 
 ## Running the queue
 
