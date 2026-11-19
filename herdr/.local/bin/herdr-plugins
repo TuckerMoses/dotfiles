@@ -369,6 +369,12 @@ old_tree, tree = tree_at(pin), tree_at(target)
 old_steps, old_why, old_files, _ = build_files(pin, old_tree)
 steps, why, build, manifest = build_files(target, tree)
 build += [f for f in old_files if f not in build]  # a file the build stopped naming is a change too
+# Build tools read some files without a step naming them (cargo runs build.rs, make reads Makefile,
+# npm runs package.json scripts). Any of these that CHANGED is shown in full too. Display only:
+# this is not a judgement and finds nothing that is not in one of these files.
+TOOL_FILES = {"build.rs", "cargo.toml", "makefile", "gnumakefile", "justfile", ".justfile", "package.json",
+              "go.mod", "setup.py", "pyproject.toml", "build.gradle", "build.gradle.kts"}
+build += sorted(n for n in files if posixpath.basename(n).lower() in TOOL_FILES and n not in build)
 
 print("\n── install-time code at %s ──" % target[:7])
 if steps is None:
@@ -377,7 +383,7 @@ for cmd in steps or []:
     print_code("  [[build]] %s" % " ".join(cmd))
 if steps == []:
     print("  no [[build]] step for macOS/Linux")
-print_code("  files the steps name: %s" % (", ".join(build) or "none in the repo"))
+print_code("  files shown in full (named by the steps, or a changed build-tool file): %s" % (", ".join(build) or "none in the repo"))
 
 shown = 0
 for path in ["herdr-plugin.toml"] + build:
