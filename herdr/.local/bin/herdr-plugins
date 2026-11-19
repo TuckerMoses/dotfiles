@@ -160,8 +160,9 @@ cmd_check() {
 
 # ── review ───────────────────────────────────────────────────────────────────
 # Prints the commits pin..target, then the full diff of herdr-plugin.toml and of every file the
-# manifest's macOS/Linux [[build]] commands run (and scripts those run with sh/bash/source, and the
-# build.rs, Makefile, justfile or package.json that a cargo, make, just or npm/yarn step reads),
+# manifest's macOS/Linux [[build]] commands run (and scripts those run with sh/bash/source, every
+# build.rs, Cargo.toml, Makefile, justfile, package.json, go.mod, setup.py, pyproject.toml or
+# build.gradle in the tree whatever tool the steps name, and any Cargo.toml's custom build script),
 # resolved at target, then the full patch of every other changed text file (within a line budget:
 # build-adjacent paths first, then the plugin's source and build manifests, then the rest, smallest
 # first), and Cargo.lock/go.sum package changes. Binary media are listed by stats alone. Anything it
@@ -310,14 +311,19 @@ def builds(manifest):
         out.append(cur)
     return valid_steps(out)
 
+_read = {}  # (path, ref) -> text: a file is read once
 def content(path, ref):
     """A file's text at ref, or None when it does not exist there. The path is percent-encoded,
     so a name with ?, # or % cannot turn into a different request."""
+    if (path, ref) in _read:
+        return _read[path, ref]
     url = "repos/%s/contents/%s?ref=%s" % (repo, urllib.parse.quote(path, safe="/"), urllib.parse.quote(ref, safe=""))
     r = run(["gh", "api", "-H", "Accept: application/vnd.github.raw", url], raw=True)
     if r.returncode == 0:
+        _read[path, ref] = r.stdout
         return r.stdout
     if "404" in r.stderr or "Not Found" in r.stderr:
+        _read[path, ref] = None
         return None
     die("herdr-plugins: reading %s at %s failed: %s" % (path, ref[:7], r.stderr.strip()))
 
@@ -331,6 +337,41 @@ def blobs(ref):
 MEDIA = re.compile(r'\.(png|jpe?g|gif|ico|webp|avif|bmp|tiff?|mp4|m4v|mov|webm|mkv|avi|mp3|m4a|ogg|wav|flac|pdf|woff2?|ttf|otf|eot)$', re.I)
 SCRIPTISH = re.compile(r'\.(sh|bash|zsh|py|js|mjs|cjs|ts|rb|pl|ps1)$')
 FOLLOW_DEPTH, FOLLOW_MAX = 3, 40  # levels of files followed from the [[build]] steps; files followed in all
+
+BUILD_NAMES = {"build.rs", "Cargo.toml", "Makefile", "GNUmakefile", "makefile", "justfile", "package.json",
+               "go.mod", "setup.py", "pyproject.toml", "build.gradle"}
+
+def cargo_build_scripts(ref, tree):
+    """The custom build scripts ([package].build = "path", relative to its Cargo.toml) of every
+    Cargo.toml in the tree. One that is not in the tree, or a Cargo.toml that cannot be read as
+    TOML, makes the review incomplete. build = false (or true, the default build.rs) adds nothing."""
+    try:
+        import tomllib
+    except ImportError:
+        tomllib = None
+    out = []
+    for t in sorted(tree):
+        if posixpath.basename(t) != "Cargo.toml":
+            continue
+        text = content(t, ref) or ""
+        if tomllib is None:
+            if "build" in text:
+                incomplete.append("no Python with tomllib: %s at %s may name a custom build script that is not followed" % (t, ref[:7]))
+            continue
+        try:
+            pkg = tomllib.loads(text).get("package", {})
+        except Exception as e:
+            incomplete.append("%s at %s does not parse as TOML (%s): a custom build script may not be followed" % (t, ref[:7], e))
+            continue
+        b = pkg.get("build") if isinstance(pkg, dict) else None
+        if b is None or isinstance(b, bool) or b == "build.rs":
+            continue
+        c = posixpath.normpath(posixpath.join(posixpath.dirname(t), b)) if isinstance(b, str) else None
+        if c in tree:
+            out.append(c)
+        else:
+            incomplete.append("%s at %s names a build script (build = %r) that is not in the tree" % (t, ref[:7], b))
+    return out
 
 def build_files(ref, tree):
     """What the build runs at ref: its steps, every file they name or that a file they name names
@@ -364,21 +405,13 @@ def build_files(ref, tree):
                 out += [c for c in by_name.get(bare, []) if c not in out]
         return out
     todo = [(c, 1) for cmd in steps for w in cmd for c in named(w, "")]
-    # Files a build tool runs without a step naming them: when a step runs cargo, make, just or
-    # npm/pnpm/yarn/bun, the inputs that tool reads implicitly are build files too (those in the tree).
-    implicit = []
-    for cmd in steps:
-        prog = [posixpath.basename(w) for w in cmd[:4]] if posixpath.basename(cmd[0]) in ("env", "sudo", "command") else cmd[:1]
-        prog = {posixpath.basename(w) for w in prog}
-        if prog & {"cargo"}:
-            implicit += [posixpath.join(posixpath.dirname(t), "build.rs") for t in tree if posixpath.basename(t) == "Cargo.toml"] + ["build.rs"]
-        if prog & {"make", "gmake"}:
-            implicit += ["Makefile", "GNUmakefile", "makefile"]
-        if prog & {"just"}:
-            implicit += ["justfile", "Justfile"]
-        if prog & {"npm", "pnpm", "yarn", "bun"}:
-            implicit += ["package.json"]
-    todo += [(c, 1) for c in dict.fromkeys(implicit) if c in tree and not any(c == t[0] for t in todo)]
+    # Files a build tool reads without a step naming them. Fail-closed, whatever tool the steps
+    # name (a tool can be reached through sh -c, -C <dir>, --manifest-path or cd): every file in the
+    # tree with a BUILD_NAMES basename is a build file, and so is a custom [package].build script of
+    # any Cargo.toml.
+    todo += [(c, 1) for c in sorted(tree) if posixpath.basename(c) in BUILD_NAMES]
+    todo += [(c, 1) for c in cargo_build_scripts(ref, tree)]
+    todo = [t for i, t in enumerate(todo) if t[0] not in [u[0] for u in todo[:i]]]
     queued = {c for c, d in todo}
     found, bodies = [], {}
     while todo:
@@ -576,9 +609,10 @@ for t in texts:
 # The match is a heuristic text match on the lists above (FETCHER, PIPE, PKGCMD), fail-closed on
 # them, not a shell parse: a fetch by other means, or built from variables, is not seen. A
 # backslash-newline joins as the shell does (cu\<newline>rl is curl; both a nothing-join and a
-# space-join are tried), and so does a line ending in |, |&, && or || (the next line that is not
-# blank or a whole-line comment is part of the same command); a comment line is never continued
-# where # starts a comment.
+# space-join are tried), and so does a line ending in |, |&, && or || once a trailing " # comment"
+# outside quotes is removed (the next line that is not blank or a whole-line comment is part of the
+# same command; with unbalanced quotes, or where # is not a comment, the line as written is tested
+# too); a comment line is never continued where # starts a comment.
 # \r, \v or \f in a build file is itself a reason for an incomplete review.
 MORE_PKG = (r'(?:(?:bunx|uvx|dnf|yum|apk|nix|conda|mamba|rustup)\b|bun\s+(?:add|install|x)\b|deno\s+(?:run|install)\b|bundle\s+install\b'
             r'|docker\s+pull\b|go\s+mod\s+download\b|cargo\s+add\b|gh\s+(?:release\s+download|repo\s+clone)\b)')
@@ -623,13 +657,38 @@ MOVING = re.compile(r"releases/latest\b|raw\.githubusercontent\.com/" + _GH + "/
                     + r"|/(?:tarball|zipball)(?:/(?:refs/heads/)?(?:main|master|HEAD))?(?=[\s'\"`)]|$)"
                     + r"|<\(\s*(?:curl|wget)\b|\$\(\s*(?:curl|wget)\b|`\s*(?:curl|wget)\b|\beval\b.*\b(?:curl|wget)\b")
 TRAILING_OP = re.compile(r'(?:\|&?|&&|\|\|)$')
+def strip_comment(text):
+    """(text without a trailing comment, quotes balanced?). The comment is whitespace then # to the
+    end, outside single and double quotes (a backslash escapes outside single quotes)."""
+    q, esc = None, False
+    for i, ch in enumerate(text):
+        if esc:
+            esc = False
+        elif ch == "\\" and q != "'":
+            esc = True
+        elif q:
+            q = None if ch == q else q
+        elif ch in "'\"":
+            q = ch
+        elif ch == "#" and i and text[i - 1] in " \t":
+            return text[:i], True
+    return text, q is None
+def ends_in_op(seg, comments_ok):
+    """Whether a line ends in |, |&, && or || once its trailing comment is removed. Fail-closed: when
+    the quotes do not balance, or # does not start a comment in this file, the line as written is
+    tested too."""
+    stripped, balanced = strip_comment(seg)
+    tests = [stripped] if balanced and comments_ok else [stripped, seg]
+    return any(TRAILING_OP.search(t.rstrip()) for t in tests)
 def commands(text, comments_ok=True):
     """(line, text, whole-line comment?) per command; line is the first physical line. A backslash
-    joins a line to the next, and so does a trailing |, |&, && or || (the shell reads on), skipping
-    blank lines and, where # starts a comment (comments_ok), whole-line comments between them."""
+    joins a line to the next, and so does a trailing |, |&, && or || (the shell reads on; tested
+    after a trailing " # comment" is removed, see ends_in_op), skipping blank lines and, where #
+    starts a comment (comments_ok), whole-line comments between them."""
     out = {}
     for sep in ("", " "):
         cur, start, more = None, 0, False  # more: cur ended in an operator and takes the next code line
+        seg = ""  # the physical line(s) since the last operator join: what ends_in_op tests
         for n, line in enumerate(text.split("\n"), 1):
             if (cur is None or more) and comments_ok and re.match(r'[ \t]*#', line):  # ASCII blanks only: the shell does not treat NBSP or \x1c as blanks
                 out.setdefault((line.strip(), True), n)
@@ -638,14 +697,15 @@ def commands(text, comments_ok=True):
                 continue
             if cur is None:
                 start = n
-                cur = line
+                cur, seg = line, line
             else:
                 cur = cur + (" " if more else "") + line
+                seg = line if more else seg + line
             more = False
             if cur.endswith("\\"):
-                cur = cur[:-1] + sep
+                cur, seg = cur[:-1] + sep, seg[:-1] + sep
                 continue
-            if TRAILING_OP.search(cur.rstrip()):
+            if ends_in_op(seg, comments_ok):
                 more = True
                 continue
             if cur.strip():
