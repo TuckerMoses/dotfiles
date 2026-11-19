@@ -663,8 +663,12 @@ ALWAYS = re.compile(PIPE + r'|\b' + PKGCMD)
 # Not make or just: both expand $(...) / {{...}} in recipe lines, "#" ones included, before the
 # shell sees them, so every line of a Makefile, *.mk or justfile is scanned as code.
 HASH_COMMENTS = re.compile(r'\.(?:sh|bash|zsh|ksh|py|rb|pl|toml|ya?ml)$', re.I)
+MAKE_JUST = re.compile(r'(?:^|/)(?:GNUmakefile|makefile|\.?justfile)$|\.mk$', re.I)  # never comment languages, whatever their #! says
 def hash_lang(path, text):
-    """Whether # starts a line comment in this file (by extension, or a #! shell/python/ruby/perl line)."""
+    """Whether # starts a line comment in this file (by extension, or a #! shell/python/ruby/perl line).
+    Never for make or just files: they expand $(...)/{{...}} in recipe lines before the shell runs."""
+    if MAKE_JUST.search(path):
+        return False
     return bool(HASH_COMMENTS.search(path)) or bool(re.match(r'#!.*\b(?:ba|z|k|da)?sh\b|#!.*\b(?:python|ruby|perl)', text))
 # GitHub file and archive URLs are judged by the shape of their ref, not by a list of branch names: a
 # reason unless the ref is a commit sha (7 to 40 hex characters) or a version-shaped tag (v1.2.3, 1.2).
