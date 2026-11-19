@@ -349,8 +349,11 @@ MEDIA = re.compile(r'\.(png|jpe?g|gif|ico|webp|avif|bmp|tiff?|mp4|m4v|mov|webm|m
 SCRIPTISH = re.compile(r'\.(sh|bash|zsh|py|js|mjs|cjs|ts|rb|pl|ps1)$')
 FOLLOW_DEPTH, FOLLOW_MAX = 3, 40  # levels of files followed from the [[build]] steps; files followed in all
 
-BUILD_NAMES = {"build.rs", "Cargo.toml", "Makefile", "GNUmakefile", "makefile", "justfile", "package.json",
-               "go.mod", "setup.py", "pyproject.toml", "build.gradle"}
+# Compared lowercased (make reads Makefile/makefile/GNUmakefile; just reads justfile, Justfile, .justfile).
+BUILD_NAMES = {"build.rs", "cargo.toml", "makefile", "gnumakefile", "justfile", ".justfile", "package.json",
+               "go.mod", "setup.py", "pyproject.toml", "build.gradle", "build.gradle.kts"}
+def is_build_name(path):
+    return posixpath.basename(path).lower() in BUILD_NAMES
 
 def cargo_build_scripts(ref, tree):
     """The custom build scripts ([package].build = "path", relative to its Cargo.toml) of every
@@ -384,11 +387,13 @@ def cargo_build_scripts(ref, tree):
             incomplete.append("%s at %s names a build script (build = %r) that is not in the tree" % (t, ref[:7], b))
     return out
 
-# Never followed as something the build runs: documentation. A changed doc still gets its full patch
-# under "other files", so this narrows what counts as executed, not what is shown.
-NOT_RUN = re.compile(r'\.(?:md|markdown|rst)$', re.I)
-# Build files whose text is declarative: shown and diffed in full, but not scanned for file names.
-DECLARATIVE = {"Cargo.toml", "go.mod", "pyproject.toml"}
+# Declarative manifests (shown and diffed in full) name files for two reasons: metadata (readme,
+# license) and things the build compiles or runs ([lib] path, proc-macro, backend-path, hooks).
+# From THESE files only, documentation and license names are metadata and not followed; every
+# other name they give is followed. Anywhere else nothing is filtered by extension: a step or
+# script that names docs/setup.md gets it followed.
+DECLARATIVE = {"cargo.toml", "go.mod", "pyproject.toml"}
+METADATA = re.compile(r'\.(?:md|markdown|rst)$|(?:^|/)(?:LICEN[CS]E|COPYING|NOTICE|AUTHORS)(?:[-.][\w.-]*)?$', re.I)
 
 def build_files(ref, tree):
     """What the build runs at ref: its steps, every file they name or that a file they name names
@@ -413,8 +418,7 @@ def build_files(ref, tree):
             for t in (tok, tok.lstrip("/")):  # "$(dirname "$0")/lib.sh" leaves "/lib.sh"
                 for b in ("", base):
                     c = posixpath.normpath(posixpath.join(b, t))
-                    if (c in tree and c != "herdr-plugin.toml" and not MEDIA.search(c) and posixpath.basename(c) not in LOCKS
-                            and not NOT_RUN.search(c)):
+                    if c in tree and c != "herdr-plugin.toml" and not MEDIA.search(c) and posixpath.basename(c) not in LOCKS:
                         hit = True
                         if c not in out:
                             out.append(c)
@@ -427,7 +431,7 @@ def build_files(ref, tree):
     # name (a tool can be reached through sh -c, -C <dir>, --manifest-path or cd): every file in the
     # tree with a BUILD_NAMES basename is a build file, and so is a custom [package].build script of
     # any Cargo.toml.
-    todo += [(c, 1) for c in sorted(tree) if posixpath.basename(c) in BUILD_NAMES]
+    todo += [(c, 1) for c in sorted(tree) if is_build_name(c)]
     todo += [(c, 1) for c in cargo_build_scripts(ref, tree)]
     todo = [t for i, t in enumerate(todo) if t[0] not in [u[0] for u in todo[:i]]]
     queued = {c for c, d in todo}
@@ -443,9 +447,9 @@ def build_files(ref, tree):
             incomplete.append("%s is in the tree at %s but could not be read" % (w, ref[:7]))
             body = ""
         bodies[w] = body
-        # A declarative manifest's paths are metadata (readme, license, include lists), not things
-        # the build runs; its one build input, cargo's [package].build, is added by cargo_build_scripts.
-        kids = [] if posixpath.basename(w) in DECLARATIVE else [c for c in named(body, posixpath.dirname(w)) if c not in queued]
+        kids = [c for c in named(body, posixpath.dirname(w)) if c not in queued]
+        if posixpath.basename(w).lower() in DECLARATIVE:
+            kids = [c for c in kids if not METADATA.search(c)]  # readme/license mentions; see DECLARATIVE
         if depth >= FOLLOW_DEPTH:
             if kids:
                 incomplete.append("%s names %s, more than %d levels of files down from the [[build]] steps: not followed"
@@ -656,7 +660,7 @@ ALWAYS_AT = re.compile(PIPE + r'|' + CMDPOS + PKGCMD)
 # on the line (an argv list like ["npm", ...], `timeout 30 npm ...`, `command pip ...`). ALWAYS_AT
 # (command position) only words the reason.
 ALWAYS = re.compile(PIPE + r'|\b' + PKGCMD)
-HASH_COMMENTS = re.compile(r'\.(?:sh|bash|zsh|ksh|py|rb|pl|toml|ya?ml|mk)$|(?:^|/)(?:Makefile|justfile)$')
+HASH_COMMENTS = re.compile(r'\.(?:sh|bash|zsh|ksh|py|rb|pl|toml|ya?ml|mk)$|(?:^|/)(?:GNUmakefile|makefile|\.?justfile)$', re.I)
 def hash_lang(path, text):
     """Whether # starts a line comment in this file (by extension, or a #! shell/python/ruby/perl line)."""
     return bool(HASH_COMMENTS.search(path)) or bool(re.match(r'#!.*\b(?:ba|z|k|da)?sh\b|#!.*\b(?:python|ruby|perl)', text))
@@ -694,11 +698,10 @@ def strip_comment(text):
             return text[:i], True
     return text, q is None
 def ends_in_op(seg, comments_ok):
-    """Whether a line ends in |, |&, && or || once its trailing comment is removed. Fail-closed: when
-    the quotes do not balance, or # does not start a comment in this file, the line as written is
-    tested too."""
-    stripped, balanced = strip_comment(seg)
-    tests = [stripped] if balanced and comments_ok else [stripped, seg]
+    """Whether a line ends in |, |&, && or || with or without its trailing comment. Fail-closed: both
+    forms are always tested, so stripping a comment can only add a join, never remove one."""
+    stripped, _balanced = strip_comment(seg) if comments_ok else (seg, True)
+    tests = [stripped, seg]
     return any(TRAILING_OP.search(t.rstrip()) for t in tests)
 def commands(text, comments_ok=True):
     """(line, text, whole-line comment?) per command; line is the first physical line. A backslash
@@ -744,7 +747,8 @@ for where, text in units:
 build_changed = (steps_text != old_steps_text or set(bodies) != set(old_bodies)
                  or any(bodies[p] != old_bodies.get(p) for p in bodies))
 for where, text in units:
-    comments_ok = where.startswith("[[") or hash_lang(where, text)
+    # [[build]] steps are argv lists, not shell: a "#" there is an argument, never a comment.
+    comments_ok = (not where.startswith("[[")) and hash_lang(where, text)
     for n, c, comment in commands(text, comments_ok):
         comment = comment and comments_ok  # a "#" line in a language without # comments is code
         loc = where if where.startswith("[[") else "%s:%d" % (where, n)
