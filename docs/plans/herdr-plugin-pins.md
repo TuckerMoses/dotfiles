@@ -146,8 +146,10 @@ Automatic scheduled checks; updating herdr itself; the local herdr-summarizer pl
     names are off (above); the target is not a fast-forward from the pin (status diverged or behind); a release-binary
     build has no manifest version or no tag for it, or the tag points elsewhere; a `cargo build`/`install` has no
     `--locked`; a `Cargo.lock` adds a package from outside crates.io, or a `go.sum` hash changes at the same version;
-    install-time code fetches code the review cannot see (below); or invisible characters appear as described.
-  - Which files are the build (commits up to and including review c-4). The `[[build]]` steps name files; so does every
+    install-time code fetches code the review cannot see (below); the build names more than 40 files, or a file at the
+    third level names another one (above); a build unit holds `\r`, `\v` or `\f`; or invisible characters appear as
+    described.
+  - Which files are the build (as of review c-5). The `[[build]]` steps name files; so does every
     file they name. Every token of a step or of a followed file that is a path in the tree is followed, whatever its
     type (`.sh`, `.py`, `.js`, a binary named in the build): resolved against the repo root and against the naming
     file's own directory (so `. "$(dirname "$0")/lib.sh"` and `python3 tools/dl.py` are followed), and a bare script
@@ -158,43 +160,74 @@ Automatic scheduled checks; updating herdr itself; the local herdr-summarizer pl
     change to any of them is a build change. Limits: a path built from variables (`$DIR/$name.sh`) or made relative by
     a `cd` to a directory that is not the script's own is not resolved (the bare-name fallback covers only a script
     with a unique name), and any path-like token that names a file is followed, so a script that mentions `README.md`
-    makes the README a build file.
-  - The fetch rule (rewritten in review c-4) judges the build as one unit, on the `[[build]]` steps and every build
-    file, with backslash-continued lines joined (with and without a space; a comment line is never continued, so
-    `# note \` does not hide the line under it) and split only on newlines; a `\r`, `\v` or `\f` in a build file makes
-    the review incomplete. Two matchers:
-    - *Fetch words*, on the raw text, comment lines included, for the build-changed case. A command line is a fetch
-      when it names `curl`, `wget`, a package manager (`npm`, `npx`, `pnpm`, `yarn`, `pip`, `pipx`, `uv`, `gem`, `brew`,
-      `apt`, `cargo install`), `go install`/`get`/`run`, `git clone`/`submodule`/`fetch`/`pull`, or a Python, JS or
-      PowerShell download (`urllib`, `requests`, `urlopen`, `http.get`/`request`, `fetch(`, `Invoke-WebRequest`,
-      `Invoke-RestMethod`, `iwr`). If the `[[build]]` steps or any build file changed (or one was added or removed),
-      every such line in every build unit makes the review incomplete, and so does a line of the moving-target shapes
-      below; a reason that quotes a comment line says so ("a comment line: comments count"). A change counts only if it
-      is more than blank lines and whole-line `#` comments (the shebang line stays); a build file with a heredoc or a
-      triple-quoted string is compared whole.
+    makes the README a build file. Consequences, kept on purpose because not following a file would narrow what the
+    review sees: an edit to that doc is a build change, and a package-manager word in its usage text (`npm install -g
+    foo`) is a fetch reason, so the review is incomplete. Followed files are printed whole, outside the 1000-line
+    budget, and each costs about two `gh` calls (its text at the target and at the pin; the diff reuses them), up to 80
+    at the 40-file cap.
+  - The fetch rule (rewritten in review c-4, reworked by 39ad6fc and review c-5) judges the build as one unit, on the
+    `[[build]]` steps and every build file, with backslash-continued lines joined (with and without a space; a comment
+    line is never continued, so `# note \` does not hide the line under it) and split only on newlines; a `\r`, `\v` or
+    `\f` in a build file makes the review incomplete. In four parts:
+    - *Fetch words*, on the raw text, for the build-changed case. A command line is a fetch when it names `curl`,
+      `wget`, a package manager (`npm`, `npx`, `pnpm`, `yarn`, `pip`, `pipx`, `uv`, `gem`, `brew`, `apt`,
+      `cargo install`), `go install`/`get`/`run`, `git clone`/`submodule`/`fetch`/`pull`, or a Python, JS or PowerShell
+      download (`urllib`, `requests`, `urlopen`, `http.get`/`request`, `fetch(`, `Invoke-WebRequest`,
+      `Invoke-RestMethod`, `iwr`). **Any byte change in a build unit is a build change**: the `[[build]]` steps or any
+      build file changed, comments and spacing included, or one was added or removed. Then every such line in every
+      build unit makes the review incomplete, and so does a line of the moving-target shapes below; a reason that
+      quotes a comment line says so ("a comment line: comments count"). Nothing is compared after stripping comments or
+      blank lines: a line the review reads as a comment can be code to the program (a heredoc, a multi-line string, a
+      language without `#` comments).
     - *Always-incomplete shapes*, for an unchanged build, matched on every non-comment line of every build unit (the
       moving-target shapes need no fetch word on the line, since a URL is often assigned on a line that fetches nothing,
-      as in herdr-plus's `install.sh:112`): `releases/latest`; a `raw.githubusercontent.com` URL naming a branch (`main`,
-      `master`, `HEAD`, `develop`, `dev`, `trunk`, `stable`, `nightly`, optionally under `refs/heads/`);
-      `/archive/refs/heads/` or `/archive/<branch>`; a `tarball` or `zipball` URL without a ref or at a branch; `<(curl`
-      or `<(wget`; `$(curl`/`$(wget` or a backtick before them; `eval` with `curl` or `wget` on the line. And, on a
-      line that also has a fetch word: a pipe into a shell or interpreter, or a package manager, `go install`/`get`/`run`,
-      `git clone`/`submodule` at command position (start of the line, after `;` `&` `|` `(` `!` `{` a backtick or `$(`,
-      after `then`/`do`/`else`/`if`/`sudo`/`exec`/`time`/`env`/`xargs`, after `-c` or `eval` and a quote; after `sudo`,
-      `env`, `VAR=value`, a path, or `python3 -m`). Words in an `echo`, a message or an option (`command -v brew`) do not
-      count. Whole-line comments are skipped here: before review c-4 they were matched too, which made herdr-plus's
-      review incomplete for its `# curl ... | sh` usage lines and hid the real hazard (`install.sh:112` sets
-      `url=.../releases/latest` and downloads the newest release whatever the pin says) behind that noise.
+      as in herdr-plus's `install.sh:112`): `releases/latest`; a `raw.githubusercontent.com` URL, or a `github.com`
+      `/raw/` or `/blob/` URL, naming a branch (`main`, `master`, `HEAD`, `develop`, `dev`, `trunk`, `stable`,
+      `nightly`, optionally under `refs/heads/`); `/archive/refs/heads/` or `/archive/<branch>` (the same branch names);
+      a `tarball` or `zipball` URL without a ref or at a branch; `<(curl` or `<(wget`; `$(curl`/`$(wget` or a backtick
+      before them; `eval` with `curl` or `wget` on the line. And, on a line that also has a fetch word: a pipe into a
+      shell or interpreter (`sh`, `bash`, `zsh`, `dash`, `ksh`, `python`, `perl`, `ruby`, `node`, `deno`, `bun`),
+      reached however: `| /bin/sh`, `| env bash`, `| sudo -E bash -s`, `| /usr/bin/env python3`; or a package manager,
+      `go install`/`get`/`run` or `git clone`/`submodule` named **anywhere on the line**. Where on the line only
+      changes the reason's wording: at command position (start of the line, after `;` `&` `|` `(` `!` `{` a backtick or
+      `$(`, `then`/`do`/`else`/`if`/`sudo`/`exec`/`time`/`env`/`xargs`, `-c` or `eval` and a quote, `VAR=value`, a path,
+      `python3 -m`) it reads "a package manager, go or git clone by name"; elsewhere it adds "named off command
+      position, which still counts". So an `echo` or usage message, an argv list (`["npm", "install"]`),
+      `timeout 30 npm install` and `command pip install` on a line that also has a fetch word are reasons. The
+      interpreter word of a pipe must stand alone, so `| tee install.sh` and `| grep shell` are not.
+    - *Comments.* A line is a whole-line comment only when it starts with ASCII spaces or tabs and `#` (a non-ASCII
+      blank such as U+00A0, or a control character such as U+001C, is not a blank to the shell, so such a line is a
+      command), and only in a unit where `#` starts a comment: files ending `.sh`, `.bash`, `.zsh`, `.ksh`, `.py`,
+      `.rb`, `.pl`, `.toml`, `.yml`, `.yaml` or `.mk`, `Makefile`, `justfile`, or a file whose first line is a
+      `#!` shell, python, ruby or perl shebang. In any other unit (a `.c` file with `#define`, a `.js` file, a script
+      with no such name or shebang) every line is code. In an unchanged build a comment line is skipped, so usage text
+      does not make a plugin permanently incomplete; in a changed build comment lines count.
+    - *History.* In review c-4 (9c90994) the decision was narrower: a change that only added, dropped or reworded
+      whole-line `#` comments or blank lines was not a build change, and package managers, `go` and `git clone` counted
+      only at command position. The automated security review of that commit reversed it in 39ad6fc (f-c-4-5a, the one
+      loosening allowed in c-4, is gone): the review is fail-closed, so a false positive is read and, if right,
+      overridden, while a miss is not seen at all. The narrow form dropped `command pip install`,
+      `arch -arm64 brew install`, `timeout 60 npm install` and a Python helper's `subprocess.check_call(["pip", ...])`.
+      Matching changes after that only add matches (review c-5: non-ASCII blanks, wrapped pipes, github.com raw/blob
+      and `/archive/stable|nightly`).
     Each reason names the file and line, and which shape matched.
     What "covered by the review that set the pin" covers: as trusted as the pin was. The initial pins were set at wire-up,
     and herdr-plus's can only move by the override; "unchanged since the pin" does not mean someone read the fetch.
     The rule is fail-closed on the listed tools and shapes, not a shell parse: a fetch by other means, from a
-    variable-built command, or from a `#` line inside a multi-line string, is not seen. Consequence: any change to a
-    build script that downloads (herdr-plus's `install.sh`, reviewr's `herdr/install.sh`) makes the review incomplete.
-    Checked read-only on 2026-11-18 (review c-4): reviewr's `herdr/install.sh` (`curl -fsSL "$1" -o "$2"`) matches a fetch
-    word but no always-incomplete shape, so an unchanged reviewr build passes; herdr-plus's review is incomplete for
-    `install.sh:112` (`releases/latest`) and the two `$(curl`/`$(wget` lines that read the redirect (114 and 117), whatever
-    the target, and the reasons no longer quote comment lines.
+    variable-built command, or from a `#` line inside a multi-line string, is not seen; neither is a fixed-URL fetch in
+    a non-shell helper (`spawnSync("curl", ...)`, `urlopen(url)`), covered by the pin's review like a fixed `curl`, nor
+    `gh release download` without a tag, a limit. Consequence: any change to a build script that downloads
+    (herdr-plus's `install.sh`, reviewr's `herdr/install.sh`) makes the review incomplete.
+    Checked read-only on 2026-11-19 (review c-5, after 39ad6fc), the review logic on a scratch copy against `gh api`
+    content: herdr-plus `8b82400` to `f38df35` exits 3 with four reasons, the release tag `v0.1.24` at `bfd69da` rather
+    than the target, `install.sh:112` (`releases/latest`) and the two `$(curl`/`$(wget` lines that read the redirect
+    (114 and 117), the same four before and after review c-5's matching changes; reviewr `d18e012` to `bb71050` exits 3
+    for one reason only, the patch budget (24 changed files, 8332 lines over it), and no fetch reason. Each current pin
+    compared with itself through the same Python (an unchanged build) gives no fetch reason for reviewr
+    (`herdr/install.sh`'s `curl -fsSL "$1" -o "$2"` has a fetch word and no always-incomplete shape), herdr-fingers or
+    vim-herdr-navigation, and the same four reasons for herdr-plus; that run also prints "not a fast-forward"
+    (identical), which `review` itself never reaches because it stops at "nothing to review" when the target is the
+    pin. So every herdr-plus review of a commit other than the pin is incomplete for those lines.
   - `update` refuses to pin an incomplete review unless the user sets `HERDR_PLUGINS_INCOMPLETE_OK` to 7 to 40 leading
     characters of the commit that run reviews (the `<sha>` given to `update`, else upstream HEAD); the refusal message
     names it as the user's decision after reading the compare page, and says to review again if upstream moved since.
@@ -239,6 +272,9 @@ Automatic scheduled checks; updating herdr itself; the local herdr-summarizer pl
   upstream's own: an ancestor of (or equal to) the default branch, or the commit a tag points at. GitHub also resolves
   commits that exist only in a fork (an unmerged pull request), so resolving is not enough: anything else is refused
   and counts as a failed update, as does one that does not resolve (the `upstream_commit` helper, added out of loop in
-  3fe52dc). A last argument that is neither a pinned plugin nor hex is reported with that hint.
+  3fe52dc). A last argument that is neither a pinned plugin nor hex is reported with that hint. The `<sha>` rules are
+  `update`'s: `review <plugin> [<ref>]` is read-only and takes any ref GitHub resolves (a branch, a tag, a fork's
+  commit) without the upstream-own check, and says "nothing to review" only for a target that starts with the pin's
+  full sha, so `review herdr-plus main` (or a short sha) at the pin's own commit exits 3 (identical, not a fast-forward).
 - `validate.sh` records the commit each copied upstream rule set matches (`HERDR_PLUS_RULES_AT`, `REVIEWR_RULES_AT`)
   and warns when `bootstrap.sh` pins a different one. Plugin drift stays a warning because the plugin still works.

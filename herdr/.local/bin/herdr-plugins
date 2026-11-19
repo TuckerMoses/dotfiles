@@ -12,8 +12,10 @@
 #   herdr-plugins help
 #
 # <plugin> is a repo (herdr-reviewr), owner/repo, or a plugin id (persiyanov.reviewr).
-# <sha> is 7 to 40 lowercase hex characters, the last argument, after exactly one <plugin>; a tag name is not accepted (give the
-# commit it points at). It must be upstream's own commit: on the default branch's history, or the commit a tag points at.
+# For update, <sha> is 7 to 40 lowercase hex characters, the last argument, after exactly one <plugin>; a tag name is not accepted
+# (give the commit it points at). It must be upstream's own commit: on the default branch's history, or the commit a tag points at.
+# review is read-only and takes any ref GitHub resolves (a branch, a tag, a fork's commit) without that check. "Nothing to review" is
+# said only for a target that starts with the pin's full sha, so a branch name or short sha at the pin's own commit reports "not a fast-forward" (exit 3).
 # Exit codes: 0 ok; 1 drift (check) or an update that failed (unreadable upstream, a <sha> that does not resolve or is not upstream's own, refused or failed review, failed install or pin write); 2 setup error; 3 review incomplete (review only).
 # update is the user's: run it in a terminal at the main checkout (not a linked worktree), on a branch made there, through
 # the stowed ~/.local/bin/herdr-plugins; commit the pin bump after. <sha> moves that one plugin to a commit other than
@@ -42,7 +44,7 @@ die() { echo "herdr-plugins: $*" >&2; exit 2; }
 have() { command -v "$1" >/dev/null 2>&1; }
 
 usage() {
-  sed -n '8,22s/^# \{0,1\}//p' "$self"
+  sed -n '8,24s/^# \{0,1\}//p' "$self"
   echo
   echo "Pins are read from $BOOTSTRAP"
 }
@@ -526,16 +528,20 @@ for t in texts:
 # Install-time code that fetches code (curl or wget, a package manager, git clone, go install, a
 # Python/JS/PowerShell download) runs something that is not in this diff. The build is judged as
 # one unit, since a fetch can take its URL from a variable set in another build file:
-#  - if the [[build]] steps or ANY build file changed, every fetch in every build file makes the
-#    review incomplete, matched on the raw text, comment lines included (a commented-out fetch
-#    is reported as one, and the reason says so);
+#  - if the [[build]] steps or ANY build file changed (any byte, comments and spacing included, or a
+#    file added or removed), every fetch in every build file makes the review incomplete, matched on
+#    the raw text, comment lines included (a commented-out fetch is reported as one, and the reason
+#    says so);
 #  - if nothing in the build changed, its fetches were covered by the review that set the pin,
 #    EXCEPT ones whose result can change with no change to the repo, which are always incomplete:
-#    a fetch piped into an interpreter, a package manager, go install or git clone by name at
-#    command position, and, on ANY line (a URL can be assigned on a line that fetches nothing),
-#    a moving target: releases/latest, a raw.githubusercontent.com or /archive/ URL naming a
-#    branch, <(curl ...), $(curl ...), eval plus curl or wget. Whole-line comments are skipped
-#    here, so usage text does not make a plugin permanently incomplete.
+#    on a line that fetches, a pipe into a shell or interpreter (however reached: | /bin/sh,
+#    | env bash, | sudo -E bash -s) or a package manager, go install/get/run or git clone named
+#    ANYWHERE on the line (command position only changes the reason's wording), and, on ANY line (a
+#    URL can be assigned on a line that fetches nothing), a moving target: releases/latest, a
+#    raw.githubusercontent.com, github.com raw/blob or /archive/ URL naming a branch, <(curl ...),
+#    $(curl ...), eval plus curl or wget. Comment lines are skipped here, so usage text does not make
+#    a plugin permanently incomplete. A line is a comment only if it starts with ASCII blanks and
+#    "#", in a file where "#" starts a comment (hash_lang); in any other file every line is code.
 # "Covered by the review that set the pin" means as trusted as the pin was: a pin set at wire-up
 # was set by that review, and a pin that moved by override carries what the override accepted.
 # The match is textual and fail-closed on the tools listed, not a shell parse: a fetch by other
@@ -547,17 +553,22 @@ FETCHER = re.compile(r'\b(curl|wget)\b|\b(?:npm|npx|pnpm|yarn|pip3?|pipx|uv|gem|
 CMDPOS = (r'(?:^|[;&|(`{!]|\$\(|\b(?:then|do|else|elif|if|while|until|exec|sudo|time|nohup|xargs|env)\b|(?:-c|eval)\s+[\'"])\s*'
           r'(?:\w+=\S*\s+)*(?:(?:sudo|exec|time|env|nohup)\s+(?:-\S+\s+)*)*(?:python3?(?:\.\d+)?\s+-m\s+)?(?:[\w./-]*/)?')
 PKGCMD = r'(?:(?:npm|npx|pnpm|yarn|pip3?|pipx|uv|gem|brew|apt(?:-get)?)\b|cargo\s+install\b|go\s+(?:install|get|run)\b|git\s+(?:clone|submodule)\b)'
-ALWAYS_AT = re.compile(r'\|\s*(?:sudo\s+)?(?:ba|z|da|k)?sh\b|\|\s*(?:python3?|perl|ruby|node)\b|' + CMDPOS + PKGCMD)
+# A pipe into a shell or interpreter, however it is reached: a path (| /bin/sh), a wrapper (| env bash,
+# | sudo -E bash -s, | /usr/bin/env python3) or a version (python3.11). The interpreter word must not
+# be part of a longer name or a file name (| tee install.sh is not a pipe into sh).
+PIPE = r'\|[^|;&]*(?<![\w.-])(?:(?:ba|z|da|k)?sh|python[\d.]*|perl|ruby|node(?:js)?|deno|bun)\b'
+ALWAYS_AT = re.compile(PIPE + r'|' + CMDPOS + PKGCMD)
 # The decision is fail-closed: a package manager, go install/get/run or git clone named ANYWHERE
 # on the line (an argv list like ["npm", ...], `timeout 30 npm ...`, `command pip ...`). ALWAYS_AT
 # (command position) only words the reason.
-ALWAYS = re.compile(r'\|\s*(?:sudo\s+)?(?:ba|z|da|k)?sh\b|\|\s*(?:python3?|perl|ruby|node)\b|\b' + PKGCMD)
+ALWAYS = re.compile(PIPE + r'|\b' + PKGCMD)
 HASH_COMMENTS = re.compile(r'\.(?:sh|bash|zsh|ksh|py|rb|pl|toml|ya?ml|mk)$|(?:^|/)(?:Makefile|justfile)$')
 def hash_lang(path, text):
     """Whether # starts a line comment in this file (by extension, or a #! shell/python/ruby/perl line)."""
     return bool(HASH_COMMENTS.search(path)) or bool(re.match(r'#!.*\b(?:ba|z|k|da)?sh\b|#!.*\b(?:python|ruby|perl)', text))
 MOVING = re.compile(r"releases/latest\b|raw\.githubusercontent\.com/[^/\s'\"]+/[^/\s'\"]+/(?:refs/heads/)?(?:main|master|HEAD|develop|dev|trunk|stable|nightly)\b"
-                    r"|/archive/refs/heads/|/archive/(?:main|master|HEAD|develop|dev|trunk)\b|/(?:tarball|zipball)(?:/(?:refs/heads/)?(?:main|master|HEAD))?(?=[\s'\"`)]|$)"
+                    r"|github\.com/[^/\s'\"]+/[^/\s'\"]+/(?:raw|blob)/(?:refs/heads/)?(?:main|master|HEAD|develop|dev|trunk|stable|nightly)\b"
+                    r"|/archive/refs/heads/|/archive/(?:main|master|HEAD|develop|dev|trunk|stable|nightly)\b|/(?:tarball|zipball)(?:/(?:refs/heads/)?(?:main|master|HEAD))?(?=[\s'\"`)]|$)"
                     r"|<\(\s*(?:curl|wget)\b|\$\(\s*(?:curl|wget)\b|`\s*(?:curl|wget)\b|\beval\b.*\b(?:curl|wget)\b")
 def commands(text):
     """(line, text, whole-line comment?) per command; line is the first physical line."""
@@ -565,7 +576,7 @@ def commands(text):
     for sep in ("", " "):
         cur, start = None, 0
         for n, line in enumerate(text.split("\n"), 1):
-            if cur is None and line.lstrip().startswith("#"):
+            if cur is None and re.match(r'[ \t]*#', line):  # ASCII blanks only: the shell does not treat NBSP or \x1c as blanks
                 out.setdefault((line.strip(), True), n)
                 continue
             if cur is None:
@@ -611,7 +622,8 @@ for where, text in units:
 # Diffed from the files themselves at both commits, not from the compare API's file list,
 # which can be truncated or omit patches.
 for path in ["herdr-plugin.toml"] + scripts:
-    old, new = content(path, pin), content(path, target)
+    old = old_bodies[path] if path in old_bodies else content(path, pin)    # followed files are already read
+    new = bodies[path] if path in bodies else content(path, target)
     if old == new:
         print("\n%s: unchanged" % path)
         continue
