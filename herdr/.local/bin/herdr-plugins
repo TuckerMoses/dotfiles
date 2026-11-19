@@ -7,7 +7,7 @@
 #
 #   herdr-plugins status                   pinned / installed / upstream HEAD / commits behind
 #   herdr-plugins check                    offline: exit 1 when an installed plugin is off its pin
-#   herdr-plugins review <plugin> [<sha>]  commits and install-time code changes, pin..sha
+#   herdr-plugins review <plugin> [<ref>]  commits and install-time code changes, pin..ref (default: upstream HEAD)
 #   herdr-plugins update [<plugin> [<sha>]]  the user's: review, ask, reinstall, bump the pin (no <plugin>: all, at HEAD)
 #   herdr-plugins help
 #
@@ -160,7 +160,8 @@ cmd_check() {
 
 # ── review ───────────────────────────────────────────────────────────────────
 # Prints the commits pin..target, then the full diff of herdr-plugin.toml and of every file the
-# manifest's macOS/Linux [[build]] commands run (and scripts those run with sh/bash/source),
+# manifest's macOS/Linux [[build]] commands run (and scripts those run with sh/bash/source, and the
+# build.rs, Makefile, justfile or package.json that a cargo, make, just or npm/yarn step reads),
 # resolved at target, then the full patch of every other changed text file (within a line budget:
 # build-adjacent paths first, then the plugin's source and build manifests, then the rest, smallest
 # first), and Cargo.lock/go.sum package changes. Binary media are listed by stats alone. Anything it
@@ -363,6 +364,21 @@ def build_files(ref, tree):
                 out += [c for c in by_name.get(bare, []) if c not in out]
         return out
     todo = [(c, 1) for cmd in steps for w in cmd for c in named(w, "")]
+    # Files a build tool runs without a step naming them: when a step runs cargo, make, just or
+    # npm/pnpm/yarn/bun, the inputs that tool reads implicitly are build files too (those in the tree).
+    implicit = []
+    for cmd in steps:
+        prog = [posixpath.basename(w) for w in cmd[:4]] if posixpath.basename(cmd[0]) in ("env", "sudo", "command") else cmd[:1]
+        prog = {posixpath.basename(w) for w in prog}
+        if prog & {"cargo"}:
+            implicit += [posixpath.join(posixpath.dirname(t), "build.rs") for t in tree if posixpath.basename(t) == "Cargo.toml"] + ["build.rs"]
+        if prog & {"make", "gmake"}:
+            implicit += ["Makefile", "GNUmakefile", "makefile"]
+        if prog & {"just"}:
+            implicit += ["justfile", "Justfile"]
+        if prog & {"npm", "pnpm", "yarn", "bun"}:
+            implicit += ["package.json"]
+    todo += [(c, 1) for c in dict.fromkeys(implicit) if c in tree and not any(c == t[0] for t in todo)]
     queued = {c for c, d in todo}
     found, bodies = [], {}
     while todo:
@@ -517,8 +533,16 @@ if any(re.search(r'releases/(download|latest)', t) for t in texts):
             incomplete.append("the build downloads a release but there is no tag for manifest version %s" % m.group(1))
         elif sha != target:
             print("  tag %s is at %s, not at the target %s" % (name, sha[:7], target[:7]))
-            incomplete.append("release tag %s is at %s, not the target %s: the binary may not match this source (to move to the tagged commit: herdr-plugins update %s %s)"
-                              % (name, sha[:7], target[:7], repo.split("/")[1], sha[:12]))
+            # Only a tag ahead of the pin is a commit update would take; one at or behind it is no release to move to.
+            tc = run(["gh", "api", "repos/%s/compare/%s...%s" % (repo, pin, sha)])
+            try:
+                tag_ahead = tc.returncode == 0 and json.loads(tc.stdout).get("status") == "ahead"
+            except ValueError:
+                tag_ahead = False
+            incomplete.append("release tag %s is at %s, not the target %s: the binary may not match this source (%s)"
+                              % (name, sha[:7], target[:7],
+                                 "to move to the tagged commit: herdr-plugins update %s %s" % (repo.split("/")[1], sha[:12]) if tag_ahead
+                                 else "the tag is not ahead of the pin, so there is no tagged release ahead of the pin to move to"))
         else:
             print("  tag %s -> %s (the target)" % (name, sha[:7]))
 for t in texts:
@@ -534,29 +558,45 @@ for t in texts:
 #    says so);
 #  - if nothing in the build changed, its fetches were covered by the review that set the pin,
 #    EXCEPT ones whose result can change with no change to the repo, which are always incomplete:
-#    on a line that fetches, a pipe into a shell or interpreter (however reached: | /bin/sh,
-#    | env bash, | sudo -E bash -s) or a package manager, go install/get/run or git clone named
-#    ANYWHERE on the line (command position only changes the reason's wording), and, on ANY line (a
-#    URL can be assigned on a line that fetches nothing), a moving target: releases/latest, a
-#    raw.githubusercontent.com, github.com raw/blob or /archive/ URL naming a branch, <(curl ...),
-#    $(curl ...), eval plus curl or wget. Comment lines are skipped here, so usage text does not make
-#    a plugin permanently incomplete. A line is a comment only if it starts with ASCII blanks and
-#    "#", in a file where "#" starts a comment (hash_lang); in any other file every line is code.
+#    on a line that fetches, a pipe into one of the listed shells and interpreters (| /bin/sh,
+#    | env bash, | sudo -E bash -s, | (cd /tmp && sh)) or one of the listed package managers, go
+#    install/get/run/mod download or git clone/submodule named ANYWHERE on the line (command position
+#    only changes the reason's wording), and, on ANY line (a URL can be assigned on a line that
+#    fetches nothing), a moving target: releases/latest, a GitHub raw, blob, archive, codeload,
+#    tarball or zipball URL whose ref is not a commit sha or a version tag (judged by shape),
+#    <(curl ...), $(curl ...), eval plus curl or wget. Comment lines are skipped here, so usage text
+#    does not make a plugin permanently incomplete. A line is a comment only if it starts with ASCII
+#    blanks and "#", in a file where "#" starts a comment (hash_lang); in any other file every line
+#    is code.
 # "Covered by the review that set the pin" means as trusted as the pin was: a pin set at wire-up
-# was set by that review, and a pin that moved by override carries what the override accepted.
-# The match is textual and fail-closed on the tools listed, not a shell parse: a fetch by other
-# means, or built from variables, is not seen. A backslash-newline joins as the shell does (cu\<newline>rl
-# is curl; both a nothing-join and a space-join are tried); a comment line is never continued.
+# was set by that review, and a pin that moved by override carries what the override accepted. A
+# fetch of a fixed URL to a file is covered that way: only the forms above, where the fetched text
+# runs unread and unsaved or its source can change, are flagged again; a quiet review does not mean
+# a download has not changed.
+# The match is a heuristic text match on the lists above (FETCHER, PIPE, PKGCMD), fail-closed on
+# them, not a shell parse: a fetch by other means, or built from variables, is not seen. A
+# backslash-newline joins as the shell does (cu\<newline>rl is curl; both a nothing-join and a
+# space-join are tried), and so does a line ending in |, |&, && or || (the next line that is not
+# blank or a whole-line comment is part of the same command); a comment line is never continued
+# where # starts a comment.
 # \r, \v or \f in a build file is itself a reason for an incomplete review.
+MORE_PKG = (r'(?:(?:bunx|uvx|dnf|yum|apk|nix|conda|mamba|rustup)\b|bun\s+(?:add|install|x)\b|deno\s+(?:run|install)\b|bundle\s+install\b'
+            r'|docker\s+pull\b|go\s+mod\s+download\b|cargo\s+add\b|gh\s+(?:release\s+download|repo\s+clone)\b)')
 FETCHER = re.compile(r'\b(curl|wget)\b|\b(?:npm|npx|pnpm|yarn|pip3?|pipx|uv|gem|brew|apt(?:-get)?|cargo\s+install)\b|\bgo\s+(?:install|get|run)\b|\bgit\s+(?:clone|submodule|fetch|pull)\b'
-                     r'|\burllib|\brequests\b|\burlopen|\bhttps?\.(?:get|request)\b|\bfetch\(|Invoke-(?:WebRequest|RestMethod)|\biwr\b')
+                     r'|\burllib|\brequests\b|\burlopen|\bhttps?\.(?:get|request)\b|\bfetch\(|Invoke-(?:WebRequest|RestMethod)|\biwr\b'
+                     r'|\b' + MORE_PKG + r'|\b(?:rsync|scp|ssh)\b')
 CMDPOS = (r'(?:^|[;&|(`{!]|\$\(|\b(?:then|do|else|elif|if|while|until|exec|sudo|time|nohup|xargs|env)\b|(?:-c|eval)\s+[\'"])\s*'
           r'(?:\w+=\S*\s+)*(?:(?:sudo|exec|time|env|nohup)\s+(?:-\S+\s+)*)*(?:python3?(?:\.\d+)?\s+-m\s+)?(?:[\w./-]*/)?')
-PKGCMD = r'(?:(?:npm|npx|pnpm|yarn|pip3?|pipx|uv|gem|brew|apt(?:-get)?)\b|cargo\s+install\b|go\s+(?:install|get|run)\b|git\s+(?:clone|submodule)\b)'
-# A pipe into a shell or interpreter, however it is reached: a path (| /bin/sh), a wrapper (| env bash,
-# | sudo -E bash -s, | /usr/bin/env python3) or a version (python3.11). The interpreter word must not
-# be part of a longer name or a file name (| tee install.sh is not a pipe into sh).
-PIPE = r'\|[^|;&]*(?<![\w.-])(?:(?:ba|z|da|k)?sh|python[\d.]*|perl|ruby|node(?:js)?|deno|bun)\b'
+PKGCMD = r'(?:(?:npm|npx|pnpm|yarn|pip3?|pipx|uv|gem|brew|apt(?:-get)?)\b|cargo\s+install\b|go\s+(?:install|get|run)\b|git\s+(?:clone|submodule)\b|' + MORE_PKG + r')'
+# A pipe into one of these shells and interpreters (a list, so a heuristic text match), however the
+# word is reached: a path (| /bin/sh), a wrapper (| env bash, | sudo -E bash -s, | /usr/bin/env
+# python3), a version (python3.11), $SHELL, or `source /dev/stdin`. The word must not be part of a
+# longer name or a file name (| tee install.sh is not a pipe into sh). The pipe may also be into a
+# (...) or {...} group, in which && is allowed before the interpreter: | (cd /tmp && sh).
+INTERP = (r'(?<![\w.-])(?:(?:(?:ba|z|da|k)?sh|fish|pwsh|php[\d.]*|lua[\d.]*|python[\d.]*|perl|ruby|node(?:js)?|deno|bun)\b'
+          r'|\$\{?SHELL\}?|(?:source|\.)\s+/dev/stdin)')
+PIPE = r'\|&?[^|;&]*' + INTERP + r'|\|&?\s*[({][^|;)}]*' + INTERP
+PIPE_RE = re.compile(PIPE)
 ALWAYS_AT = re.compile(PIPE + r'|' + CMDPOS + PKGCMD)
 # The decision is fail-closed: a package manager, go install/get/run or git clone named ANYWHERE
 # on the line (an argv list like ["npm", ...], `timeout 30 npm ...`, `command pip ...`). ALWAYS_AT
@@ -566,24 +606,47 @@ HASH_COMMENTS = re.compile(r'\.(?:sh|bash|zsh|ksh|py|rb|pl|toml|ya?ml|mk)$|(?:^|
 def hash_lang(path, text):
     """Whether # starts a line comment in this file (by extension, or a #! shell/python/ruby/perl line)."""
     return bool(HASH_COMMENTS.search(path)) or bool(re.match(r'#!.*\b(?:ba|z|k|da)?sh\b|#!.*\b(?:python|ruby|perl)', text))
-MOVING = re.compile(r"releases/latest\b|raw\.githubusercontent\.com/[^/\s'\"]+/[^/\s'\"]+/(?:refs/heads/)?(?:main|master|HEAD|develop|dev|trunk|stable|nightly)\b"
-                    r"|github\.com/[^/\s'\"]+/[^/\s'\"]+/(?:raw|blob)/(?:refs/heads/)?(?:main|master|HEAD|develop|dev|trunk|stable|nightly)\b"
-                    r"|/archive/refs/heads/|/archive/(?:main|master|HEAD|develop|dev|trunk|stable|nightly)\b|/(?:tarball|zipball)(?:/(?:refs/heads/)?(?:main|master|HEAD))?(?=[\s'\"`)]|$)"
-                    r"|<\(\s*(?:curl|wget)\b|\$\(\s*(?:curl|wget)\b|`\s*(?:curl|wget)\b|\beval\b.*\b(?:curl|wget)\b")
-def commands(text):
-    """(line, text, whole-line comment?) per command; line is the first physical line."""
+# GitHub file and archive URLs are judged by the shape of their ref, not by a list of branch names: a
+# reason unless the ref is a commit sha (7 to 40 hex characters) or a version-shaped tag (v1.2.3, 1.2).
+# refs/heads/<anything> is always a reason, a tarball or zipball with no ref is one, and so is any
+# other ref (a branch, v1 with no dot, $VAR).
+_REFEND = r"""[/\s'"`)?#|;&<>\\]"""
+_FIXED = r"(?:[0-9a-f]{7,40}(?:\.(?:tar\.gz|tgz|zip))?|v?\d+(?:\.\d+)+[\w.+-]*)(?:" + _REFEND + r"|$)"
+_REF = (r"(?:refs/heads/|refs/tags/(?!" + _FIXED + r")[^/\s'\"`)?#|;&<>\\]"
+        r"|(?!refs/tags/)(?!" + _FIXED + r")[^/\s'\"`)?#|;&<>\\][^/\s'\"`)?#|;&<>\\]*)")
+_GH = r"[^/\s'\"]+/[^/\s'\"]+"
+MOVING = re.compile(r"releases/latest\b|raw\.githubusercontent\.com/" + _GH + "/" + _REF
+                    + r"|github\.com/" + _GH + r"/(?:raw|blob|archive)/" + _REF
+                    + r"|codeload\.github\.com/" + _GH + r"/(?:legacy\.)?(?:tar\.gz|zip)/" + _REF
+                    + r"|/archive/refs/heads/|/archive/(?:main|master|HEAD|develop|dev|trunk|stable|nightly)\b"
+                    + r"|/(?:tarball|zipball)(?:/" + _REF + r"|(?=[\s'\"`)|;&<>]|$))"
+                    + r"|/(?:tarball|zipball)(?:/(?:refs/heads/)?(?:main|master|HEAD))?(?=[\s'\"`)]|$)"
+                    + r"|<\(\s*(?:curl|wget)\b|\$\(\s*(?:curl|wget)\b|`\s*(?:curl|wget)\b|\beval\b.*\b(?:curl|wget)\b")
+TRAILING_OP = re.compile(r'(?:\|&?|&&|\|\|)$')
+def commands(text, comments_ok=True):
+    """(line, text, whole-line comment?) per command; line is the first physical line. A backslash
+    joins a line to the next, and so does a trailing |, |&, && or || (the shell reads on), skipping
+    blank lines and, where # starts a comment (comments_ok), whole-line comments between them."""
     out = {}
     for sep in ("", " "):
-        cur, start = None, 0
+        cur, start, more = None, 0, False  # more: cur ended in an operator and takes the next code line
         for n, line in enumerate(text.split("\n"), 1):
-            if cur is None and re.match(r'[ \t]*#', line):  # ASCII blanks only: the shell does not treat NBSP or \x1c as blanks
+            if (cur is None or more) and comments_ok and re.match(r'[ \t]*#', line):  # ASCII blanks only: the shell does not treat NBSP or \x1c as blanks
                 out.setdefault((line.strip(), True), n)
+                continue
+            if more and not line.strip():
                 continue
             if cur is None:
                 start = n
-            cur = line if cur is None else cur + line
+                cur = line
+            else:
+                cur = cur + (" " if more else "") + line
+            more = False
             if cur.endswith("\\"):
                 cur = cur[:-1] + sep
+                continue
+            if TRAILING_OP.search(cur.rstrip()):
+                more = True
                 continue
             if cur.strip():
                 out.setdefault((cur.strip(), False), start)
@@ -602,7 +665,7 @@ build_changed = (steps_text != old_steps_text or set(bodies) != set(old_bodies)
                  or any(bodies[p] != old_bodies.get(p) for p in bodies))
 for where, text in units:
     comments_ok = where.startswith("[[") or hash_lang(where, text)
-    for n, c, comment in commands(text):
+    for n, c, comment in commands(text, comments_ok):
         comment = comment and comments_ok  # a "#" line in a language without # comments is code
         loc = where if where.startswith("[[") else "%s:%d" % (where, n)
         moving = MOVING.search(c)
@@ -615,10 +678,15 @@ for where, text in units:
             continue
         elif moving:
             incomplete.append("%s names a moving target (%s), so the code it gets can change without the repo changing: %s"
-                              % (loc, moving.group(0)[:40], c[:80]))
+                              % (loc, moving.group(0)[-70:], c[:80]))
         elif FETCHER.search(c) and ALWAYS.search(c):
-            incomplete.append("%s fetches code that can change without the repo changing (pipe into an interpreter, or a package manager, go or git clone by name%s): %s"
-                              % (loc, "" if ALWAYS_AT.search(c) else "; named off command position, which still counts", c[:80]))
+            pm, am = PIPE_RE.search(c), ALWAYS.search(c)
+            if pm:
+                cause = "a pipe into an interpreter (%s)" % " ".join(pm.group(0).split())[-40:]
+            else:
+                cause = "%s, a package manager, go or git clone/submodule command%s" % (
+                    " ".join(am.group(0).split()), "" if ALWAYS_AT.search(c) else ", named off command position, which still counts")
+            incomplete.append("%s fetches code that can change without the repo changing: %s: %s" % (loc, cause, c[:80]))
 # Diffed from the files themselves at both commits, not from the compare API's file list,
 # which can be truncated or omit patches.
 for path in ["herdr-plugin.toml"] + scripts:
@@ -710,7 +778,7 @@ PY
 page() { if [[ -t 1 ]]; then less -FX; else cat; fi; }
 
 cmd_review() {
-  [[ $# -ge 1 ]] || die "usage: herdr-plugins review <plugin> [<sha>]"
+  [[ $# -ge 1 ]] || die "usage: herdr-plugins review <plugin> [<ref>]"
   have gh || die "review needs the GitHub CLI (gh)"
   local repo pin target
   read -r repo pin < <(resolve "$1" "$(installed || true)") || exit 2

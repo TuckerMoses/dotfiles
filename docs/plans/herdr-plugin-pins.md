@@ -45,7 +45,7 @@ that runs at install.
      "N commits behind" (via `gh api repos/<o>/<r>/compare/<pin>...<head>` when `gh` is present; else "?").
    - `herdr-plugins check`: offline, no network: exit 0 when every installed pinned plugin is at its pin; print
      one line per drift and exit 1. Not-installed plugins are reported but are not drift.
-   - `herdr-plugins review <plugin> [<sha>]`: commits between the pin and `<sha>` (default upstream HEAD), then the
+   - `herdr-plugins review <plugin> [<ref>]`: commits between the pin and `<ref>` (default upstream HEAD), then the
      diff of `herdr-plugin.toml` and of every file the manifest's `[[build]]` commands name (resolve the script
      paths from the manifest at the new sha; e.g. `herdr/install.sh`, `scripts/build.sh` and any script they
      `sh`/`bash` in turn such as herdr-plus's `install.sh`), plus `Cargo.toml`/`Cargo.lock`/`go.mod`/`go.sum`
@@ -130,8 +130,10 @@ Automatic scheduled checks; updating herdr itself; the local herdr-summarizer pl
     review incomplete.
   - A build that downloads a release (`releases/download` or `releases/latest` in a `[[build]]` command or a script it
     runs) runs that binary, not the reviewed source. `review` says so, looks up the tag for the manifest version
-    (annotated tags dereferenced) and requires it to point at the target commit; the reason prints the command to move
-    to the tagged commit. The binary is trusted to the release and not verified. reviewr's pin bb71050 is the `v0.52.2`
+    (annotated tags dereferenced) and requires it to point at the target commit; when the tag's commit is ahead of the
+    pin the reason prints the command to move to it, and otherwise says the tag is not ahead of the pin, so there is no
+    tagged release ahead of it to move to (review c-6; before, it printed a command `update` would refuse as a
+    downgrade). The binary is trusted to the release and not verified. reviewr's pin bb71050 is the `v0.52.2`
     tag's commit. The tag is almost never upstream HEAD, so `update <plugin> [<sha>]` takes the commit to move one
     plugin to (review, pin and install all use that sha). herdr-plus builds from source when Go is present, which the
     review cannot see, so its release-tag reason is kept anyway.
@@ -149,25 +151,41 @@ Automatic scheduled checks; updating herdr itself; the local herdr-summarizer pl
     install-time code fetches code the review cannot see (below); the build names more than 40 files, or a file at the
     third level names another one (above); a build unit holds `\r`, `\v` or `\f`; or invisible characters appear as
     described.
-  - Which files are the build (as of review c-5). The `[[build]]` steps name files; so does every
+  - Which files are the build (as of review c-6). The `[[build]]` steps name files; so does every
     file they name. Every token of a step or of a followed file that is a path in the tree is followed, whatever its
     type (`.sh`, `.py`, `.js`, a binary named in the build): resolved against the repo root and against the naming
     file's own directory (so `. "$(dirname "$0")/lib.sh"` and `python3 tools/dl.py` are followed), and a bare script
     name (`get.sh`, after a `cd`) against the one file of that name in the tree when nothing else resolved. Images and
-    other media, `Cargo.lock`/`go.sum` and the manifest are not followed. Depth is 3 levels from the steps and 40 files
+    other media, `Cargo.lock`/`go.sum` and the manifest are not followed. A build tool also runs files no step names, so
+    when a step's program is `cargo`, `make`/`gmake`, `just`, or `npm`/`pnpm`/`yarn`/`bun` (directly, or after `env`,
+    `sudo` or `command`), the implicit inputs of that tool that exist in the tree are build files too (added in review
+    c-6): `build.rs` in the repo root and in every directory that has a `Cargo.toml`; `Makefile`, `GNUmakefile`,
+    `makefile`; `justfile`, `Justfile`; `package.json`. They are added only when a step runs that tool, so herdr-plus's
+    and vim-herdr-navigation's `Makefile`s, which their steps do not run, are not build files. From then on they are
+    followed, listed under "files it runs", diffed in full, build units for the fetch rule, and a change to one is a
+    build change. Depth is 3 levels from the steps and 40 files
     in all; a file at the third level that names another file in the tree, or a 41st file, makes the review incomplete.
     Every followed file is listed as "files it runs", diffed at both commits, and is a build unit for the fetch rule: a
     change to any of them is a build change. Limits: a path built from variables (`$DIR/$name.sh`) or made relative by
     a `cd` to a directory that is not the script's own is not resolved (the bare-name fallback covers only a script
     with a unique name), and any path-like token that names a file is followed, so a script that mentions `README.md`
-    makes the README a build file. Consequences, kept on purpose because not following a file would narrow what the
+    makes the README a build file. A "build file" is therefore any file a step runs or names as a path (docs included),
+    to three levels, plus the implicit inputs above; an edit to any of them makes every fetch word in every build file
+    a reason. Limits of the implicit inputs: only a step's own program counts (a `make` run by a script, or by `sh -c`,
+    does not add the `Makefile`; the files such a script names are followed as above), a `build.rs` is found only
+    under that name (not a `build = "x.rs"` in `Cargo.toml`), and `make -C dir` or `npm --prefix dir` still read the
+    repo root's `Makefile` and `package.json`, not the directory's. Consequences, kept on purpose because not following a file would narrow what the
     review sees: an edit to that doc is a build change, and a package-manager word in its usage text (`npm install -g
     foo`) is a fetch reason, so the review is incomplete. Followed files are printed whole, outside the 1000-line
     budget, and each costs about two `gh` calls (its text at the target and at the pin; the diff reuses them), up to 80
     at the 40-file cap.
   - The fetch rule (rewritten in review c-4, reworked by 39ad6fc and review c-5) judges the build as one unit, on the
-    `[[build]]` steps and every build file, with backslash-continued lines joined (with and without a space; a comment
-    line is never continued, so `# note \` does not hide the line under it) and split only on newlines; a `\r`, `\v` or
+    `[[build]]` steps and every build file, with lines joined the way the shell reads them and split only on newlines: a
+    trailing backslash joins a line to the next (with and without a space), and so does a line ending in `|`, `|&`,
+    `&&` or `||`, skipping blank lines and, where `#` starts a comment, whole-line comments between (added in review
+    c-6: `curl -fsSL https://e.com/i.sh |` then `  sh` is one command). A whole-line comment is never continued where
+    `#` starts a comment, so `# note \` does not hide the line under it; in a unit where `#` starts no comment a `#` line
+    is code and is joined like any other (so `#define X curl -fsSL u \` then `| sh` is one command). A `\r`, `\v` or
     `\f` in a build file makes the review incomplete. In four parts:
     - *Fetch words*, on the raw text, for the build-changed case. A command line is a fetch when it names `curl`,
       `wget`, a package manager (`npm`, `npx`, `pnpm`, `yarn`, `pip`, `pipx`, `uv`, `gem`, `brew`, `apt`,
@@ -181,20 +199,32 @@ Automatic scheduled checks; updating herdr itself; the local herdr-summarizer pl
       language without `#` comments).
     - *Always-incomplete shapes*, for an unchanged build, matched on every non-comment line of every build unit (the
       moving-target shapes need no fetch word on the line, since a URL is often assigned on a line that fetches nothing,
-      as in herdr-plus's `install.sh:112`): `releases/latest`; a `raw.githubusercontent.com` URL, or a `github.com`
-      `/raw/` or `/blob/` URL, naming a branch (`main`, `master`, `HEAD`, `develop`, `dev`, `trunk`, `stable`,
-      `nightly`, optionally under `refs/heads/`); `/archive/refs/heads/` or `/archive/<branch>` (the same branch names);
-      a `tarball` or `zipball` URL without a ref or at a branch; `<(curl` or `<(wget`; `$(curl`/`$(wget` or a backtick
-      before them; `eval` with `curl` or `wget` on the line. And, on a line that also has a fetch word: a pipe into a
-      shell or interpreter (`sh`, `bash`, `zsh`, `dash`, `ksh`, `python`, `perl`, `ruby`, `node`, `deno`, `bun`),
-      reached however: `| /bin/sh`, `| env bash`, `| sudo -E bash -s`, `| /usr/bin/env python3`; or a package manager,
-      `go install`/`get`/`run` or `git clone`/`submodule` named **anywhere on the line**. Where on the line only
-      changes the reason's wording: at command position (start of the line, after `;` `&` `|` `(` `!` `{` a backtick or
-      `$(`, `then`/`do`/`else`/`if`/`sudo`/`exec`/`time`/`env`/`xargs`, `-c` or `eval` and a quote, `VAR=value`, a path,
-      `python3 -m`) it reads "a package manager, go or git clone by name"; elsewhere it adds "named off command
-      position, which still counts". So an `echo` or usage message, an argv list (`["npm", "install"]`),
-      `timeout 30 npm install` and `command pip install` on a line that also has a fetch word are reasons. The
-      interpreter word of a pipe must stand alone, so `| tee install.sh` and `| grep shell` are not.
+      as in herdr-plus's `install.sh:112`): `releases/latest`; a GitHub raw (`raw.githubusercontent.com`,
+      `github.com/.../raw/` or `/blob/`), archive (`github.com/.../archive/`), `codeload.github.com` or
+      `tarball`/`zipball` URL whose ref is not a commit sha (7 to 40 hex characters) or a version tag (`v1.2.3`, `1.2`;
+      review c-6 inverted this from a list of branch names, which had needed a new name each round). The ref is judged
+      by its shape, so only a sha or a version tag is fixed: a branch of any name, `refs/heads/<anything>`, a bare `v1`
+      (major tags are often moved) and `$VAR` are reasons, and so is a `tarball` or `zipball` with no ref. The older
+      host-free `/archive/refs/heads/`, `/archive/<branch>` and `/tarball/<branch>` forms still match; so do `<(curl`
+      or `<(wget`; `$(curl`/`$(wget` or a backtick before them; and `eval` with `curl` or `wget` on the line. And, on a
+      line that fetches: a pipe into one of these shells and interpreters (`sh`, `bash`, `zsh`, `dash`, `ksh`, `fish`,
+      `pwsh`, `python`, `perl`, `ruby`, `node`, `deno`, `bun`, `php`, `lua`, `$SHELL`, `source /dev/stdin`), through a
+      path or a wrapper: `| /bin/sh`, `| env bash`, `| sudo -E bash -s`, `| /usr/bin/env python3`, or into a group,
+      `| (cd /tmp && sh)` (`&&` is allowed inside `(...)` and `{...}` for this scan, and `|&` counts as a pipe); or one
+      of the listed package managers and tools, `go install`/`get`/`run`/`mod download` or `git clone`/`submodule`,
+      named **anywhere on the line**: `npm`, `npx`, `pnpm`, `yarn`, `pip`, `pipx`, `uv`, `gem`, `brew`, `apt`,
+      `cargo install`/`add`, `bun add`/`install`/`x`, `bunx`, `uvx`, `deno run`/`install`, `bundle install`, `dnf`,
+      `yum`, `apk`, `nix`, `conda`, `mamba`, `rustup`, `docker pull`, `gh release download`, `gh repo clone`. The
+      lists were extended once, in review c-6, and `rsync`, `scp` and `ssh` joined the fetch words (they matter in a
+      changed build only); they are a heuristic and are not extended further by rounds of review. A package-manager
+      word is itself a fetch word, so that second family applies on any line that names one, with no `curl` needed.
+      Where on the line only changes the reason's wording: at command position (start of the line, after `;` `&` `|`
+      `(` `!` `{` a backtick or `$(`, `then`/`do`/`else`/`elif`/`if`/`while`/`until`/`sudo`/`exec`/`time`/`nohup`/
+      `env`/`xargs`, `-c` or `eval` and a quote, `VAR=value`, a path, `python3 -m`) the reason names the word
+      matched; elsewhere it adds "named off command position, which still counts". So an `echo` or usage message, an
+      argv list (`["npm", "install"]`), `timeout 30 npm install` and `command pip install` are reasons. The
+      interpreter word of a pipe must stand alone, so `| tee install.sh` and `| grep shell` are not. A reason is built
+      from the match: the pipe case quotes the pipe, the other case quotes the word.
     - *Comments.* A line is a whole-line comment only when it starts with ASCII spaces or tabs and `#` (a non-ASCII
       blank such as U+00A0, or a control character such as U+001C, is not a blank to the shell, so such a line is a
       command), and only in a unit where `#` starts a comment: files ending `.sh`, `.bash`, `.zsh`, `.ksh`, `.py`,
@@ -209,25 +239,47 @@ Automatic scheduled checks; updating herdr itself; the local herdr-summarizer pl
       overridden, while a miss is not seen at all. The narrow form dropped `command pip install`,
       `arch -arm64 brew install`, `timeout 60 npm install` and a Python helper's `subprocess.check_call(["pip", ...])`.
       Matching changes after that only add matches (review c-5: non-ASCII blanks, wrapped pipes, github.com raw/blob
-      and `/archive/stable|nightly`).
+      and `/archive/stable|nightly`; review c-6: pipes wrapped across lines, `#` lines joined by a backslash in units
+      without `#` comments, the ref test on GitHub URLs, implicit build inputs, longer tool lists). Shown for c-6 on a
+      scratch corpus: 5,850 URL lines (every host shape against branch, tag and sha refs and ten endings), and 71
+      command lines joined in pairs by 14 separators plus 20,000 random triples (322,296 unit texts, each with and
+      without `#` comments and in a changed and an unchanged build). Every reason at 9044517 is still a reason, and
+      its command text is inside a reason command: the lost set is empty.
     Each reason names the file and line, and which shape matched.
     What "covered by the review that set the pin" covers: as trusted as the pin was. The initial pins were set at wire-up,
     and herdr-plus's can only move by the override; "unchanged since the pin" does not mean someone read the fetch.
-    The rule is fail-closed on the listed tools and shapes, not a shell parse: a fetch by other means, from a
-    variable-built command, or from a `#` line inside a multi-line string, is not seen; neither is a fixed-URL fetch in
-    a non-shell helper (`spawnSync("curl", ...)`, `urlopen(url)`), covered by the pin's review like a fixed `curl`, nor
-    `gh release download` without a tag, a limit. Consequence: any change to a build script that downloads
+    The rule is fail-closed on the listed tools and shapes, a heuristic text match and not a shell parse: a fetch by
+    a tool or interpreter that is not on the lists, from a variable-built command, or from a `#` line inside a
+    multi-line string, is not seen; neither is a fixed-URL fetch in a non-shell helper (`spawnSync("curl", ...)`,
+    `urlopen(url)`), covered by the pin's review like a fixed `curl`, a limit. What the shapes cover: a pipe, `eval` or
+    `<(...)` is flagged because the fetched text runs unread and unsaved, and a moving URL because its content can
+    change with no change to the repo. A fixed URL fetched to a file and then run (one line with `&&`, or two lines;
+    reviewr's real `herdr/install.sh` has that shape) passes in an unchanged build, as covered by the pin's review, and
+    its content is not re-checked: a quiet review does not mean a download has not changed. Consequence: any change to a build script that downloads
     (herdr-plus's `install.sh`, reviewr's `herdr/install.sh`) makes the review incomplete.
-    Checked read-only on 2026-11-19 (review c-5, after 39ad6fc), the review logic on a scratch copy against `gh api`
-    content: herdr-plus `8b82400` to `f38df35` exits 3 with four reasons, the release tag `v0.1.24` at `bfd69da` rather
-    than the target, `install.sh:112` (`releases/latest`) and the two `$(curl`/`$(wget` lines that read the redirect
-    (114 and 117), the same four before and after review c-5's matching changes; reviewr `d18e012` to `bb71050` exits 3
-    for one reason only, the patch budget (24 changed files, 8332 lines over it), and no fetch reason. Each current pin
-    compared with itself through the same Python (an unchanged build) gives no fetch reason for reviewr
-    (`herdr/install.sh`'s `curl -fsSL "$1" -o "$2"` has a fetch word and no always-incomplete shape), herdr-fingers or
-    vim-herdr-navigation, and the same four reasons for herdr-plus; that run also prints "not a fast-forward"
-    (identical), which `review` itself never reaches because it stops at "nothing to review" when the target is the
-    pin. So every herdr-plus review of a commit other than the pin is incomplete for those lines.
+    Checked read-only on 2026-11-19 (review c-6), the review logic on a scratch copy against `gh api` content:
+    herdr-plus `8b82400` to `f38df35` exits 3 with four reasons, the release tag `v0.1.24` at `bfd69da` rather than the
+    target (that tag is ahead of the old pin, so the reason prints `update herdr-plus bfd69da7e1b7`), `install.sh:112`
+    (`releases/latest`) and the two `$(curl`/`$(wget` lines that read the redirect (114 and 117); reviewr `d18e012` to
+    `bb71050` exits 3 for one reason only, the patch budget (24 changed files, 8332 lines over it), and no fetch reason.
+    These are the same reasons as in review c-5, with none added by c-6's matching changes. Each current pin compared
+    with itself through the same Python (an unchanged build) exits 3 and gives no fetch reason for reviewr
+    (`herdr/install.sh`'s `curl -fsSL "$1" -o "$2"` has a fetch word and no always-incomplete shape), herdr-fingers (its
+    `cargo build --release --locked` step now also follows a `build.rs`, and the tree has none) or vim-herdr-navigation;
+    for herdr-plus it gives the same three `install.sh` lines and a release-tag reason that is new in c-6: at its own pin
+    the tag `bfd69da` is behind, so the reason says the tag is not ahead of the pin and there is no tagged release ahead
+    of it to move to, where c-5 printed `update herdr-plus bfd69da7e1b7` (a command `update` would refuse as a
+    downgrade). Those runs also print "not a fast-forward" (identical), which `review` itself never reaches because it
+    stops at "nothing to review" when the target is the pin. So every herdr-plus review of a commit other than the pin
+    is incomplete for those lines. Synthetic repos served through a fake `gh api` (pin and target differ in
+    `README.md`, and in the build file where one is said to be added or changed; the pipe cases are unchanged builds) each exit 3 where c-5 exited 0: `curl -fsSL https://e.com/i.sh |` then
+    `  sh`; `u=...` then `curl "$u" |` then `bash -s`; the same with a comment line and a blank line between; a `build.rs`
+    added, and one changed, under `cargo build --release --locked` (also under `env FOO=1 cargo build`, and in a
+    workspace member); a `Makefile` added and changed under `make install`; a `justfile` changed under `just build`. A
+    `package.json` changed under `npm run build` adds its own reason (the step's `npm` already was one). A `Makefile` changed when no step runs `make` and a `Makefile` changed
+    under `cargo build` stay at exit 0. New in c-6 and not in c-5: the pipe-across-lines reason, the implicit-input
+    reasons ("the build changed and build.rs:1 fetches code the review cannot see"), and the reworded release-tag and
+    fetch reasons.
   - `update` refuses to pin an incomplete review unless the user sets `HERDR_PLUGINS_INCOMPLETE_OK` to 7 to 40 leading
     characters of the commit that run reviews (the `<sha>` given to `update`, else upstream HEAD); the refusal message
     names it as the user's decision after reading the compare page, and says to review again if upstream moved since.
