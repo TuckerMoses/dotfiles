@@ -520,7 +520,7 @@ if len(cmp.get("files", [])) >= 300:
 # and any changed file a changed source file embeds (include_str!, include_bytes!, //go:embed);
 # (2) everything else (tests, docs, CI, formulas, website), the smallest patch first. Ordering
 # only: a dropped file is a dropped file in every tier.
-SUSPECT = re.compile(r'(^|/)(build\.rs|Makefile|justfile|[^/]*\.(sh|bash|ps1))$|^(scripts|build|herdr)/')
+SUSPECT = re.compile(r'(^|/)(build\.rs|GNUmakefile|makefile|\.?justfile|[^/]*\.(sh|bash|ps1|mk))$|^(scripts|build|herdr)/', re.I)
 SOURCE = re.compile(r'\.(rs|go)$|(^|/)(Cargo\.toml|go\.mod|rust-toolchain\.toml)$')
 TESTISH = re.compile(r'_test\.go$|(^|/)(tests?|testdata|examples?|benches|docs?)/')
 EMBED = re.compile(r'include_(?:str|bytes)!\s*\(\s*"([^"]+)"|//go:embed\s+(.+)')
@@ -660,7 +660,9 @@ ALWAYS_AT = re.compile(PIPE + r'|' + CMDPOS + PKGCMD)
 # on the line (an argv list like ["npm", ...], `timeout 30 npm ...`, `command pip ...`). ALWAYS_AT
 # (command position) only words the reason.
 ALWAYS = re.compile(PIPE + r'|\b' + PKGCMD)
-HASH_COMMENTS = re.compile(r'\.(?:sh|bash|zsh|ksh|py|rb|pl|toml|ya?ml|mk)$|(?:^|/)(?:GNUmakefile|makefile|\.?justfile)$', re.I)
+# Not make or just: both expand $(...) / {{...}} in recipe lines, "#" ones included, before the
+# shell sees them, so every line of a Makefile, *.mk or justfile is scanned as code.
+HASH_COMMENTS = re.compile(r'\.(?:sh|bash|zsh|ksh|py|rb|pl|toml|ya?ml)$', re.I)
 def hash_lang(path, text):
     """Whether # starts a line comment in this file (by extension, or a #! shell/python/ruby/perl line)."""
     return bool(HASH_COMMENTS.search(path)) or bool(re.match(r'#!.*\b(?:ba|z|k|da)?sh\b|#!.*\b(?:python|ruby|perl)', text))
