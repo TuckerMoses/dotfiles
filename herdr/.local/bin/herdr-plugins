@@ -12,11 +12,14 @@
 #   herdr-plugins help
 #
 # <plugin> is a repo (herdr-reviewr), owner/repo, or a plugin id (persiyanov.reviewr).
-# Exit codes: 0 ok; 1 drift (check) or an update that failed (unreadable upstream, refused or failed review, failed install or pin write); 2 setup error; 3 review incomplete (review only).
+# <sha> is 7 to 40 lowercase hex characters, the last argument, after exactly one <plugin>; a tag name is not accepted (give the
+# commit it points at). It must be upstream's own commit: on the default branch's history, or the commit a tag points at.
+# Exit codes: 0 ok; 1 drift (check) or an update that failed (unreadable upstream, a <sha> that does not resolve or is not upstream's own, refused or failed review, failed install or pin write); 2 setup error; 3 review incomplete (review only).
 # update is the user's: run it in a terminal at the main checkout (not a linked worktree), on a branch made there, through
 # the stowed ~/.local/bin/herdr-plugins; commit the pin bump after. <sha> moves that one plugin to a commit other than
 # upstream HEAD (a tagged release). It reinstalls a plugin installed off its pin at the pin. It refuses an incomplete
-# review unless the user sets HERDR_PLUGINS_INCOMPLETE_OK=<7 to 40 leading characters of the commit this run reviews>.
+# review unless the user sets HERDR_PLUGINS_INCOMPLETE_OK=<7 to 40 leading characters of the commit this run reviews>
+# (the <sha> given, else upstream HEAD); the override waives every reason at once and update prints them all.
 
 set -euo pipefail
 
@@ -39,7 +42,7 @@ die() { echo "herdr-plugins: $*" >&2; exit 2; }
 have() { command -v "$1" >/dev/null 2>&1; }
 
 usage() {
-  sed -n '8,19s/^# \{0,1\}//p' "$self"
+  sed -n '8,22s/^# \{0,1\}//p' "$self"
   echo
   echo "Pins are read from $BOOTSTRAP"
 }
@@ -161,10 +164,11 @@ cmd_check() {
 # first), and Cargo.lock/go.sum package changes. Binary media are listed by stats alone. Anything it
 # cannot show, or install-time code that fetches something it does not cover, makes the review
 # incomplete (exit 3).
-review_text() {  # <owner/repo> <pin> <target>; exits 3 when the review is incomplete
-  "${TOMLPY:-$PY}" - "$1" "$2" "$3" <<'PY'
+review_text() {  # <owner/repo> <pin> <target> [<file for the incomplete reasons>]; exits 3 when the review is incomplete
+  "${TOMLPY:-$PY}" - "$1" "$2" "$3" "${4:-}" <<'PY'
 import builtins, difflib, fnmatch, json, posixpath, re, subprocess, sys, unicodedata, urllib.parse
 repo, pin, target = sys.argv[1:4]
+reasons_file = sys.argv[4] if len(sys.argv) > 4 else ""  # when set, the reasons are also written there, one per line
 incomplete = []  # reasons the review cannot be trusted as complete
 hidden = set()   # invisible characters in install-time code, or bidi controls anywhere: block the review
 noted = set()    # invisible characters in commit messages and other metadata: shown, not blocking
@@ -320,33 +324,64 @@ def blobs(ref):
         incomplete.append("the file tree at %s is truncated" % ref[:7])
     return {e["path"] for e in t["tree"] if e["type"] == "blob"}
 
+# Binary media: not followed as build files, and listed by stats alone in a review (see is_asset).
+MEDIA = re.compile(r'\.(png|jpe?g|gif|ico|webp|avif|bmp|tiff?|mp4|m4v|mov|webm|mkv|avi|mp3|m4a|ogg|wav|flac|pdf|woff2?|ttf|otf|eot)$', re.I)
+SCRIPTISH = re.compile(r'\.(sh|bash|zsh|py|js|mjs|cjs|ts|rb|pl|ps1)$')
+FOLLOW_DEPTH, FOLLOW_MAX = 3, 40  # levels of files followed from the [[build]] steps; files followed in all
+
 def build_files(ref, tree):
-    """What the build runs at ref: its steps, the files they name (command words that are files in
-    the tree, then scripts those run), each file's text, and the manifest."""
+    """What the build runs at ref: its steps, every file they name or that a file they name names
+    (found), each file's text, and the manifest. A file is named by any token of a step or of a
+    followed file that is a path in the tree, resolved against the repo root and against the
+    naming file's directory (so "$(dirname "$0")/lib.sh" and `python3 tools/dl.py` are followed),
+    or a bare script name that a file in the tree has. Followed to FOLLOW_DEPTH levels, at most
+    FOLLOW_MAX files; past either the review is incomplete."""
     manifest = content("herdr-plugin.toml", ref)
     if manifest is None:
         if "herdr-plugin.toml" in tree:
             incomplete.append("herdr-plugin.toml is in the tree at %s but could not be read" % ref[:7])
         manifest = ""
     steps = builds(manifest)
-    todo = [w for cmd in steps for w in cmd]
-    found, seen, bodies = [], set(), {}
+    by_name = {}
+    for t in sorted(tree):
+        by_name.setdefault(posixpath.basename(t), []).append(t)
+    def named(text, base):
+        out = []
+        for tok in re.findall(r'[\w.@+/-]+', text):
+            hit = False
+            for t in (tok, tok.lstrip("/")):  # "$(dirname "$0")/lib.sh" leaves "/lib.sh"
+                for b in ("", base):
+                    c = posixpath.normpath(posixpath.join(b, t))
+                    if c in tree and c != "herdr-plugin.toml" and not MEDIA.search(c) and posixpath.basename(c) not in LOCKS:
+                        hit = True
+                        if c not in out:
+                            out.append(c)
+            bare = tok[2:] if tok.startswith("./") else tok
+            if not hit and "/" not in bare and SCRIPTISH.search(bare):  # a script reached through a `cd`
+                out += [c for c in by_name.get(bare, []) if c not in out]
+        return out
+    todo = [(c, 1) for cmd in steps for w in cmd for c in named(w, "")]
+    queued = {c for c, d in todo}
+    found, bodies = [], {}
     while todo:
-        w = todo.pop(0)
-        while w.startswith("./"):
-            w = w[2:]
-        if w in seen or w not in tree:
-            continue
-        seen.add(w)
+        w, depth = todo.pop(0)
+        if len(found) >= FOLLOW_MAX:
+            incomplete.append("the build names more than %d files at %s; the rest are not followed" % (FOLLOW_MAX, ref[:7]))
+            break
         found.append(w)
         body = content(w, ref)
         if body is None:  # in the tree but unreadable: never treat as absent
             incomplete.append("%s is in the tree at %s but could not be read" % (w, ref[:7]))
             body = ""
         bodies[w] = body
-        for m in re.finditer(r'(?:\b(?:sh|bash|source)\s+|^\s*\.\s+)"?(?:\./)?([\w./-]+)', body, re.M):
-            todo.append(m.group(1))
-        todo += re.findall(r'[\w./-]+\.(?:sh|bash)\b', body)
+        kids = [c for c in named(body, posixpath.dirname(w)) if c not in queued]
+        if depth >= FOLLOW_DEPTH:
+            if kids:
+                incomplete.append("%s names %s, more than %d levels of files down from the [[build]] steps: not followed"
+                                  % (w, ", ".join(kids[:3]), FOLLOW_DEPTH))
+            continue
+        queued |= set(kids)
+        todo += [(c, depth + 1) for c in kids]
     return steps, found, bodies, manifest
 
 def tag_commit(version):
@@ -421,13 +456,13 @@ TIERS = ("build-adjacent", "source", "other")
 # file that did not change, which a review of the changed files cannot see, so every other changed
 # file (docs, licenses, a "png" that is really text) gets its full patch. Archives, executables
 # and wasm are not on the list: they fall to the code path and make the review incomplete.
-MEDIA = re.compile(r'\.(png|jpe?g|gif|ico|webp|avif|bmp|tiff?|mp4|m4v|mov|webm|mkv|avi|mp3|m4a|ogg|wav|flac|pdf|woff2?|ttf|otf|eot)$', re.I)
 def is_asset(n):
     # GitHub also omits patches for large text files, but reports 0/0 lines only for binary ones;
     # anything else falls to the code path, where a missing patch makes the review incomplete.
     f = files.get(n, {})
     return (bool(MEDIA.search(n)) and "patch" not in f and not SUSPECT.search(n)
-            and f.get("additions", 1) == 0 and f.get("deletions", 1) == 0)
+            and f.get("additions", 1) == 0 and f.get("deletions", 1) == 0
+            and (f.get("status") != "renamed" or bool(MEDIA.search(f.get("previous_filename", "")))))  # a renamed text file has no patch either
 def embedded(sources):
     """Changed files that changed source files embed: the sources are read at the target (at most
     60); an embed of a directory or a glob names every changed file under or matching it."""
@@ -488,28 +523,68 @@ for t in texts:
     for line in t.splitlines():
         if re.search(r'(^|&&|;|\|\||\bexec)\s*cargo\s+(build|install)\b', line) and "--locked" not in line:
             incomplete.append("a cargo build without --locked (%s): dependency versions are not held to Cargo.lock" % line.strip()[:80])
-# Install-time code that fetches code (curl or wget, a package manager, git clone, go install)
-# runs something that is not in this diff. The build is judged as one unit, since a fetch can
-# take its URL from a variable set in another build file:
-#  - if the [[build]] steps or ANY build file changed, every fetch in every build file makes
-#    the review incomplete;
+# Install-time code that fetches code (curl or wget, a package manager, git clone, go install, a
+# Python/JS/PowerShell download) runs something that is not in this diff. The build is judged as
+# one unit, since a fetch can take its URL from a variable set in another build file:
+#  - if the [[build]] steps or ANY build file changed, every fetch in every build file makes the
+#    review incomplete, matched on the raw text, comment lines included (a commented-out fetch
+#    is reported as one, and the reason says so);
 #  - if nothing in the build changed, its fetches were covered by the review that set the pin,
-#    EXCEPT ones whose result can change with no change to the repo (pipe into an interpreter;
-#    a package manager, go install or git clone by name), which are always incomplete.
-# Matching is fail-closed: on the raw text, comments included (no shell parsing to get wrong),
-# split only on \n after joining backslash-continued lines; \r, \v or \f in a build file is
-# itself a reason for an incomplete review.
-FETCHER = re.compile(r'\b(curl|wget)\b|\b(?:npm|npx|pnpm|yarn|pip3?|pipx|uv|gem|brew|apt(?:-get)?|cargo\s+install)\b|\bgo\s+(?:install|get|run)\b|\bgit\s+(?:clone|submodule|fetch|pull)\b')
-ALWAYS = re.compile(r'\|\s*(?:sudo\s+)?(?:ba|z|da|k)?sh\b|\|\s*(?:python3?|perl|ruby|node)\b|\b(?:npm|npx|pnpm|yarn|pip3?|pipx|uv|gem|brew|apt(?:-get)?|cargo\s+install)\b|\bgo\s+(?:install|get|run)\b|\bgit\s+(?:clone|submodule)\b')
+#    EXCEPT ones whose result can change with no change to the repo, which are always incomplete:
+#    a fetch piped into an interpreter, a package manager, go install or git clone by name at
+#    command position, and, on ANY line (a URL can be assigned on a line that fetches nothing),
+#    a moving target: releases/latest, a raw.githubusercontent.com or /archive/ URL naming a
+#    branch, <(curl ...), $(curl ...), eval plus curl or wget. Whole-line comments are skipped
+#    here, so usage text does not make a plugin permanently incomplete.
+# "Covered by the review that set the pin" means as trusted as the pin was: a pin set at wire-up
+# was set by that review, and a pin that moved by override carries what the override accepted.
+# The match is textual and fail-closed on the tools listed, not a shell parse: a fetch by other
+# means, or built from variables, is not seen. A backslash-newline joins as the shell does (cu\<newline>rl
+# is curl; both a nothing-join and a space-join are tried); a comment line is never continued.
+# \r, \v or \f in a build file is itself a reason for an incomplete review.
+FETCHER = re.compile(r'\b(curl|wget)\b|\b(?:npm|npx|pnpm|yarn|pip3?|pipx|uv|gem|brew|apt(?:-get)?|cargo\s+install)\b|\bgo\s+(?:install|get|run)\b|\bgit\s+(?:clone|submodule|fetch|pull)\b'
+                     r'|\burllib|\brequests\b|\burlopen|\bhttps?\.(?:get|request)\b|\bfetch\(|Invoke-(?:WebRequest|RestMethod)|\biwr\b')
+CMDPOS = (r'(?:^|[;&|(`{!]|\$\(|\b(?:then|do|else|elif|if|while|until|exec|sudo|time|nohup|xargs|env)\b|(?:-c|eval)\s+[\'"])\s*'
+          r'(?:\w+=\S*\s+)*(?:(?:sudo|exec|time|env|nohup)\s+(?:-\S+\s+)*)*(?:python3?(?:\.\d+)?\s+-m\s+)?(?:[\w./-]*/)?')
+PKGCMD = r'(?:(?:npm|npx|pnpm|yarn|pip3?|pipx|uv|gem|brew|apt(?:-get)?)\b|cargo\s+install\b|go\s+(?:install|get|run)\b|git\s+(?:clone|submodule)\b)'
+ALWAYS = re.compile(r'\|\s*(?:sudo\s+)?(?:ba|z|da|k)?sh\b|\|\s*(?:python3?|perl|ruby|node)\b|' + CMDPOS + PKGCMD)
+MOVING = re.compile(r"releases/latest\b|raw\.githubusercontent\.com/[^/\s'\"]+/[^/\s'\"]+/(?:refs/heads/)?(?:main|master|HEAD|develop|dev|trunk|stable|nightly)\b"
+                    r"|/archive/refs/heads/|/archive/(?:main|master|HEAD|develop|dev|trunk)\b|/(?:tarball|zipball)(?:/(?:refs/heads/)?(?:main|master|HEAD))?(?=[\s'\"`)]|$)"
+                    r"|<\(\s*(?:curl|wget)\b|\$\(\s*(?:curl|wget)\b|`\s*(?:curl|wget)\b|\beval\b.*\b(?:curl|wget)\b")
 def commands(text):
-    # The shell joins a backslash-newline with nothing (cu\<newline>rl is curl); a space join is
-    # matched too, in case the break sits between two words. Both views are checked.
-    out = []
-    for joined in (re.sub(r'\\\n', '', text), re.sub(r'\\\n', ' ', text)):
-        out += [l.strip() for l in joined.split("\n") if l.strip()]
-    return list(dict.fromkeys(out))
-def fetches(text):
-    return [c for c in commands(text) if FETCHER.search(c)]
+    """(line, text, whole-line comment?) per command; line is the first physical line."""
+    out = {}
+    for sep in ("", " "):
+        cur, start = None, 0
+        for n, line in enumerate(text.split("\n"), 1):
+            if cur is None and line.lstrip().startswith("#"):
+                out.setdefault((line.strip(), True), n)
+                continue
+            if cur is None:
+                start = n
+            cur = line if cur is None else cur + line
+            if cur.endswith("\\"):
+                cur = cur[:-1] + sep
+                continue
+            if cur.strip():
+                out.setdefault((cur.strip(), False), start)
+            cur = None
+        if cur is not None and cur.strip():
+            out.setdefault((cur.strip(), False), start)
+    return [(n, c, cm) for (c, cm), n in out.items()]
+def significant(text):
+    """The text without blank and whole-line # comment lines (the shebang stays), so a comment or
+    spacing edit alone is not a build change. A line after a backslash stays; text with a heredoc
+    or triple-quoted string is kept whole, since its lines can be data that runs."""
+    if "<<" in text or '"""' in text or "'''" in text:
+        return text
+    out, cont = [], False
+    for n, line in enumerate(text.split("\n")):
+        if not cont and (not line.strip() or (line.lstrip().startswith("#") and not (n == 0 and line.startswith("#!")))):
+            continue
+        out.append(line)
+        cont = line.endswith("\\")
+    return "\n".join(out)
 steps_text = "\n".join(" ".join(c) for c in steps)
 old_steps_text = "\n".join(" ".join(c) for c in old_steps)
 units = [("[[build]] steps", steps_text)] + sorted(bodies.items())
@@ -517,13 +592,24 @@ for where, text in units:
     if re.search(r'[\r\v\f]', text):
         incomplete.append("%s contains \\r, \\v or \\f, which can hide a command from this review" % where)
 build_changed = (steps_text != old_steps_text or set(bodies) != set(old_bodies)
-                 or any(bodies[p] != old_bodies.get(p) for p in bodies))
+                 or any(significant(bodies[p]) != significant(old_bodies.get(p) or "") for p in bodies))
 for where, text in units:
-    for c in fetches(text):
+    for n, c, comment in commands(text):
+        loc = where if where.startswith("[[") else "%s:%d" % (where, n)
+        moving = MOVING.search(c)
+        c = " ".join(c.split())  # one line of single spaces: both joins of a continued line read the same
         if build_changed:
-            incomplete.append("the build changed and %s fetches code the review cannot see: %s" % (where, c[:80]))
-        elif ALWAYS.search(c):
-            incomplete.append("%s fetches code that can change without the repo changing: %s" % (where, c[:80]))
+            if FETCHER.search(c) or moving:
+                incomplete.append("the build changed and %s fetches code the review cannot see%s: %s"
+                                  % (loc, " (a comment line: comments count, the match is on raw text)" if comment else "", c[:80]))
+        elif comment:
+            continue
+        elif moving:
+            incomplete.append("%s names a moving target (%s), so the code it gets can change without the repo changing: %s"
+                              % (loc, moving.group(0)[:40], c[:80]))
+        elif FETCHER.search(c) and ALWAYS.search(c):
+            incomplete.append("%s fetches code that can change without the repo changing (pipe into an interpreter, or a package manager, go or git clone by name): %s"
+                              % (loc, c[:80]))
 # Diffed from the files themselves at both commits, not from the compare API's file list,
 # which can be truncated or omit patches.
 for path in ["herdr-plugin.toml"] + scripts:
@@ -600,6 +686,9 @@ if hidden:
                       "shown above as <U+...>: code may not read as it runs" % ", ".join(sorted(hidden)))
 incomplete = list(dict.fromkeys(incomplete))
 if incomplete:
+    if reasons_file:
+        with open(reasons_file, "w") as rf:
+            rf.write("".join(clean(r).replace("\n", " ") + "\n" for r in incomplete))
     print("\n!! INCOMPLETE REVIEW: %s." % "; ".join(incomplete))
     print("!! Read the compare page above before pinning. update will refuse this review unless the user "
           "overrides it, after reading the compare page. Agents: do not pin or install this plugin; report this output.")
@@ -652,7 +741,7 @@ config_linked() {  # <plugin id>
 }
 
 relink_hint() {  # <owner/repo> <plugin id>
-  config_linked "$2" || echo "$1: its stowed config under ~/.config/herdr/plugins/config/$2 is no longer linked; re-run 'stow --no-folding herdr' from the main checkout (if stow reports a conflict, move the plugin's own file aside, it holds defaults, then re-run stow)"
+  config_linked "$2" || echo "$1: its stowed config under ~/.config/herdr/plugins/config/$2 is no longer linked; re-run 'stow --no-folding herdr' from the main checkout (if stow reports a conflict, move the file it names, under ~/.config/herdr/plugins/config/$2/, aside: it holds the plugin's defaults; then re-run stow)"
 }
 
 # Uninstall <id>, install <repo> at <to>; when the install fails, put <from> back. 0 only when <to> is
@@ -685,9 +774,9 @@ cmd_update() {
   local gdir cdir
   gdir="$(cd "$REPO" && cd "$(git rev-parse --git-dir 2>/dev/null)" 2>/dev/null && pwd -P)" || gdir=""
   cdir="$(cd "$REPO" && cd "$(git rev-parse --git-common-dir 2>/dev/null)" 2>/dev/null && pwd -P)" || cdir=""
-  [[ -z "$gdir" || "$gdir" == "$cdir" ]] || die "$REPO is a linked git worktree. update edits bootstrap.sh and reinstalls on the live machine; run it from the main checkout's stowed herdr-plugins (the first entry of 'git worktree list')"
+  [[ -z "$gdir" || "$gdir" == "$cdir" ]] || die "$REPO is a linked git worktree. update edits bootstrap.sh and reinstalls on the live machine; the user runs it from the main checkout's stowed herdr-plugins (the first entry of 'git worktree list'); agents do not run it"
   have gh || die "update needs the GitHub CLI (gh) to show what changed"
-  local inst repo pin head targets="" t id got ok moved="" failed="" rrc want=""
+  local inst repo pin head targets="" t id got ok moved="" failed="" rrc want="" reasons
   # An unreadable plugin list is not an empty one: update could otherwise move the pin of an installed plugin.
   inst="$(installed)" || die "herdr plugin list --json failed (is herdr installed and its server running?); update needs to know what is installed"
   # A last argument that is 7 to 40 hex characters, after exactly one plugin, is the commit to move that
@@ -699,7 +788,13 @@ cmd_update() {
   if [[ $# -eq 0 ]]; then
     while read -r repo pin; do targets="$targets $repo"; done < <(pins)
   else
-    for t in "$@"; do read -r repo pin < <(resolve "$t" "$inst") || exit 2; targets="$targets $repo"; done
+    for t in "$@"; do
+      read -r repo pin < <(resolve "$t" "$inst") || {
+        [[ $# -ne 2 || "$t" != "$2" ]] || echo "herdr-plugins: if $t was meant as a <sha>: it is 7 to 40 lowercase hex characters (a tag name or uppercase hex is not accepted; give the commit the tag points at)" >&2
+        exit 2
+      }
+      targets="$targets $repo"
+    done
   fi
   for repo in $targets; do
     pin="$(pins | awk -v r="$repo" '$1 == r { print $2; exit }')"
@@ -726,13 +821,20 @@ cmd_update() {
     if [[ -z "$head" ]]; then echo "$repo: could not read upstream HEAD; skipped"; failed="$failed $repo"; continue; fi
     if [[ "$head" == "$pin"* ]]; then echo "$repo: ${want:+$want is }up to date at ${pin:0:7}"; continue; fi
     echo
-    rrc=0; review_text "$repo" "$pin" "$head" | page || rrc=$?
+    reasons="$(mktemp)"
+    rrc=0; review_text "$repo" "$pin" "$head" "$reasons" | page || rrc=$?
     ok="${HERDR_PLUGINS_INCOMPLETE_OK:-}"
     if (( rrc == 3 )) && { (( ${#ok} < 7 )) || [[ "$head" != "$ok"* ]]; }; then
+      rm -f "$reasons"
       echo "$repo: review incomplete (see above); left at ${pin:0:7}."
       echo "Pinning past it is the user's decision, made after reading the compare page; if upstream moved since, review again. The user runs: HERDR_PLUGINS_INCOMPLETE_OK=${head:0:12} herdr-plugins update ${repo#*/}${want:+ ${head:0:12}}"
       failed="$failed $repo"; continue
-    elif (( rrc != 0 && rrc != 3 )); then echo "$repo: review failed; skipped"; failed="$failed $repo"; continue; fi
+    elif (( rrc != 0 && rrc != 3 )); then echo "$repo: review failed; skipped"; rm -f "$reasons"; failed="$failed $repo"; continue; fi
+    if (( rrc == 3 )); then
+      echo "$repo: HERDR_PLUGINS_INCOMPLETE_OK=${ok:0:12} waives every reason the review gave, not a chosen one; these are all of them:"
+      sed 's/^/  - /' "$reasons"
+    fi
+    rm -f "$reasons"
     echo
     confirm "Pin $repo at ${head:0:7}?" || { echo "$repo: left at ${pin:0:7}"; continue; }
     if [[ -z "$id" ]]; then

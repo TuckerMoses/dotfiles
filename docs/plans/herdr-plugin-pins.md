@@ -86,9 +86,10 @@ Automatic scheduled checks; updating herdr itself; the local herdr-summarizer pl
   `bootstrap.sh` remains the only source.
 - `herdr-plugins check` prints one line per pinned plugin (`ok`, `drift` or `absent`). It exits 1 on drift and 2 when
   herdr can't list plugins.
-- Exit codes: 0 ok; 1 drift (`check`) or an update that failed (unreadable upstream HEAD, refused or failed review,
-  failed install or pin write; a plugin the user declines is not a failure); 2 setup error; 3 review incomplete, from
-  `review` only (`update` reports a refused incomplete review as 1).
+- Exit codes: 0 ok; 1 drift (`check`) or an update that failed (unreadable upstream HEAD, a `<sha>` that does not
+  resolve or is not upstream's own, refused or failed review, failed install or pin write; a plugin the user declines is
+  not a failure); 2 setup error; 3 review incomplete, from `review` only (`update` reports a refused incomplete review
+  as 1).
 - `herdr-plugins` pins come only from lines that begin (after whitespace) with `herdr plugin install <owner/repo> --ref
   <sha>` in `bootstrap.sh`, so a quoted command in a comment adds no pin. `status`, `check`, `review` and `update`
   read the `bootstrap.sh` of the checkout the invoked script is linked from, not the current directory's; the help's
@@ -108,7 +109,7 @@ Automatic scheduled checks; updating herdr itself; the local herdr-summarizer pl
     history, a bump of ten or so commits to herdr-reviewr needs about 800 lines for its source alone). That includes
     docs and licenses: a text file can be compiled in (`include_str!`, `go:embed`) from a file that did not change,
     which a review of the changed files alone cannot see. Patches are shown in three tiers, smallest first within
-    each: build-adjacent paths (`scripts/`, `build/`, `herdr/`, `*.sh`, `build.rs`, `Makefile`); then the plugin's
+    each: build-adjacent paths (the `SUSPECT` pattern in the script: `scripts/`, `build/`, `herdr/`, `*.sh`, `*.bash`, `*.ps1`, `build.rs`, `Makefile`, `justfile`); then the plugin's
     source and build manifests (`.rs`, `.go`, `Cargo.toml`, `go.mod`, `rust-toolchain.toml`, not tests) and any changed
     file a changed source file embeds (the source files are read at the target, at most 60); then everything else
     (tests, docs, README/CHANGELOG, CI, formulas, website, assets). Order only: a file over the budget is not shown, in
@@ -120,6 +121,7 @@ Automatic scheduled checks; updating herdr itself; the local herdr-summarizer pl
     files and 11 others dropped (a long review stays incomplete). Only a binary medium is listed by stats alone: an image, audio,
     video, PDF or font file name (png, jpg, gif, ico, webp, avif, bmp, tiff, mp4, m4v, mov, webm, mkv, avi, mp3, m4a,
     ogg, wav, flac, pdf, woff, woff2, ttf, otf, eot), no patch from GitHub, 0 additions and 0 deletions, AND not a
+    renamed file whose old name was not media too (a text file renamed to a media name has no patch to show) AND not a
     build-adjacent path (an image under `scripts/`, `build/` or `herdr/` makes the review incomplete); a file named
     `.png` that is really text, an archive, an executable, a wasm file, or any file GitHub gave no patch for that has
     line counts, falls to the code path, where a missing patch makes the review incomplete. `Cargo.lock` and `go.sum`
@@ -145,23 +147,60 @@ Automatic scheduled checks; updating herdr itself; the local herdr-summarizer pl
     build has no manifest version or no tag for it, or the tag points elsewhere; a `cargo build`/`install` has no
     `--locked`; a `Cargo.lock` adds a package from outside crates.io, or a `go.sum` hash changes at the same version;
     install-time code fetches code the review cannot see (below); or invisible characters appear as described.
-  - The fetch rule (since commits 0589665 to 3757c90) judges the build as one unit, on the raw text of the `[[build]]`
-    steps and every build file, comments included, with backslash-continued lines joined (with and without a space)
-    and split only on newlines; a `\r`, `\v` or `\f` in a build file makes the review incomplete. A command line is a
-    fetch when it names `curl`, `wget`, a package manager (`npm`, `npx`, `pnpm`, `yarn`, `pip`, `pipx`, `uv`, `gem`,
-    `brew`, `apt`, `cargo install`), `go install`/`get`/`run`, or `git clone`/`submodule`/`fetch`/`pull`. If the
-    `[[build]]` steps or any build file changed (or one was added or removed), every fetch in every build file makes
-    the review incomplete. If nothing in the build changed, a fetch was covered by the review that set the pin, except
-    those whose result can change with no change to the repo (a pipe into a shell or interpreter, a package manager,
-    `go install`/`get`/`run`, `git clone`/`submodule`), which are always incomplete. Consequence: any change to a build
-    script that downloads (herdr-plus's `install.sh`, reviewr's `herdr/install.sh`) makes the review incomplete. Checked
-    read-only on 2026-11-18 at the current pins: reviewr's `herdr/install.sh` (`curl -fsSL "$1" -o "$2"`) matches the
-    fetch pattern but not the always-incomplete one, so an unchanged reviewr build passes; herdr-plus's `install.sh`
-    has `# curl -fsSL .../install.sh | sh` usage lines in its comments, which match the always-incomplete pattern, so
-    every herdr-plus review is incomplete for that reason, whatever the target (moving it takes the user's override).
+  - Which files are the build (commits up to and including review c-4). The `[[build]]` steps name files; so does every
+    file they name. Every token of a step or of a followed file that is a path in the tree is followed, whatever its
+    type (`.sh`, `.py`, `.js`, a binary named in the build): resolved against the repo root and against the naming
+    file's own directory (so `. "$(dirname "$0")/lib.sh"` and `python3 tools/dl.py` are followed), and a bare script
+    name (`get.sh`, after a `cd`) against the one file of that name in the tree when nothing else resolved. Images and
+    other media, `Cargo.lock`/`go.sum` and the manifest are not followed. Depth is 3 levels from the steps and 40 files
+    in all; a file at the third level that names another file in the tree, or a 41st file, makes the review incomplete.
+    Every followed file is listed as "files it runs", diffed at both commits, and is a build unit for the fetch rule: a
+    change to any of them is a build change. Limits: a path built from variables (`$DIR/$name.sh`) or made relative by
+    a `cd` to a directory that is not the script's own is not resolved (the bare-name fallback covers only a script
+    with a unique name), and any path-like token that names a file is followed, so a script that mentions `README.md`
+    makes the README a build file.
+  - The fetch rule (rewritten in review c-4) judges the build as one unit, on the `[[build]]` steps and every build
+    file, with backslash-continued lines joined (with and without a space; a comment line is never continued, so
+    `# note \` does not hide the line under it) and split only on newlines; a `\r`, `\v` or `\f` in a build file makes
+    the review incomplete. Two matchers:
+    - *Fetch words*, on the raw text, comment lines included, for the build-changed case. A command line is a fetch
+      when it names `curl`, `wget`, a package manager (`npm`, `npx`, `pnpm`, `yarn`, `pip`, `pipx`, `uv`, `gem`, `brew`,
+      `apt`, `cargo install`), `go install`/`get`/`run`, `git clone`/`submodule`/`fetch`/`pull`, or a Python, JS or
+      PowerShell download (`urllib`, `requests`, `urlopen`, `http.get`/`request`, `fetch(`, `Invoke-WebRequest`,
+      `Invoke-RestMethod`, `iwr`). If the `[[build]]` steps or any build file changed (or one was added or removed),
+      every such line in every build unit makes the review incomplete, and so does a line of the moving-target shapes
+      below; a reason that quotes a comment line says so ("a comment line: comments count"). A change counts only if it
+      is more than blank lines and whole-line `#` comments (the shebang line stays); a build file with a heredoc or a
+      triple-quoted string is compared whole.
+    - *Always-incomplete shapes*, for an unchanged build, matched on every non-comment line of every build unit (the
+      moving-target shapes need no fetch word on the line, since a URL is often assigned on a line that fetches nothing,
+      as in herdr-plus's `install.sh:112`): `releases/latest`; a `raw.githubusercontent.com` URL naming a branch (`main`,
+      `master`, `HEAD`, `develop`, `dev`, `trunk`, `stable`, `nightly`, optionally under `refs/heads/`);
+      `/archive/refs/heads/` or `/archive/<branch>`; a `tarball` or `zipball` URL without a ref or at a branch; `<(curl`
+      or `<(wget`; `$(curl`/`$(wget` or a backtick before them; `eval` with `curl` or `wget` on the line. And, on a
+      line that also has a fetch word: a pipe into a shell or interpreter, or a package manager, `go install`/`get`/`run`,
+      `git clone`/`submodule` at command position (start of the line, after `;` `&` `|` `(` `!` `{` a backtick or `$(`,
+      after `then`/`do`/`else`/`if`/`sudo`/`exec`/`time`/`env`/`xargs`, after `-c` or `eval` and a quote; after `sudo`,
+      `env`, `VAR=value`, a path, or `python3 -m`). Words in an `echo`, a message or an option (`command -v brew`) do not
+      count. Whole-line comments are skipped here: before review c-4 they were matched too, which made herdr-plus's
+      review incomplete for its `# curl ... | sh` usage lines and hid the real hazard (`install.sh:112` sets
+      `url=.../releases/latest` and downloads the newest release whatever the pin says) behind that noise.
+    Each reason names the file and line, and which shape matched.
+    What "covered by the review that set the pin" covers: as trusted as the pin was. The initial pins were set at wire-up,
+    and herdr-plus's can only move by the override; "unchanged since the pin" does not mean someone read the fetch.
+    The rule is fail-closed on the listed tools and shapes, not a shell parse: a fetch by other means, from a
+    variable-built command, or from a `#` line inside a multi-line string, is not seen. Consequence: any change to a
+    build script that downloads (herdr-plus's `install.sh`, reviewr's `herdr/install.sh`) makes the review incomplete.
+    Checked read-only on 2026-11-18 (review c-4): reviewr's `herdr/install.sh` (`curl -fsSL "$1" -o "$2"`) matches a fetch
+    word but no always-incomplete shape, so an unchanged reviewr build passes; herdr-plus's review is incomplete for
+    `install.sh:112` (`releases/latest`) and the two `$(curl`/`$(wget` lines that read the redirect (114 and 117), whatever
+    the target, and the reasons no longer quote comment lines.
   - `update` refuses to pin an incomplete review unless the user sets `HERDR_PLUGINS_INCOMPLETE_OK` to 7 to 40 leading
-    characters of the upstream HEAD that run reviews; the refusal message names it as the user's decision after reading
-    the compare page, and says to review again if upstream moved since. `review`'s own footer does not print the
+    characters of the commit that run reviews (the `<sha>` given to `update`, else upstream HEAD); the refusal message
+    names it as the user's decision after reading the compare page, and says to review again if upstream moved since.
+    The override is one switch: it waives every reason at once, including a genuine one listed beside noise, and a plugin
+    that is always incomplete trains its user to use it. So when it is used, `update` prints every reason it covered
+    before asking to pin (a per-reason override was left out: more code than it is worth). `review`'s own footer does not print the
     override, only that `update` will refuse the review unless the user overrides it, and that agents do not pin or
     install the plugin and report the output. `CLAUDE.md` forbids agents from running
     `update`, answering its prompts or setting the variable.
@@ -182,8 +221,8 @@ Automatic scheduled checks; updating herdr itself; the local herdr-summarizer pl
   uninstall/install/rollback code; bootstrap skips installed plugins, so nothing else converges it. `validate.sh`'s drift
   warning points at `herdr-plugins update <plugin>`.
 - After an install, `update` checks that the plugin's stowed config folder (when this repo has one) is still linked
-  in place, and says to run `stow --no-folding herdr` from the main checkout when it is not, and to move the plugin's own
-  file aside if stow reports a conflict (a reinstall may have written defaults where a link was; untested). Only
+  in place, and says to run `stow --no-folding herdr` from the main checkout when it is not, and to move the file stow names in a
+  conflict (under `~/.config/herdr/plugins/config/<plugin id>/`) aside (a reinstall may have written defaults where a link was; untested). Only
   herdr-plus and reviewr have stowed config, so only they get the hint. Whether `herdr plugin uninstall` removes that
   folder was not tested (the plugins' READMEs say it keeps it).
 - When `update` moves herdr-plus or reviewr it reminds the user to re-read that plugin's config rules at the new pin and
@@ -194,8 +233,12 @@ Automatic scheduled checks; updating herdr itself; the local herdr-summarizer pl
   `update` refuses to run when the checkout is a linked worktree (git's dir and common dir differ), before any prompt,
   review or install; it does not refuse on `master`. `status`, `check` and `review` are safe anywhere, but report on
   the checkout the script is linked from. The main checkout is the first entry of `git worktree list`.
-- `update <plugin> <sha>` (one plugin only; the sha is the last argument and 7 to 40 hex characters) moves that plugin
-  to the commit instead of upstream HEAD, for example a tagged release. The sha is resolved to a full sha first, then
-  reviewed, installed and pinned as that commit; one that does not resolve counts as a failed update.
+- `update <plugin> <sha>` (one plugin only; the sha is the last argument, 7 to 40 lowercase hex characters; a tag name
+  is not accepted, give the commit it points at) moves that plugin to the commit instead of upstream HEAD, for example a
+  tagged release. The sha is resolved to a full sha first, then reviewed, installed and pinned as that commit. It must be
+  upstream's own: an ancestor of (or equal to) the default branch, or the commit a tag points at. GitHub also resolves
+  commits that exist only in a fork (an unmerged pull request), so resolving is not enough: anything else is refused
+  and counts as a failed update, as does one that does not resolve (the `upstream_commit` helper, added out of loop in
+  3fe52dc). A last argument that is neither a pinned plugin nor hex is reported with that hint.
 - `validate.sh` records the commit each copied upstream rule set matches (`HERDR_PLUS_RULES_AT`, `REVIEWR_RULES_AT`)
   and warns when `bootstrap.sh` pins a different one. Plugin drift stays a warning because the plugin still works.
