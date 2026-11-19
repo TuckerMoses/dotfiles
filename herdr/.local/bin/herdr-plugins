@@ -384,6 +384,12 @@ def cargo_build_scripts(ref, tree):
             incomplete.append("%s at %s names a build script (build = %r) that is not in the tree" % (t, ref[:7], b))
     return out
 
+# Never followed as something the build runs: documentation. A changed doc still gets its full patch
+# under "other files", so this narrows what counts as executed, not what is shown.
+NOT_RUN = re.compile(r'\.(?:md|markdown|rst)$', re.I)
+# Build files whose text is declarative: shown and diffed in full, but not scanned for file names.
+DECLARATIVE = {"Cargo.toml", "go.mod", "pyproject.toml"}
+
 def build_files(ref, tree):
     """What the build runs at ref: its steps, every file they name or that a file they name names
     (found), each file's text, and the manifest. A file is named by any token of a step or of a
@@ -407,7 +413,8 @@ def build_files(ref, tree):
             for t in (tok, tok.lstrip("/")):  # "$(dirname "$0")/lib.sh" leaves "/lib.sh"
                 for b in ("", base):
                     c = posixpath.normpath(posixpath.join(b, t))
-                    if c in tree and c != "herdr-plugin.toml" and not MEDIA.search(c) and posixpath.basename(c) not in LOCKS:
+                    if (c in tree and c != "herdr-plugin.toml" and not MEDIA.search(c) and posixpath.basename(c) not in LOCKS
+                            and not NOT_RUN.search(c)):
                         hit = True
                         if c not in out:
                             out.append(c)
@@ -436,7 +443,9 @@ def build_files(ref, tree):
             incomplete.append("%s is in the tree at %s but could not be read" % (w, ref[:7]))
             body = ""
         bodies[w] = body
-        kids = [c for c in named(body, posixpath.dirname(w)) if c not in queued]
+        # A declarative manifest's paths are metadata (readme, license, include lists), not things
+        # the build runs; its one build input, cargo's [package].build, is added by cargo_build_scripts.
+        kids = [] if posixpath.basename(w) in DECLARATIVE else [c for c in named(body, posixpath.dirname(w)) if c not in queued]
         if depth >= FOLLOW_DEPTH:
             if kids:
                 incomplete.append("%s names %s, more than %d levels of files down from the [[build]] steps: not followed"
