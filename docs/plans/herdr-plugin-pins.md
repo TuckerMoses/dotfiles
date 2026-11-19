@@ -206,12 +206,13 @@ Automatic scheduled checks; updating herdr itself; the local herdr-summarizer pl
   tagged release (the release-tag line in `review` names the tag's commit). The sha is resolved to a full sha first,
   then reviewed (which applies the upstream-own check), installed and pinned as that commit. A last argument that is
   neither a pinned plugin nor hex is reported with that hint.
-- Measured read-only on 2026-11-19 with the script at `f0ab9d0`, through a scratch `bootstrap.sh` (herdr-plus pinned
+- Measured read-only on 2026-11-19 with the script at `daaae65`, through a scratch `bootstrap.sh` (herdr-plus pinned
   at `487b1e3`, fingers at `590d48b`), exit codes taken directly: `review herdr-fingers 2d9fc99...` exits 0 with three
   commits, no files diffed and eight `Cargo.lock` package bumps; `review herdr-plus f38df35...` (82 commits) exits 0
   with diffs of the manifest, `scripts/build.sh`, the `install.sh` it runs, `Makefile`, `go.mod` and the removed
   `old/Makefile` (668 diff lines, so the 600-line size note), the release-tag section (the build downloads the latest
-  release, not tied to the commit; tag `v0.1.24` at `bfd69da`, not the target), 30 added `go.sum` packages and 123
+  release, not tied to the commit; tag `v0.1.24`, the manifest version, at `bfd69da`, not the target, with the clause
+  that the build also reads `releases/latest`), 30 added `go.sum` packages and 123
   other files listed; `review herdr-reviewr 7b020de...` (a fork-only pull request commit) exits 1 from the upstream
   check; `review herdr-fingers 590d48b` (the pin's short sha) says nothing to review.
 - `validate.sh` records the commit each copied upstream rule set matches (`HERDR_PLUS_RULES_AT`, `REVIEWR_RULES_AT`)
