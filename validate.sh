@@ -468,8 +468,8 @@ check_herdr_plugins_cmd() {
     fail "herdr-plugins on PATH ($hp) is not this checkout's (stow the herdr package)"; return; fi
   out="$(herdr-plugins help 2>&1)"
   local from; from="$(echo "$out" | sed -n 's/^Pins are read from //p')"
-  # CLAUDE.md sends agents to the help for how to read review output, so those rules must print.
-  if ! echo "$out" | grep -q '^Reading review output'; then fail "herdr-plugins help does not print its 'Reading review output' rules (header cut?)"
+  # CLAUDE.md sends agents to the help for how to read review output, so those rules must print, to their last line.
+  if ! echo "$out" | grep -q '^Reading review output' || ! echo "$out" | grep -q 'by path to check that worktree'; then fail "herdr-plugins help does not print its 'Reading review output' rules (header cut?)"
   elif [[ -n "$from" && "$(real "$from")" == "$(real "$BOOTSTRAP")" ]]; then pass "herdr-plugins on PATH, reads pins from this checkout"
   else fail "herdr-plugins help: $(echo "${out:-no output}" | tail -1)"; fi
 }

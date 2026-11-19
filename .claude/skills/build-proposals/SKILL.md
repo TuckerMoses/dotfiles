@@ -29,8 +29,8 @@ and stow rules bind every phase here.
 - **Never** merge the final PR, push to `master`, force-push, or delete a remote branch. The
   final PR is where this skill stops.
 - **Never run `stow`, `bootstrap.sh` or an installer from a worktree.** Stow links point at the
-  main checkout; running it elsewhere repoints the user's live config. Only Phase 6 touches the
-  live machine, and only from the main checkout.
+  main checkout; running it elsewhere repoints the user's live config. Only Phase 6, and Phase 7's
+  fixes on the branch Phase 6 left checked out, touch the live machine, and only from the main checkout.
 - **Subagents change nothing outside their worktree**: nothing in `$HOME`, no installs, no pushes.
 - **Being in `docs/proposals/` on `master` is the approval.** Do not re-argue whether a proposal
   is worth doing. Do check whether it is still correct and executable.
@@ -166,18 +166,25 @@ links for a new package are already checked, because `validate.sh` reads the pac
 
 ## Phase 6: validate the integration branch live
 
-This follows "Worktree testing" in `CLAUDE.md` and is the only phase that changes the machine.
+This follows "Worktree testing" in `CLAUDE.md`. Apart from Phase 7's fixes on the branch it leaves checked out,
+it is the only phase that changes the machine.
 
 0. **Ask first, and wait for a yes.** Phase 0's note told the user; this asks them. In one short
    message, say that the main checkout will be switched to `feat/build-proposals-<date>` (so the
    stowed config becomes the branch's), which files in `$HOME` will be moved aside, that
    `./bootstrap.sh` will then run (it may install tools and restows) and may be re-run after the
-   fixes of step 5, and which live breakages step 4 will make and restore (one line per new check).
+   fixes of step 5, which herdr plugins it will install at their pins with `--yes` (one line each:
+   repo, sha7, what its build step does; from `herdr plugin list` against the branch's `--ref`
+   lines), that Phase 7's review fixes will be made there too, on the live branch, and the checks
+   step 4 proves (one line per new check, saying whether step 4 breaks it live (and what it breaks)
+   or proves it against a stub).
    Ask whether to go ahead, and wait for the user's explicit yes in this session before step 1.
    Anything else, or no answer, is a no: stop Phase 6, change nothing on the machine, and open the
    PR as a draft that says the branch was not validated live. This yes is the approval `CLAUDE.md`
-   requires before an agent runs `bootstrap.sh` in the main checkout, and it covers the step 5
-   reruns and the step 4 breakages it listed; nothing else.
+   requires before an agent runs `bootstrap.sh` in the main checkout, and it covers the step 4
+   breakages it listed and the step 5 reruns while `git diff <approved sha> -- bootstrap.sh` is
+   empty (record the branch's commit at the yes); nothing else. A fix that changes `bootstrap.sh`
+   needs a new ask that shows that diff.
 1. In the main checkout: `git checkout feat/build-proposals-<date>`. The stowed config is now
    the branch's version.
 2. For each file in `$HOME` that a new package will replace: copy it to the scratchpad, make
@@ -213,7 +220,9 @@ skill's own rules for the loop. Give it a manifest with:
 - **locations:** the files changed against `master` (`git diff --name-only master...HEAD`);
 - **flags:** the repo rules above, especially stow safety and `validate.sh` staying read-only.
 
-Commit the fixes it applies. Then run `./validate.sh` again: review fixes can break things too.
+Its fixes are made in the main checkout, on the integration branch Phase 6 left checked out there,
+so they are live as soon as they are written (the Phase 6 step 0 ask names this). Commit the fixes
+it applies. Then run `./validate.sh` again: review fixes can break things too.
 
 ## Phase 8: the pull request
 
@@ -223,12 +232,13 @@ Push, then open one PR against `master` with `gh pr create`. The body has, in th
    the exact question each one is waiting on.
 2. **Proposals table:** proposal, verdict, result, the plan file, the validation check added.
 3. **Differences from the proposals**, and deviations the agents reported.
-4. **Machine changes from Phase 6:** tools installed, files in `$HOME` replaced (with the backup
+4. **Machine changes from Phase 6:** tools installed, herdr plugins installed, files in `$HOME` replaced (with the backup
    path), and the steps still to do by hand.
 5. **Validation:** baseline against final, as counts, plus any remaining warning.
 6. **Adversarial review:** rounds, what was fixed, accepted risks, and the path to its summary.
 7. **Queue after merge:** which proposals this PR deletes and which remain in `docs/proposals/`.
-8. **Rollback:** `git checkout master && ./bootstrap.sh`, plus what that does not undo.
+8. **Rollback:** the Phase 6 step 6 rollback, filled in for this branch, in its order (`stow -D` on
+   the branch first): the packages to `stow -D`, the backup paths, the plugins to uninstall.
 
 Then tell the user: the PR link, that the main checkout is on the integration branch and
 therefore live, and the decisions waiting on them.

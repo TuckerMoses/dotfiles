@@ -92,7 +92,9 @@ Automatic scheduled checks; updating herdr itself; the local herdr-summarizer pl
   `review`, 2 is anything other than "ran" or "not upstream's own": a GitHub or `git ls-remote` call that failed (so
   upstream's own could not be checked) or any error in the review itself. `review` writes to a temporary file and pages
   it afterwards, so its exit code is its own: quitting the pager early changes nothing, and `update`'s `y/N` always
-  follows the whole review. There is no exit 3.
+  follows the whole review. Exit 1 comes only from that upstream check: any other exit of the review's Python, one
+  that cannot compile or start included, is 2. Ctrl-C stops `review` and `update` (130); it is not a failed review.
+  There is no exit 3.
 - `herdr-plugins` pins come only from lines that begin (after whitespace) with `herdr plugin install <owner/repo> --ref
   <sha>` in `bootstrap.sh`, so a quoted command in a comment adds no pin. `status`, `check`, `review` and `update`
   read the `bootstrap.sh` of the checkout the invoked script is linked from, not the current directory's; the help's
@@ -102,7 +104,7 @@ Automatic scheduled checks; updating herdr itself; the local herdr-summarizer pl
   - Pin and target are resolved to full SHAs (`gh api repos/<repo>/commits/<ref>`; the contents API 404s on a short
     SHA, which would read as "file absent"). The target must be upstream's own commit (`upstream_commit`): an ancestor
     of (or equal to) the default branch, or the commit a tag points at. GitHub also resolves commits that exist only in
-    a fork (an unmerged pull request), so resolving is not enough. It exits 1 before anything is shown only when the
+    a fork (an unmerged pull request), so resolving is not enough. It exits 1 with one line saying so, and shows no review, only when the
     compare call says the default branch does not contain the target and the tag list has no match; when any of those
     calls fails it exits 2. "Nothing to review" (exit 0) is said when the target resolves to the pin's commit (a short
     sha, a branch or a tag at the pin included).
@@ -114,7 +116,8 @@ Automatic scheduled checks; updating herdr itself; the local herdr-summarizer pl
     `/usr/bin/python3` here is 3.9) under a strict schema: a list of tables, `command` a non-empty list of strings,
     `platforms` a list of strings. A step for an unknown platform name is kept, so it is shown. When the manifest does
     not parse, does not fit the schema, or there is no `tomllib`, the review says so, says the files the steps name are
-    not diffed (the list reads "unknown (steps not read)"), and shows the manifest to read the steps in: its diff, or
+    not diffed (the list reads "unknown (steps not read)") and that whether the build downloads a release was not
+    checked, and shows the manifest to read the steps in: its diff, or
     the whole file when it is unchanged.
   - Diffs (difflib unified diffs with 3 lines of context, from the files' contents at both commits, not from the
     compare API's patches, which can be truncated or missing; an added file is shown whole) of `herdr-plugin.toml`, of
@@ -135,7 +138,9 @@ Automatic scheduled checks; updating herdr itself; the local herdr-summarizer pl
     the manifest version (herdr-plus's fallback; bootstrap installs herdr-plus only with Go, so it builds from source).
     For `releases/download`: which tag (`v<version>` or `<version>`, annotated tags dereferenced) exists for the
     manifest's top-level `version` (read with `tomllib` when there is one) and whether it points at the target, or that
-    the tags could not be read. That is a fact about the tag; the downloaded binary is not in the diff, and the output
+    the tags could not be read (a failed dereference of a found tag included). The line names the tag as the manifest
+    version's; when the build also reads `releases/latest`, it adds that whether the download uses the manifest version
+    is in the diff above. That is a fact about the tag; the downloaded binary is not in the diff, and the output
     says so.
   - `Cargo.lock` and `go.sum` package changes: one `+ name version` or `- name version` line each, with a Cargo
     package whose source is not crates.io marked with its source. A lock file that changed with no package name,
