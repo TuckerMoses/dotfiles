@@ -168,6 +168,14 @@ links for a new package are already checked, because `validate.sh` reads the pac
 
 This follows "Worktree testing" in `CLAUDE.md` and is the only phase that changes the machine.
 
+0. **Ask first, and wait for a yes.** Phase 0's note told the user; this asks them. In one short
+   message, say that the main checkout will be switched to `feat/build-proposals-<date>` (so the
+   stowed config becomes the branch's), which files in `$HOME` will be moved aside, and that
+   `./bootstrap.sh` will then run (it may install tools and restows). Ask whether to go ahead, and
+   wait for the user's explicit yes in this session before step 1. Anything else, or no answer, is
+   a no: stop Phase 6, change nothing on the machine, and open the PR as a draft that says the
+   branch was not validated live. This yes is the approval `CLAUDE.md` requires before an agent
+   runs `bootstrap.sh` in the main checkout.
 1. In the main checkout: `git checkout feat/build-proposals-<date>`. The stowed config is now
    the branch's version.
 2. For each file in `$HOME` that a new package will replace: copy it to the scratchpad, make
@@ -179,8 +187,10 @@ This follows "Worktree testing" in `CLAUDE.md` and is the only phase that change
 5. Fix failures on the branch: small ones yourself, larger ones through a fresh worktree and
    agent. Re-run until no failure remains that was not in the baseline.
 6. If it cannot be made clean, say so. Open the PR as a draft with the failures listed, or, if
-   the branch leaves the machine in a bad state, `git checkout master && ./bootstrap.sh` and
-   report. Tools already installed stay installed; list them.
+   the branch leaves the machine in a bad state, roll back with `git checkout master &&
+   ./bootstrap.sh`: first say why and ask, and run it only after the user's explicit yes (the
+   step 0 yes does not cover it). Without one, leave the machine as it is and report its state.
+   Tools already installed stay installed; list them.
 
 ## Phase 7: adversarial review
 
