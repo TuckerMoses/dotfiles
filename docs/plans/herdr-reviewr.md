@@ -82,8 +82,8 @@ Windows; PR-tab hosts other than GitHub; rebinding reviewr's internal keys.
   not the whole review: `herdr/install.sh` downloads the release binary for the manifest's version and checks it only
   against the `.sha256` of the same release. So the review covers the source and install script at the pin, and the
   binary itself is trusted to the release, not verified. bb71050 is the commit the `v0.52.2` tag points to (checked
-  with `gh api` on 2026-11-18: the tag is annotated and dereferences to bb71050caa5d). `herdr-plugins review` now
-  checks that the tag for the manifest version points at the commit being pinned. The first install on the main
+  with `gh api` on 2026-11-18: the tag is annotated and dereferences to bb71050caa5d). `herdr-plugins review` shows
+  where the tag for the manifest version points, and the person pinning reads that line; nothing is enforced. The first install on the main
   machine was done by hand without `--yes`.
 - reviewr has no `--version`. `validate.sh` probes the binary with `--action validate-probe`, which must answer
   "unknown action". An unknown action returns before reviewr reads its config or re-points symlinks, which is why the
@@ -91,4 +91,4 @@ Windows; PR-tab hosts other than GitHub; rebinding reviewr's internal keys.
 - The config check enforces reviewr's own key and value lists, copied from `src/config.rs` and `src/theme.rs` at the
   pin. A bump of the pin must refresh those lists. `catppuccin` is reviewr's name for Mocha.
 - A pin check, shared with fingers, warns when the installed commit differs from the `--ref` in `bootstrap.sh`.
-- Accepted: a release asset replaced after tagging is not detected. The tag check proves the source commit, not the binary, and the `.sha256` comes from the same release as the binary.
+- Accepted: a release asset replaced after tagging is not detected. The tag line in `review` shows which source commit the release was tagged at, not the binary, and the `.sha256` comes from the same release as the binary.
