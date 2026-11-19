@@ -547,7 +547,15 @@ FETCHER = re.compile(r'\b(curl|wget)\b|\b(?:npm|npx|pnpm|yarn|pip3?|pipx|uv|gem|
 CMDPOS = (r'(?:^|[;&|(`{!]|\$\(|\b(?:then|do|else|elif|if|while|until|exec|sudo|time|nohup|xargs|env)\b|(?:-c|eval)\s+[\'"])\s*'
           r'(?:\w+=\S*\s+)*(?:(?:sudo|exec|time|env|nohup)\s+(?:-\S+\s+)*)*(?:python3?(?:\.\d+)?\s+-m\s+)?(?:[\w./-]*/)?')
 PKGCMD = r'(?:(?:npm|npx|pnpm|yarn|pip3?|pipx|uv|gem|brew|apt(?:-get)?)\b|cargo\s+install\b|go\s+(?:install|get|run)\b|git\s+(?:clone|submodule)\b)'
-ALWAYS = re.compile(r'\|\s*(?:sudo\s+)?(?:ba|z|da|k)?sh\b|\|\s*(?:python3?|perl|ruby|node)\b|' + CMDPOS + PKGCMD)
+ALWAYS_AT = re.compile(r'\|\s*(?:sudo\s+)?(?:ba|z|da|k)?sh\b|\|\s*(?:python3?|perl|ruby|node)\b|' + CMDPOS + PKGCMD)
+# The decision is fail-closed: a package manager, go install/get/run or git clone named ANYWHERE
+# on the line (an argv list like ["npm", ...], `timeout 30 npm ...`, `command pip ...`). ALWAYS_AT
+# (command position) only words the reason.
+ALWAYS = re.compile(r'\|\s*(?:sudo\s+)?(?:ba|z|da|k)?sh\b|\|\s*(?:python3?|perl|ruby|node)\b|\b' + PKGCMD)
+HASH_COMMENTS = re.compile(r'\.(?:sh|bash|zsh|ksh|py|rb|pl|toml|ya?ml|mk)$|(?:^|/)(?:Makefile|justfile)$')
+def hash_lang(path, text):
+    """Whether # starts a line comment in this file (by extension, or a #! shell/python/ruby/perl line)."""
+    return bool(HASH_COMMENTS.search(path)) or bool(re.match(r'#!.*\b(?:ba|z|k|da)?sh\b|#!.*\b(?:python|ruby|perl)', text))
 MOVING = re.compile(r"releases/latest\b|raw\.githubusercontent\.com/[^/\s'\"]+/[^/\s'\"]+/(?:refs/heads/)?(?:main|master|HEAD|develop|dev|trunk|stable|nightly)\b"
                     r"|/archive/refs/heads/|/archive/(?:main|master|HEAD|develop|dev|trunk)\b|/(?:tarball|zipball)(?:/(?:refs/heads/)?(?:main|master|HEAD))?(?=[\s'\"`)]|$)"
                     r"|<\(\s*(?:curl|wget)\b|\$\(\s*(?:curl|wget)\b|`\s*(?:curl|wget)\b|\beval\b.*\b(?:curl|wget)\b")
@@ -572,29 +580,19 @@ def commands(text):
         if cur is not None and cur.strip():
             out.setdefault((cur.strip(), False), start)
     return [(n, c, cm) for (c, cm), n in out.items()]
-def significant(text):
-    """The text without blank and whole-line # comment lines (the shebang stays), so a comment or
-    spacing edit alone is not a build change. A line after a backslash stays; text with a heredoc
-    or triple-quoted string is kept whole, since its lines can be data that runs."""
-    if "<<" in text or '"""' in text or "'''" in text:
-        return text
-    out, cont = [], False
-    for n, line in enumerate(text.split("\n")):
-        if not cont and (not line.strip() or (line.lstrip().startswith("#") and not (n == 0 and line.startswith("#!")))):
-            continue
-        out.append(line)
-        cont = line.endswith("\\")
-    return "\n".join(out)
 steps_text = "\n".join(" ".join(c) for c in steps)
 old_steps_text = "\n".join(" ".join(c) for c in old_steps)
 units = [("[[build]] steps", steps_text)] + sorted(bodies.items())
 for where, text in units:
     if re.search(r'[\r\v\f]', text):
         incomplete.append("%s contains \\r, \\v or \\f, which can hide a command from this review" % where)
+# Fail-closed: any byte change in a build file, comments and spacing included, is a build change.
 build_changed = (steps_text != old_steps_text or set(bodies) != set(old_bodies)
-                 or any(significant(bodies[p]) != significant(old_bodies.get(p) or "") for p in bodies))
+                 or any(bodies[p] != old_bodies.get(p) for p in bodies))
 for where, text in units:
+    comments_ok = where.startswith("[[") or hash_lang(where, text)
     for n, c, comment in commands(text):
+        comment = comment and comments_ok  # a "#" line in a language without # comments is code
         loc = where if where.startswith("[[") else "%s:%d" % (where, n)
         moving = MOVING.search(c)
         c = " ".join(c.split())  # one line of single spaces: both joins of a continued line read the same
@@ -608,8 +606,8 @@ for where, text in units:
             incomplete.append("%s names a moving target (%s), so the code it gets can change without the repo changing: %s"
                               % (loc, moving.group(0)[:40], c[:80]))
         elif FETCHER.search(c) and ALWAYS.search(c):
-            incomplete.append("%s fetches code that can change without the repo changing (pipe into an interpreter, or a package manager, go or git clone by name): %s"
-                              % (loc, c[:80]))
+            incomplete.append("%s fetches code that can change without the repo changing (pipe into an interpreter, or a package manager, go or git clone by name%s): %s"
+                              % (loc, "" if ALWAYS_AT.search(c) else "; named off command position, which still counts", c[:80]))
 # Diffed from the files themselves at both commits, not from the compare API's file list,
 # which can be truncated or omit patches.
 for path in ["herdr-plugin.toml"] + scripts:
