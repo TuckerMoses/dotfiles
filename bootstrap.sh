@@ -107,15 +107,18 @@ if [[ -d "$DOTFILES_DIR/herdr" ]]; then
 fi
 
 # ── Herdr plugins ────────────────────────────────────────────────────────────
-# Every third-party plugin is pinned with --ref to a reviewed commit; these --ref lines are the
+# Every third-party plugin is pinned with --ref to a chosen commit; these --ref lines are the
 # only record of the pins. The user moves them with `herdr-plugins update` (herdr/.local/bin/herdr-plugins;
 # CLAUDE.md has the rule for agents); it shows what changed in the install-time code first, which
 # `herdr plugin update` skips.
 # --yes is deliberate: herdr's install prompt guards against unreviewed code, and --ref installs
-# only a commit the user read before pinning it (`herdr-plugins review` diffs its install-time code
-# and lists the rest, the plugin's own code, with the compare URL, where that code is read). --yes
-# trusts what the user read there (a binary its build downloads is trusted to the release), so
-# bootstrap stays unattended (fresh machines, containers).
+# only a commit that was read before it was pinned. A moved pin was read in `herdr-plugins review`
+# (it diffs the install-time code and lists the rest, the plugin's own code, with the compare URL,
+# where that code is read). The first pins were set at wire-up, read by the agents that set them
+# (recorded in docs/plans/) and approved by merging that PR; review diffs from a pin, so it never
+# shows a first pin's code (read it at github.com/<owner>/<repo>/tree/<sha>). --yes trusts what was
+# read (a binary its build downloads is trusted to the release), so bootstrap stays unattended
+# (fresh machines, containers).
 # Moving a pin is where the prompts are:
 # `herdr-plugins update` asks before it edits a --ref and reinstalls without --yes. Never add
 # --yes to an install without --ref.
@@ -135,15 +138,16 @@ if command -v herdr >/dev/null 2>&1; then
     else echo "    (skipping herdr-plus: needs Go to build the pinned source, https://go.dev/dl)"; fi
   fi
   # herdr-reviewr: review an agent's diff, send line comments back (prefix+alt+r). Pinned to the
-  # v0.52.2 tag commit. Its build step downloads that release's binary (checked only against the
-  # release's own .sha256): `herdr-plugins review` diffs the install script and lists the source by
-  # name (read on the compare page), and the binary is trusted to the release, not verified. The user bumps it with `herdr-plugins update`.
+  # v0.52.2 tag commit (read at wire-up, docs/plans/herdr-reviewr.md). Its build step downloads that
+  # release's binary (checked only against the release's own .sha256): a later update's review diffs
+  # the install script and lists the source by name (read on the compare page), and the binary is
+  # trusted to the release, not verified. The user bumps it with `herdr-plugins update`.
   if ! herdr plugin list 2>/dev/null | grep -q persiyanov.reviewr; then
     echo "==> Installing herdr plugin herdr-reviewr"
     herdr plugin install persiyanov/herdr-reviewr --ref bb71050caa5d3a0b1a414527783eb7a772447f9f --yes || echo "    (install failed: herdr server not running, or a build, toolchain or network error above; re-run ./bootstrap.sh)"
   fi
   # herdr-fingers (trial): hint-copy paths, SHAs, URLs from the focused pane (prefix+f). Pinned to a
-  # reviewed commit; builds with cargo (Rust >= 1.85). Remove the trial: the targets listed in docs/plans/herdr-fingers-trial.md.
+  # chosen commit; builds with cargo (Rust >= 1.85). Remove the trial: the targets listed in docs/plans/herdr-fingers-trial.md.
   if ! herdr plugin list 2>/dev/null | grep -q herdr-fingers; then
     if command -v cargo >/dev/null 2>&1; then
       echo "==> Installing herdr plugin herdr-fingers (cargo build, a minute or two)"

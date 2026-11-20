@@ -41,7 +41,8 @@
 #      the release-tag lines and the size note as printed, and give the compare URL; say that what review does not diff
 #      (above) was not shown. If it says nothing to review (the pin is the target), say so.
 #   1: the target is not upstream's own commit; report it and do not suggest pinning it.
-#   2 or other non-zero, or check drift (1): report it with its stderr; do not retry in a loop, reinstall or edit pins.
+#   2 or other non-zero, or check drift (1): report it with its stderr; do not retry in a loop, reinstall or edit pins;
+#      output before a "stopped early" line is partial: do not report it as what changed.
 #   Every command reads the bootstrap.sh named on the last line; run a worktree's own
 #   herdr/.local/bin/herdr-plugins by path to check that worktree's pins.
 
@@ -369,16 +370,18 @@ def tag_commit(version):
             return None, None, (r.stderr.strip().splitlines() or ["gh api failed"])[-1]
         try:
             o = json.loads(r.stdout)["object"]
-            for _ in range(6):
+            why = "more than 5 levels of tags"
+            for depth in range(6):  # the ref's object, then up to 5 dereferences; no call left unexamined
                 if o["type"] == "commit":
                     return name, o["sha"], None
+                if depth == 5: break
                 r = run(["gh", "api", "repos/%s/git/tags/%s" % (repo, o["sha"])])
                 if r.returncode != 0:
-                    break
+                    why = (r.stderr.strip().splitlines() or ["gh api failed"])[-1]; break
                 o = json.loads(r.stdout)["object"]
         except (ValueError, KeyError, TypeError):
-            pass
-        return name, None, "could not dereference tag %s: %s" % (name, (r.stderr.strip().splitlines() or ["unexpected response"])[-1])
+            why = "unexpected response"
+        return name, None, "could not dereference tag %s: %s" % (name, why)
     return None, None, None
 
 def manifest_version(manifest):
@@ -441,7 +444,7 @@ build += sorted(n for n in files if posixpath.basename(n).lower() in TOOL_FILES 
 print("\n── build steps and the files diffed at %s ──" % target[:7])
 if steps is None:
     print("  herdr-plugin.toml's [[build]] steps cannot be read: %s, so the files they name are not diffed and "
-          "whether the build downloads a release was not checked. The manifest is shown below; read its steps there." % why)
+          "whether the build downloads a release was checked only in the build-tool files listed. The manifest is shown below; read its steps there." % why)
 for cmd in steps or []:
     print_code("  [[build]] %s" % " ".join(cmd))
 if steps == []:
@@ -488,8 +491,8 @@ if download:
         elif name is None:
             print("  no tag v%s or %s exists for manifest version %s" % (version, version, version))
         else:
-            also = ("; this build also reads releases/latest; whether its download uses the manifest version is in the "
-                    "diff above" if latest else "")
+            also = ("; this build also reads releases/latest; read the build file at the target to see which one it "
+                    "downloads" if latest else "")
             print("  tag %s (the manifest version) points at %s, %s%s"
                   % (name, sha[:7], "the target" if sha == target else "not at the target %s" % target[:7], also))
 
@@ -540,8 +543,8 @@ reviewed() {  # <owner/repo> <pin> <target ref>
   REVIEW_RC=0
   ( review_text "$1" "$2" "$3" ) >"$REVIEW_OUT" || REVIEW_RC=$?
   (( REVIEW_RC != 130 )) || exit 130   # Ctrl-C stops review and update
+  (( REVIEW_RC <= 1 )) || [[ ! -s "$REVIEW_OUT" ]] || echo "herdr-plugins: the review above stopped early (exit $REVIEW_RC; its error is printed before the review); the rest was not shown" >>"$REVIEW_OUT"
   page <"$REVIEW_OUT"
-  (( REVIEW_RC <= 1 )) || [[ ! -s "$REVIEW_OUT" ]] || echo "herdr-plugins: the review above stopped early (exit $REVIEW_RC); it is incomplete" >&2
 }
 
 cmd_review() {
@@ -589,8 +592,9 @@ relink_hint() {  # <owner/repo> <plugin id>
   config_linked "$2" || echo "$1: its stowed config under ~/.config/herdr/plugins/config/$2 is no longer linked; re-run 'stow --no-folding herdr' from the main checkout (if stow reports a conflict, move the file it names, under ~/.config/herdr/plugins/config/$2/, aside: it holds the plugin's defaults; then re-run stow)"
 }
 
-# Uninstall <id>, install <repo> at <to>; when the install fails, put <from> back. 0 only when <to> is
-# installed. No --yes: herdr shows the plugin's manifest and build step and asks.
+# Uninstall <id>, install <repo> at <to>; when that does not complete, put <from> back. 0 only when <to> is
+# installed. No --yes at <to>: herdr shows its manifest and build step and asks, after the uninstall. A no
+# there puts <from> back with --yes (installed here until a moment ago), so no second prompt can strand it.
 reinstall() {  # <owner/repo> <plugin id> <from sha> <to sha>
   local tool
   tool="$(needs_tool "$1")"
@@ -604,8 +608,8 @@ reinstall() {  # <owner/repo> <plugin id> <from sha> <to sha>
     return 1
   fi
   herdr plugin install "$1" --ref "$4" && return 0
-  echo "$1: install at ${4:0:7} FAILED (build or download). Putting ${3:0:7} back:"
-  if herdr plugin install "$1" --ref "$3"; then echo "$1: reinstalled at ${3:0:7}"
+  echo "$1: install at ${4:0:7} did not complete (declined at herdr's prompt, or the build or download failed); putting ${3:0:7} back"
+  if herdr plugin install "$1" --ref "$3" --yes; then echo "$1: reinstalled at ${3:0:7}"
   else echo "$1: could not reinstall ${3:0:7} either (now uninstalled). Retry: herdr plugin install $1 --ref $3"; fi
   return 1
 }

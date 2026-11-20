@@ -30,8 +30,9 @@ and stow rules bind every phase here.
   final PR is where this skill stops.
 - **Never run `stow`, `bootstrap.sh` or an installer from a worktree.** Stow links point at the
   main checkout; running it elsewhere repoints the user's live config. Only Phase 6, and Phase 7's
-  fixes on the branch Phase 6 left checked out, touch the live machine, and only from the main checkout.
-- **Subagents change nothing outside their worktree**: nothing in `$HOME`, no installs, no pushes.
+  fixes, only when Phase 6 left the branch checked out, touch the live machine, and only from the main checkout.
+- **Subagents change nothing outside their worktree**: nothing in `$HOME`, no installs, no pushes (except the
+  Phase 7 review fixer, in the main checkout, when Phase 6 left the branch checked out there).
 - **Being in `docs/proposals/` on `master` is the approval.** Do not re-argue whether a proposal
   is worth doing. Do check whether it is still correct and executable.
 - **Only `master` counts.** A proposal in an open PR, on another branch, or in the scout's
@@ -172,10 +173,11 @@ it is the only phase that changes the machine.
 0. **Ask first, and wait for a yes.** Phase 0's note told the user; this asks them. In one short
    message, say that the main checkout will be switched to `feat/build-proposals-<date>` (so the
    stowed config becomes the branch's), which files in `$HOME` will be moved aside, that
-   `./bootstrap.sh` will then run (it may install tools and restows) and may be re-run after the
-   fixes of step 5, which herdr plugins it will install at their pins with `--yes` (one line each:
-   repo, sha7, what its build step does; from `herdr plugin list` against the branch's `--ref`
-   lines), that Phase 7's review fixes will be made there too, on the live branch, and the checks
+   `./bootstrap.sh` will then run (it restows, and installs the tools in bootstrap's tool list that
+   `command -v` does not find: name them) and may be re-run after the fixes of step 5, which herdr
+   plugins it will install at their pins with `--yes` (the pinned plugins `herdr plugin list` does not
+   show and whose `if command -v` tool is present; bootstrap skips installed ones at any commit; one
+   line each: repo, sha7, and the `[[build]]` command of its `herdr-plugin.toml` at the pin), that Phase 7's review fixes will be made there too, on the live branch, and the checks
    step 4 proves (one line per new check, saying whether step 4 breaks it live (and what it breaks)
    or proves it against a stub).
    Ask whether to go ahead, and wait for the user's explicit yes in this session before step 1.
@@ -220,9 +222,16 @@ skill's own rules for the loop. Give it a manifest with:
 - **locations:** the files changed against `master` (`git diff --name-only master...HEAD`);
 - **flags:** the repo rules above, especially stow safety and `validate.sh` staying read-only.
 
-Its fixes are made in the main checkout, on the integration branch Phase 6 left checked out there,
+When Phase 6 left the integration branch checked out in the main checkout, its fixes are made there,
 so they are live as soon as they are written (the Phase 6 step 0 ask names this). Commit the fixes
-it applies. Then run `./validate.sh` again: review fixes can break things too.
+it applies. Then run `./validate.sh` again: review fixes can break things too. A fix that needs a
+restow or a `./bootstrap.sh` re-run is covered by the step 0 yes only while `git diff <approved sha> --
+bootstrap.sh` is empty; a fix that changes `bootstrap.sh` needs a new ask that shows that diff, as in step 0.
+
+If Phase 6 stopped at step 0 or was rolled back, the main checkout is on `master`: make the fixes in a new
+worktree of the integration branch (`git worktree add .worktrees/integration feat/build-proposals-<date>`),
+never by checking the branch out in the main checkout, and run nothing there that `CLAUDE.md` forbids in a
+worktree. Push them, and say in the PR that they were not validated live. A declined Phase 6 does not skip Phase 7.
 
 ## Phase 8: the pull request
 

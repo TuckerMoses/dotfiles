@@ -8,7 +8,7 @@ proposal: "user, 2026-11-18, during /build-proposals: pin every third-party plug
 # Plan: pin every herdr plugin, and one command to update them
 
 ## Goal
-Every third-party herdr plugin `bootstrap.sh` installs is pinned to a reviewed commit, and a single command
+Every third-party herdr plugin `bootstrap.sh` installs is pinned to a chosen commit, and a single command
 (`herdr-plugins update`) moves the pins forward, one plugin at a time, after showing what changed in the code
 that runs at install.
 
@@ -81,6 +81,9 @@ None at build time. In Phase 6 the user can run `herdr-plugins status`.
 Automatic scheduled checks; updating herdr itself; the local herdr-summarizer plugin (not pinned: it is this repo).
 
 ## As built (2026-11-18, review rewritten 2026-11-19)
+- Bootstrap's `--yes` trusts a commit that was read before it was pinned: a moved pin in `review`. The first pins were
+  set at wire-up, read by the agents that set them (recorded in `docs/plans/`) and approved by merging that PR; review
+  diffs from a pin, so it never shows a first pin's code (read it at `github.com/<owner>/<repo>/tree/<sha>`).
 - There is no separate plugin → tool table. `validate.sh` (`plugin_needs`) and `herdr-plugins` (`needs_tool`) both
   read the required tool from the `if command -v <tool>` guard in that plugin's block of `bootstrap.sh`, so
   `bootstrap.sh` remains the only source.
@@ -88,12 +91,13 @@ Automatic scheduled checks; updating herdr itself; the local herdr-summarizer pl
   herdr can't list plugins.
 - Exit codes: 0 ok (for `review`: it ran); 1 drift (`check`), a `review` target GitHub shows is not upstream's own
   commit, or an update that failed (unreadable upstream HEAD, a `<sha>` that does not resolve or is not upstream's own, a
-  failed review, a failed install or pin write; a plugin the user declines is not a failure); 2 setup or other error. For
+  failed review, a failed install or pin write; a no at the `Pin ...? [y/N]` prompt is not a failure); 2 setup or other error. For
   `review`, 2 is anything other than "ran" or "not upstream's own": a GitHub or `git ls-remote` call that failed (so
   upstream's own could not be checked) or any error in the review itself. `review` writes to a temporary file and pages
   it afterwards, so its exit code is its own: quitting the pager early changes nothing, and `update`'s `y/N` always
   follows the whole review. Exit 1 comes only from that upstream check: any other exit of the review's Python, one
-  that cannot compile or start included, is 2. Ctrl-C stops `review` and `update` (130); it is not a failed review.
+  that cannot compile or start included, is 2; a review that fails partway prints what it had, then a line (the pager's
+  last) saying it stopped early and the rest was not shown. Ctrl-C stops `review` and `update` (130); it is not a failed review.
   There is no exit 3.
 - `herdr-plugins` pins come only from lines that begin (after whitespace) with `herdr plugin install <owner/repo> --ref
   <sha>` in `bootstrap.sh`, so a quoted command in a comment adds no pin. `status`, `check`, `review` and `update`
@@ -116,8 +120,8 @@ Automatic scheduled checks; updating herdr itself; the local herdr-summarizer pl
     `/usr/bin/python3` here is 3.9) under a strict schema: a list of tables, `command` a non-empty list of strings,
     `platforms` a list of strings. A step for an unknown platform name is kept, so it is shown. When the manifest does
     not parse, does not fit the schema, or there is no `tomllib`, the review says so, says the files the steps name are
-    not diffed (the list reads "unknown (steps not read)") and that whether the build downloads a release was not
-    checked, and shows the manifest to read the steps in: its diff, or
+    not diffed (the list reads "unknown (steps not read)") and that whether the build downloads a release was checked
+    only in the build-tool files listed, and shows the manifest to read the steps in: its diff, or
     the whole file when it is unchanged.
   - Diffs (difflib unified diffs with 3 lines of context, from the files' contents at both commits, not from the
     compare API's patches, which can be truncated or missing; an added file is shown whole) of `herdr-plugin.toml`, of
@@ -139,8 +143,8 @@ Automatic scheduled checks; updating herdr itself; the local herdr-summarizer pl
     For `releases/download`: which tag (`v<version>` or `<version>`, annotated tags dereferenced) exists for the
     manifest's top-level `version` (read with `tomllib` when there is one) and whether it points at the target, or that
     the tags could not be read (a failed dereference of a found tag included). The line names the tag as the manifest
-    version's; when the build also reads `releases/latest`, it adds that whether the download uses the manifest version
-    is in the diff above. That is a fact about the tag; the downloaded binary is not in the diff, and the output
+    version's; when the build also reads `releases/latest`, it adds that the build file at the target shows which one it
+    downloads. That is a fact about the tag; the downloaded binary is not in the diff, and the output
     says so.
   - `Cargo.lock` and `go.sum` package changes: one `+ name version` or `- name version` line each, with a Cargo
     package whose source is not crates.io marked with its source. A lock file that changed with no package name,
@@ -175,10 +179,13 @@ Automatic scheduled checks; updating herdr itself; the local herdr-summarizer pl
   so piped input cannot answer it. This does not stop an agent that spawns a pty; `CLAUDE.md` does. `validate.sh` only
   calls `check` and `help`, which need no terminal. Tested with a fake `herdr` on PATH and `expect` for the pty: the
   non-tty refusal, a failing plugin list, declining and accepting the reinstall at the pin, a failed install with
-  rollback, and a `bootstrap.sh` that cannot be written.
+  rollback, a no at herdr's prompt (at the target and at the pin: one prompt, the old commit back with `--yes`, exit 1),
+  and a `bootstrap.sh` that cannot be written.
 - `update` installs before it pins: `herdr plugin uninstall`, `herdr plugin install <repo> --ref <new>` (no `--yes`),
-  and only on success the `bootstrap.sh` line moves (`set_pin` rewrites exactly one `--ref` line). If the install
-  fails, it reinstalls the old commit and leaves `bootstrap.sh` alone. If the pin line cannot be rewritten after a
+  and only on success the `bootstrap.sh` line moves (`set_pin` rewrites exactly one `--ref` line). herdr's own prompt
+  comes after the uninstall. If the install does not complete (a no at herdr's prompt, or a failed build or download),
+  it reinstalls the old commit with `--yes` (no second prompt), leaves `bootstrap.sh` alone and counts the plugin as not
+  updated (exit 1); Ctrl-C at herdr's prompt leaves the plugin uninstalled until `./bootstrap.sh`. If the pin line cannot be rewritten after a
   successful install, it says so with the full sha to set by hand and counts the plugin as failed. A plugin that is not
   installed here only gets its pin moved, since its build cannot be tried: `update` proves a build only for installed
   plugins, so a commit that does not build is pinned and fails later under bootstrap's `--yes`. An unreadable upstream
