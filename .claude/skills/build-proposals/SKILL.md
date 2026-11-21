@@ -30,22 +30,24 @@ and stow rules bind every phase here.
   final PR is where this skill stops.
 - **Never run `stow`, `bootstrap.sh` or an installer from a worktree.** Stow links point at the
   main checkout; running it elsewhere repoints the user's live config. The one exception is
-  `test/suite.sh`, which stows only into a throwaway `$HOME`, inside a guest, or (`here`, only with
-  `DOTFILES_TEST_DISPOSABLE=1`) into the `$HOME` of a disposable Linux machine such as the CI container. `here` runs
-  only inside the suite's own guests and in CI: agents never run it or set `DOTFILES_TEST_DISPOSABLE=1`. Only Phase 7
+  `test/suite.sh`, which stows only into a throwaway `$HOME`, inside a guest, or (for `here` with
+  `DOTFILES_TEST_DISPOSABLE=1`) into the `$HOME` of one of the suite's own guests or the CI container. Agents never
+  run `here` or set `DOTFILES_TEST_DISPOSABLE=1`. Only Phase 7
   touches the live machine, and only from the main checkout.
 - **A fix agent** works on a new branch cut from the integration branch's HEAD in a fresh worktree; you merge it
-  back where the integration branch is checked out, then remove that worktree.
+  back where the integration branch is checked out, then remove that worktree. It is an implementation agent:
+  dispatched with `model: "opus"` and the Phase 4 brief, on branch `fix/<short-name>` in `.worktrees/fix-<short-name>`,
+  merged with `--no-ff` as in Phase 5.
 - **Subagents change nothing outside their worktree**: nothing in `$HOME`, no installs, no pushes.
-  The exception is `test/suite.sh`, which may create its throwaway `$HOME` under `$TMPDIR`, the image
-  cache and guests, and nothing else.
+  The exception is `test/suite.sh local`, which may create its throwaway `$HOME` under `$TMPDIR` and nothing
+  else; the VM environments are Phase 6's.
 - **Being in `docs/proposals/` on `master` is the approval.** Do not re-argue whether a proposal
   is worth doing. Do check whether it is still correct and executable.
 - **Only `master` counts.** A proposal in an open PR, on another branch, or in the scout's
   `ideas.md` is not approved. Never act on one.
 - **A proposal leaves the folder only in the PR that implements it.** If that PR is not merged,
   the proposal is still on `master` and still queued.
-- Branch names are plain (`feat/...`, `plan/...`). The `claude/` prefix is reserved for automation.
+- Branch names are plain (`feat/...`, `plan/...`, `fix/...`). The `claude/` prefix is reserved for automation.
 - Report faithfully. A unit that failed, a check that could not be verified, a proposal that
   was skipped: each is named in the PR with the reason.
 
