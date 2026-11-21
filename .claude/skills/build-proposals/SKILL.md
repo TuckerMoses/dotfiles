@@ -36,12 +36,12 @@ and stow rules bind every phase here.
   touches the live machine, and only from the main checkout.
 - **A fix agent** is created from the main checkout at `.worktrees/fix-<short-name>`, on branch `fix/<short-name>` cut from
   the integration branch's HEAD, and briefed as in Phase 4 with the commit under test and the failure evidence in place of
-  the plan text: in Phase 6 the failing run dir's absolute path, in Phase 7 the failing `bootstrap.sh`/`validate.sh` output
+  the plan text: in Phase 6 the failing run dir's absolute path (it may read, not write, that dir), in Phase 7 the failing `bootstrap.sh`/`validate.sh` output
   and the Phase 0 baseline lines it is compared with. It adds a `validate.sh` check only if the fix adds behaviour. Before
-  merging, read its diff as in Phase 5 step 1 and reject it on the same grounds. The `--no-ff` merge, `git worktree remove` and
+  merging, read its diff as in Phase 5 step 1 and reject it on the same grounds; a rejected fix, or an agent that returns no commit, gets one replacement fix agent briefed with the reason (as Phase 5 step 1 re-dispatches a unit once). The `--no-ff` merge, `git worktree remove` and
   `git branch -d` all run where the integration branch is checked out (the integration worktree in Phase 6, the main
-  checkout in Phase 7), and the integration worktree stays; a rejected or abandoned fix is removed the same way, with
-  `git branch -D`.
+  checkout in Phase 7), and the integration worktree stays; a rejected or abandoned fix is not merged; remove it with
+  `git worktree remove --force` and `git branch -D`.
 - **Subagents change nothing outside their worktree**: nothing in `$HOME`, no installs, no pushes.
   The exception is `test/suite.sh local`, which may create its throwaway `$HOME` under `$TMPDIR` and nothing
   else; the VM environments are Phase 6's.
@@ -203,7 +203,7 @@ test/suite.sh vm-emulated   # fresh Ubuntu guest, the other arch (TCG: several t
    - On `1`: read the run dir (`log`, `result`, `validate.txt`; for guests `console.log` and
      `guest/`), fix on the branch (small fixes yourself, larger ones through a fix agent), commit, and re-run that environment fresh. Do not `--resume` a guest after a fix: it
      keeps the clone it already has. A fix is a new commit, so re-run any environment that passed
-     on the old one.
+     on the old one. A failure that cannot be fixed that way is handled like `3`.
    - On `3`: report which environment and why, and stop the whole run (no Phase 7, 8 or 9), leaving the branch and integration
      worktree as they are until the user says how to proceed. Never skip an
      environment silently, and never go on to the live phase on two out of three.
