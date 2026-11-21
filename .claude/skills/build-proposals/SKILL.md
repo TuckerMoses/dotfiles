@@ -34,10 +34,10 @@ and stow rules bind every phase here.
   `DOTFILES_TEST_DISPOSABLE=1`) into the `$HOME` of one of the suite's own guests or the CI container. Agents never
   run `here` or set `DOTFILES_TEST_DISPOSABLE=1`. Only Phase 7
   touches the live machine, and only from the main checkout.
-- **A fix agent** works on a new branch cut from the integration branch's HEAD in a fresh worktree; you merge it
-  back where the integration branch is checked out, then remove that worktree. It is an implementation agent:
-  dispatched with `model: "opus"` and the Phase 4 brief, on branch `fix/<short-name>` in `.worktrees/fix-<short-name>`,
-  merged with `--no-ff` as in Phase 5.
+- **A fix agent** is created from the main checkout at `.worktrees/fix-<short-name>`, on branch `fix/<short-name>` cut from
+  the integration branch's HEAD. Brief it as in Phase 4, with the failing run dir's absolute path and the commit under
+  test in place of the plan text; it adds a `validate.sh` check only if the fix adds behaviour. After the `--no-ff` merge
+  where the integration branch is checked out, remove the fix worktree and delete its branch (`git branch -d`); the integration worktree stays.
 - **Subagents change nothing outside their worktree**: nothing in `$HOME`, no installs, no pushes.
   The exception is `test/suite.sh local`, which may create its throwaway `$HOME` under `$TMPDIR` and nothing
   else; the VM environments are Phase 6's.
@@ -134,7 +134,7 @@ and the blocked and done proposals with their reasons. With `--dry-run`, stop he
    and `model: "opus"`. The brief is the agent's only context. Give it:
    - the absolute worktree path, and the instruction to work only there;
    - the full plan text;
-   - the rules: no `stow`, no `bootstrap.sh`, no installs, nothing outside the worktree (the suite excepted, per the rules above), no push;
+   - the rules: no `stow`, no `bootstrap.sh`, no installs, nothing outside the worktree, no push;
    - **the validation requirement** (below);
    - the static checks it can run from a worktree: `bash -n`, `zsh -n`, a Python compile,
      `HERDR_CONFIG_PATH=<file> herdr config check`, `ghostty +validate-config --config-file=<file>`,

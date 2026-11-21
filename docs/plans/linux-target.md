@@ -52,7 +52,7 @@ One entry point; the environment is an argument. `test/` is not a stow package a
 | `local` | Builds a throwaway `$HOME`, isolates the environment (below), runs the core there |
 | `vm-native` | Boots a fresh Ubuntu guest of the host's architecture with hardware acceleration, runs `here` inside |
 | `vm-emulated` | Boots a fresh Ubuntu guest of the other architecture under emulation (TCG), runs `here` inside |
-| `here` | Runs the core against the real `$HOME` of a disposable Linux machine (a guest, a CI runner). Refuses unless `DOTFILES_TEST_DISPOSABLE=1` and `uname` is Linux |
+| `here` | Runs the core against the real `$HOME` of a disposable Linux machine (a guest, the CI container). Refuses unless `DOTFILES_TEST_DISPOSABLE=1` and `uname` is Linux |
 
 **The core** is the same in every environment:
 
@@ -190,7 +190,7 @@ It cannot run until a PR exists, so it ships untested by this run and the PR say
 
 - "`./bootstrap.sh` twice" becomes three runs: herdr's plugins and Claude integration can only install once a
   server is running, so the second run still installs. The third is the idempotence proof.
-- The suite has a fourth environment name, `here`, which is what runs inside a guest and on a CI runner. The
+- The suite has a fourth environment name, `here`, which is what runs inside a guest and in the CI container. The
   three the proposal names are unchanged.
 - `validate.sh:70` already has a Linux branch; what was missing was the Linux package list behind it.
 
@@ -216,8 +216,8 @@ It cannot run until a PR exists, so it ships untested by this run and the PR say
 - Found by the guests and fixed for both OSes: the Oh My Zsh installer's template `~/.zshrc` blocked stow on a
   machine with none; `herdr plugin list | grep -q` and `fc-list | grep -q` failed under `pipefail` (SIGPIPE)
   and caused reinstalls; herdr's Claude integration needs `~/.claude` to exist.
-- The stow exception in SKILL.md and CLAUDE.md also covers the guests and `here` with `DOTFILES_TEST_DISPOSABLE=1`
-  (CI), not only the throwaway `$HOME`.
+- The stow exception in SKILL.md and CLAUDE.md was widened to `here` with `DOTFILES_TEST_DISPOSABLE=1`
+  (CI).
 - The CI job runs the suite inside an `ubuntu:26.04` container on both hosted runners, not on the runner image:
   the runners are Ubuntu 24.04, which has no lazygit package and an fzf without `--zsh`. `here` writes no `meta`
   file, so the workflow writes one for `report`.
