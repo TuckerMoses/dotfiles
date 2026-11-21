@@ -19,7 +19,7 @@ which must exit 0.
 Exit codes: `0` passed, `1` the suite failed, `3` the environment could not be started
 (download, checksum, QEMU, guest never reachable).
 
-Results go to `test/.runs/<env>-<timestamp>/` (gitignored): `log`, `result` (one line per step),
+Results go to `test/.runs/<env>-<timestamp>/` (gitignored, so removing the checkout's worktree deletes them): `log`, `result` (one line per step),
 `validate.txt`, `meta`; for guests also `console.log` and `guest/` (everything the guest wrote).
 
 - `local` refuses to run if anything `bootstrap.sh` would install system-wide (brew, apt) is
@@ -28,5 +28,5 @@ Results go to `test/.runs/<env>-<timestamp>/` (gitignored): `log`, `result` (one
   `qemu` has all of them). Images are cached, checksum-verified, in
   `${DOTFILES_TEST_CACHE:-${XDG_CACHE_HOME:-~/.cache}/dotfiles-test}` (about 900 MB each); every run boots a fresh overlay.
 - `--keep` leaves the throwaway HOME or the guest (a failed `local` run keeps its HOME anyway; path in `meta` as `home`); `--resume <run-dir>` reboots a kept guest and
-  continues from the first step that has not passed. Tunables: `--boot-timeout`, `--timeout`,
+  continues an interrupted or timed-out run, re-running the steps that have not passed; a finished run is re-reported, not re-run. Tunables: `--boot-timeout`, `--timeout`,
   `DOTFILES_TEST_CPUS`, `DOTFILES_TEST_MEM`.

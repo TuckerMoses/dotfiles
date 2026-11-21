@@ -105,8 +105,10 @@ if have tmux; then
   ycmd="$(echo "$ybind" | sed -n 's/.*copy-pipe-and-cancel *//p' | tr -d "\"'" | awk '{print $1}')"
   if [[ -z "$ybind" ]]; then fail "tmux: copy-mode y is not bound"
   elif [[ -z "$ycmd" ]]; then warn "tmux: copy-mode y copies to tmux's own buffer only (no pbcopy, wl-copy or xclip)"
-  elif have "$ycmd"; then pass "tmux: copy-mode y copies with $ycmd"
-  else fail "tmux: copy-mode y pipes to $ycmd, which is not installed"; fi
+  elif ! have "$ycmd"; then fail "tmux: copy-mode y pipes to $ycmd, which is not installed"
+  elif [[ ( "$ycmd" == wl-copy && -z "${WAYLAND_DISPLAY:-}" ) || ( "$ycmd" == xclip && -z "${DISPLAY:-}" ) ]]; then
+    warn "tmux: copy-mode y pipes to $ycmd, but this session has no display for it (no clipboard reached)"
+  else pass "tmux: copy-mode y copies with $ycmd"; fi
 fi
 
 ghostty=""
@@ -279,7 +281,7 @@ if have herdr; then
       else fail "plugin $want installed but disabled"; fi
     done
     out="$(herdr integration status 2>&1 | grep -i claude || true)"
-    if [[ ! -d "$HOME/.claude" ]] && ! have claude; then info "Claude Code not set up (no ~/.claude); integration not checked"
+    if [[ ! -d "$HOME/.claude" ]]; then info "Claude Code not set up (no ~/.claude); integration not checked"
     elif [[ -z "$out" ]] || echo "$out" | grep -qi 'not installed'; then fail "Claude integration not installed (herdr integration install claude)"
     elif echo "$out" | grep -qi 'outdated'; then warn "Claude integration outdated (herdr integration install claude)"
     else pass "Claude integration current"; fi

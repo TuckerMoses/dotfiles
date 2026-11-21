@@ -279,7 +279,7 @@ env_local() {
     pairs="$(sed -n 's/^  for pair in \(.*\); do$/\1/p' "$REPO/bootstrap.sh" | sed -n 2p)"
     [[ "$pairs" == *stow* ]] || { rm -rf "$home"; die3 "no Linux 'for pair in' loop found in bootstrap.sh (reformatted?)"; }
     for pair in $pairs; do
-      case "${pair#*:}" in jj|lazyjj) continue ;; esac   # release binaries, installed into HOME
+      case "${pair#*:}" in jj|lazyjj) continue ;; esac   # release binaries, installed into HOME (same list as bootstrap.sh's Linux loop)
       PATH="$path" command -v "${pair#*:}" >/dev/null 2>&1 || missing+=("${pair%%:*}")
     done
   fi
@@ -325,6 +325,8 @@ env_local_inner() {
       log "refusing: $v is set"; exit 3 ;; esac
   done
   [[ "$TMUX_TMPDIR" == "$HOME"/* ]] || { log "refusing: TMUX_TMPDIR is outside HOME"; exit 3; }
+  # Step 1's bootstrap.sh already talks to herdr (plugin and integration installs).
+  if command -v herdr >/dev/null 2>&1; then herdr_guard || exit 3; fi
   run_core || exit 1
 }
 
@@ -363,15 +365,17 @@ env_vm() {
       || die3 "could not start the suite in the guest"
   fi
   log "suite running in the guest (log follows)"
+  local again="re-run fresh, or with --keep to be able to resume"
+  (( KEEP )) && again="continue with --resume $RUN --keep"
   while :; do
     if ! st="$(vm_ssh "$RUN" "tail -n +$((n + 1)) run/log 2>/dev/null")"; then
-      vm_alive "$RUN" || die3 "the guest died during the run (see console.log; then --resume $RUN)"
+      vm_alive "$RUN" || die3 "the guest died during the run (see console.log; then $again)"
       sleep 20; continue
     fi
     if [[ -n "$st" ]]; then printf '%s\n' "$st"; n=$(( n + $(printf '%s\n' "$st" | wc -l) )); fi
     i="$(vm_ssh "$RUN" 'cat run/exit 2>/dev/null' || true)"
     [[ -n "$i" ]] && { rc="$i"; break; }
-    if (( SECONDS - start > CORE_TIMEOUT )); then log "timed out after ${CORE_TIMEOUT}s (continue with --resume $RUN --keep)"; rc=1; break; fi
+    if (( SECONDS - start > CORE_TIMEOUT )); then log "timed out after ${CORE_TIMEOUT}s (then $again)"; rc=1; break; fi
     sleep 15
   done
   mkdir -p "$RUN/guest"
@@ -386,7 +390,7 @@ vm_cleanup() {
   [[ -n "${RUN:-}" ]] || return 0
   vm_stop "$RUN" 2>/dev/null || true
   if (( KEEP )); then
-    log "guest kept: $RUN (continue or re-run: test/suite.sh --resume $RUN --keep)"
+    log "guest kept: $RUN (continue an interrupted run: test/suite.sh --resume $RUN --keep)"
   else rm -f "$RUN/overlay.qcow2" "$RUN/vars.fd" "$RUN/seed.iso" "$RUN/repo.bundle"; fi
 }
 

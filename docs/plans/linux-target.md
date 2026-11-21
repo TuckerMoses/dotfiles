@@ -118,7 +118,7 @@ one line per core step (`pass`/`fail`/`skip` and why), and the `validate.sh` out
 - `zsh/.zshrc`: source zsh-vi-mode from brew when brew has it, else from the Oh My Zsh custom plugin; put
   `~/.local/bin` (and atuin's bin dir if its installer uses one) on `PATH` only when missing; guard the
   `launchctl` alias to macOS.
-- `tmux/.tmux.conf`: copy with `pbcopy` on macOS, else `wl-copy`, else `xclip`, else tmux's own clipboard.
+- `tmux/.tmux.conf`: copy with `pbcopy` on macOS, else `wl-copy` in a Wayland session, else `xclip` in an X11 one, else tmux's own clipboard.
 - `ghostty/`: Linux cannot be exercised headless. If a `ghostty` binary can be had cheaply in the arm64 guest,
   run `+validate-config` against the repo config there once and record the result; otherwise say untested.
 - `herdr/`, `herdr-summarizer/`: fix whatever the guests show (the hook's `/usr/bin/python3`, `SEARCH_PATH`,
@@ -199,7 +199,7 @@ It cannot run until a PR exists, so it ships untested by this run and the PR say
 - `local` does not stow from the worktree. It clones the committed `HEAD` (the same git bundle the guests get)
   into the throwaway `$HOME` and stows from that clone, so all three environments test one commit and no link
   ever points at a worktree. Uncommitted changes are therefore not tested.
-- `local` isolates with `env -i` (a fresh environment) and then refuses if any `HERDR_*`, `TMUX*`, `XDG_*`,
+- `local` isolates with `env -i` (a fresh environment) and then refuses if any `HERDR_*`, `TMUX`, `TMUX_PANE`, `XDG_*`,
   `ZDOTDIR`, `STARSHIP_*`, `ATUIN_*` or `NVIM_APPNAME` variable is present, where the plan unset a list.
 - herdr has a headless mode, `herdr server`; no tmux wrapper was needed. Plugin hooks run with
   `HERDR_SUMMARIZER_DRY=1`.

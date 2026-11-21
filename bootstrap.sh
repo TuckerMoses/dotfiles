@@ -4,7 +4,7 @@ set -euo pipefail
 # ── Dotfiles bootstrap ──────────────────────────────────────────────────────
 # Clone this repo to ~/dotfiles, then run: ./bootstrap.sh
 # Idempotent — safe to re-run on updates.
-# Contract: "==> Installing" is printed only when something is installed (test/suite.sh's third run relies on it).
+# Contract: "==> Installing" is printed whenever, and only when, something is installed (test/suite.sh's third run relies on it).
 #
 DOTFILES_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$DOTFILES_DIR"
@@ -34,10 +34,11 @@ if [[ "$(uname)" == "Darwin" ]]; then
   for pair in stow tmux neovim:nvim starship fzf zoxide atuin jq lazygit lazyjj; do
     formula="${pair%%:*}"
     cmd="${pair#*:}"
-    command -v "$cmd" &>/dev/null || brew install "$formula"
+    command -v "$cmd" &>/dev/null || { echo "==> Installing $formula..."; brew install "$formula"; }
   done
 
   if ! brew list --cask font-jetbrains-mono-nerd-font &>/dev/null 2>&1; then
+    echo "==> Installing JetBrains Mono Nerd Font..."
     brew install --cask font-jetbrains-mono-nerd-font
   fi
 fi
@@ -59,7 +60,7 @@ if [[ "$(uname)" == "Linux" ]]; then
   for pair in stow tmux zsh git curl unzip fontconfig:fc-list wl-clipboard:wl-copy neovim:nvim fzf zoxide jq lazygit jj lazyjj; do
     cmd="${pair#*:}"
     command -v "$cmd" &>/dev/null && continue
-    case "$cmd" in jj|lazyjj) ;; *) missing+=("${pair%%:*}") ;; esac
+    case "$cmd" in jj|lazyjj) ;; *) missing+=("${pair%%:*}") ;; esac   # same list as test/suite.sh env_local
   done
 
   if [[ ${#missing[@]} -gt 0 ]]; then
@@ -154,19 +155,19 @@ fi
 ZSH_CUSTOM="${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}"
 
 [[ -d "$ZSH_CUSTOM/plugins/zsh-autosuggestions" ]] ||
-  git clone https://github.com/zsh-users/zsh-autosuggestions "$ZSH_CUSTOM/plugins/zsh-autosuggestions"
+  { echo "==> Installing zsh-autosuggestions..."; git clone https://github.com/zsh-users/zsh-autosuggestions "$ZSH_CUSTOM/plugins/zsh-autosuggestions"; }
 
 [[ -d "$ZSH_CUSTOM/plugins/fzf-tab" ]] ||
-  git clone https://github.com/Aloxaf/fzf-tab "$ZSH_CUSTOM/plugins/fzf-tab"
+  { echo "==> Installing fzf-tab..."; git clone https://github.com/Aloxaf/fzf-tab "$ZSH_CUSTOM/plugins/fzf-tab"; }
 
 [[ -d "$ZSH_CUSTOM/plugins/zsh-syntax-highlighting" ]] ||
-  git clone https://github.com/zsh-users/zsh-syntax-highlighting "$ZSH_CUSTOM/plugins/zsh-syntax-highlighting"
+  { echo "==> Installing zsh-syntax-highlighting..."; git clone https://github.com/zsh-users/zsh-syntax-highlighting "$ZSH_CUSTOM/plugins/zsh-syntax-highlighting"; }
 
 # zsh-vi-mode: .zshrc uses brew's copy when brew has one, else this one.
 zvm_brew=""
 command -v brew &>/dev/null && zvm_brew="$(brew --prefix)/opt/zsh-vi-mode/share/zsh-vi-mode/zsh-vi-mode.plugin.zsh"
 [[ -n "$zvm_brew" && -f "$zvm_brew" ]] || [[ -d "$ZSH_CUSTOM/plugins/zsh-vi-mode" ]] ||
-  git clone https://github.com/jeffreytse/zsh-vi-mode "$ZSH_CUSTOM/plugins/zsh-vi-mode"
+  { echo "==> Installing zsh-vi-mode..."; git clone https://github.com/jeffreytse/zsh-vi-mode "$ZSH_CUSTOM/plugins/zsh-vi-mode"; }
 
 # ── Stow packages ────────────────────────────────────────────────────────────
 echo "==> Stowing dotfiles..."
