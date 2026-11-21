@@ -35,9 +35,13 @@ and stow rules bind every phase here.
   run `here` or set `DOTFILES_TEST_DISPOSABLE=1`. Only Phase 7
   touches the live machine, and only from the main checkout.
 - **A fix agent** is created from the main checkout at `.worktrees/fix-<short-name>`, on branch `fix/<short-name>` cut from
-  the integration branch's HEAD. Brief it as in Phase 4, with the failing run dir's absolute path and the commit under
-  test in place of the plan text; it adds a `validate.sh` check only if the fix adds behaviour. After the `--no-ff` merge
-  where the integration branch is checked out, remove the fix worktree and delete its branch (`git branch -d`); the integration worktree stays.
+  the integration branch's HEAD, and briefed as in Phase 4 with the commit under test and the failure evidence in place of
+  the plan text: in Phase 6 the failing run dir's absolute path, in Phase 7 the failing `bootstrap.sh`/`validate.sh` output
+  and the Phase 0 baseline lines it is compared with. It adds a `validate.sh` check only if the fix adds behaviour. Before
+  merging, read its diff as in Phase 5 step 1 and reject it on the same grounds. The `--no-ff` merge, `git worktree remove` and
+  `git branch -d` all run where the integration branch is checked out (the integration worktree in Phase 6, the main
+  checkout in Phase 7), and the integration worktree stays; a rejected or abandoned fix is removed the same way, with
+  `git branch -D`.
 - **Subagents change nothing outside their worktree**: nothing in `$HOME`, no installs, no pushes.
   The exception is `test/suite.sh local`, which may create its throwaway `$HOME` under `$TMPDIR` and nothing
   else; the VM environments are Phase 6's.
