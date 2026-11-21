@@ -69,6 +69,7 @@ else fail "hardcoded home directory path (use \$HOME, ~ or a relative path): $(e
 section "Tools installed by bootstrap"
 if [[ "$OS" == "Darwin" ]]; then pairs="$(sed -n 's/^  for pair in \(.*\); do$/\1/p' "$BOOTSTRAP" | head -1)"
 else pairs="$(sed -n 's/^  for pair in \(.*\); do$/\1/p' "$BOOTSTRAP" | sed -n 2p)"; fi
+[[ -n "$pairs" ]] || fail "bootstrap.sh: no 'for pair in' tool loop found (reformatted?)"
 for cmd in $(for pair in $pairs starship atuin herdr; do echo "${pair#*:}"; done | awk '!seen[$0]++'); do
   if have "$cmd"; then pass "$cmd"; else fail "$cmd not on PATH"; fi
 done
@@ -79,7 +80,10 @@ if have zsh; then
   if err="$(zsh -n "$HOME/.zshrc" 2>&1)"; then pass "zsh: ~/.zshrc syntax"; else fail "zsh: $err"; fi
   # An interactive start must print nothing on stderr and must load zsh-vi-mode
   # (sourced from brew or from the Oh My Zsh custom plugin, whichever exists).
-  out="$(cd "$HOME" && zsh -i -c 'print -r -- "zvm-loaded=${+functions[zvm_init]}"' </dev/null 2>&1)"
+  # HISTFILE and ZSH_COMPDUMP point at a throwaway dir so the real ones are not rewritten.
+  zt="$(mktemp -d)"
+  out="$(cd "$HOME" && HISTFILE=/dev/null ZSH_COMPDUMP="$zt/zcompdump" zsh -i -c 'print -r -- "zvm-loaded=${+functions[zvm_init]}"' </dev/null 2>&1)"
+  rm -rf "$zt"
   errs="$(echo "$out" | grep -v '^zvm-loaded=' || true)"
   if [[ -n "$errs" ]]; then fail "zsh: interactive start writes to stderr: $(echo "$errs" | head -2 | tr '\n' ' ')"
   else pass "zsh: interactive start is clean"; fi

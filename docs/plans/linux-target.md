@@ -216,11 +216,13 @@ It cannot run until a PR exists, so it ships untested by this run and the PR say
 - Found by the guests and fixed for both OSes: the Oh My Zsh installer's template `~/.zshrc` blocked stow on a
   machine with none; `herdr plugin list | grep -q` and `fc-list | grep -q` failed under `pipefail` (SIGPIPE)
   and caused reinstalls; herdr's Claude integration needs `~/.claude` to exist.
+- The stow exception in SKILL.md and CLAUDE.md also covers the guests and `here` with `DOTFILES_TEST_DISPOSABLE=1`
+  (CI), not only the throwaway `$HOME`; `here` runs only there, and agents never run it or set the variable.
 - The CI job runs the suite inside an `ubuntu:26.04` container on both hosted runners, not on the runner image:
   the runners are Ubuntu 24.04, which has no lazygit package and an fzf without `--zsh`. `here` writes no `meta`
   file, so the workflow writes one for `report`.
-- In a guest run, the `commit` in `meta` is read when the run starts and the bundle is taken after the guest
-  boots. The skill tells the orchestrator not to commit in between; the suite does not enforce it.
+- In a guest run, `meta`'s `commit` is rewritten to the commit actually bundled, after the guest boots. The skill
+  still says to commit nothing in between, so the three runs share one commit.
 - Two problems surfaced when the orchestrator re-ran the suite on the integration branch. `local` raised macOS
   "Keychain Not Found" dialogs: under `env -i` git still read Xcode's gitconfig (`credential.helper=osxkeychain`)
   and the throwaway `$HOME` has no keychain; `local` now sets `GIT_CONFIG_NOSYSTEM=1` and an empty helper. And an

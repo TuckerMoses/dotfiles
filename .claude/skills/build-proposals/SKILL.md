@@ -31,8 +31,11 @@ and stow rules bind every phase here.
 - **Never run `stow`, `bootstrap.sh` or an installer from a worktree.** Stow links point at the
   main checkout; running it elsewhere repoints the user's live config. The one exception is
   `test/suite.sh`, which stows only into a throwaway `$HOME`, inside a guest, or (`here`, only with
-  `DOTFILES_TEST_DISPOSABLE=1`) into the `$HOME` of a disposable Linux machine such as the CI container. Only Phase 7
+  `DOTFILES_TEST_DISPOSABLE=1`) into the `$HOME` of a disposable Linux machine such as the CI container. `here` runs
+  only inside the suite's own guests and in CI: agents never run it or set `DOTFILES_TEST_DISPOSABLE=1`. Only Phase 7
   touches the live machine, and only from the main checkout.
+- **A fix agent** works on a new branch cut from the integration branch's HEAD in a fresh worktree; you merge it
+  back where the integration branch is checked out, then remove that worktree.
 - **Subagents change nothing outside their worktree**: nothing in `$HOME`, no installs, no pushes.
   The exception is `test/suite.sh`, which may create its throwaway `$HOME` under `$TMPDIR`, the image
   cache and guests, and nothing else.
@@ -135,7 +138,7 @@ and the blocked and done proposals with their reasons. With `--dry-run`, stop he
      `HERDR_CONFIG_PATH=<file> herdr config check`, `ghostty +validate-config --config-file=<file>`,
      and sourcing a tmux config into a throwaway server
      (`tmux -L <name> -f /dev/null new-session -d 'sleep 5' \; source-file <file>`);
-   - that it may run `test/suite.sh local` or a VM environment to check its own work: the suite
+   - that it may run `test/suite.sh local` (not the VM environments; Phase 6 runs those) to check its own work: the suite
      is safe from a worktree and tests the committed `HEAD`, so commit first. It must still never
      stow or bootstrap by hand;
    - the files it must **not** edit, because you own them: `CHANGELOG.md`, `CLAUDE.md`,
@@ -189,15 +192,14 @@ test/suite.sh vm-emulated   # fresh Ubuntu guest, the other arch (TCG: several t
    uncommitted changes are not tested. Commit everything first, and commit nothing to the branch
    until all three runs have taken their bundle: `local` when its log prints `local: HOME=`, a
    guest only once it has booted, when its log prints `suite running in the guest`. The report's
-   `commit` row is read when a run starts, not when it bundles, so it cannot catch a commit made
-   in between.
+   `commit` row is the commit a guest bundled, so step 6 can check it.
 3. Exit codes: `0` passed, `1` the suite failed, `3` the environment could not be started.
    - On `1`: read the run dir (`log`, `result`, `validate.txt`; for guests `console.log` and
-     `guest/`), fix on the branch (small fixes yourself, larger ones through a fresh worktree and
-     agent), commit, and re-run that environment fresh. Do not `--resume` a guest after a fix: it
+     `guest/`), fix on the branch (small fixes yourself, larger ones through a fix agent), commit, and re-run that environment fresh. Do not `--resume` a guest after a fix: it
      keeps the clone it already has. A fix is a new commit, so re-run any environment that passed
      on the old one.
-   - On `3`: report which environment and why, and **stop before Phase 7**. Never skip an
+   - On `3`: report which environment and why, and stop the whole run (no Phase 7, 8 or 9), leaving the branch and integration
+     worktree as they are until the user says how to proceed. Never skip an
      environment silently, and never go on to the live phase on two out of three.
 4. `local` is fully isolated and must never be worked around. Never run herdr, `stow` or
    `bootstrap.sh` by hand against the real `$HOME` to help a failing run; a `local` that refuses
@@ -222,8 +224,7 @@ This follows "Worktree testing" in `CLAUDE.md` and is the only phase that change
 3. Run `./bootstrap.sh` (it installs missing tools, stows, and ends with `validate.sh -q`), then
    `./validate.sh` in full. Compare with the Phase 0 baseline.
 4. Prove each new check once on the live machine: break what it guards, see it fail, restore.
-5. Fix failures on the branch: small ones yourself, larger ones through a fresh worktree and
-   agent. Re-run until no failure remains that was not in the baseline.
+5. Fix failures on the branch: small ones yourself, larger ones through a fix agent. Re-run until no failure remains that was not in the baseline.
 6. If it cannot be made clean, say so. Open the PR as a draft with the failures listed, or, if
    the branch leaves the machine in a bad state, `git checkout master && ./bootstrap.sh` and
    report. Tools already installed stay installed; list them.
@@ -238,7 +239,7 @@ skill's own rules for the loop. Give it a manifest with:
 - **locations:** the files changed against `master` (`git diff --name-only master...HEAD`);
 - **flags:** the repo rules above, especially stow safety and `validate.sh` staying read-only.
 
-Commit the fixes it applies. Then run `./validate.sh` again: review fixes can break things too.
+Commit the fixes it applies, in the main checkout. Then run `./validate.sh` again: review fixes can break things too.
 
 ## Phase 9: the pull request
 

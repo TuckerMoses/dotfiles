@@ -4,6 +4,7 @@ set -euo pipefail
 # ── Dotfiles bootstrap ──────────────────────────────────────────────────────
 # Clone this repo to ~/dotfiles, then run: ./bootstrap.sh
 # Idempotent — safe to re-run on updates.
+# Contract: "==> Installing" is printed only when something is installed (test/suite.sh's third run relies on it).
 #
 DOTFILES_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$DOTFILES_DIR"
@@ -77,6 +78,7 @@ if [[ "$(uname)" == "Linux" ]]; then
   fetch() { curl -fsSL --retry 5 --connect-timeout 20 --speed-limit 1024 --speed-time 60 "$@"; }
 
   # release_bin <cmd> <url> <sha256|-> <path-in-tarball>: one binary from a .tar.gz
+  # (`-` skips the checksum: used where the URL is `latest` and the asset changes)
   release_bin() {
     local cmd="$1" url="$2" sum="$3" member="$4" tmp
     command -v "$cmd" &>/dev/null && return 0

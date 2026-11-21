@@ -14,7 +14,7 @@ set -euo pipefail
 #
 # Options: --keep (leave the throwaway HOME or the guest), --resume <run-dir>
 # (vm-*: reboot the kept guest and continue), --boot-timeout <s>, --timeout <s>.
-# The code under test is the committed HEAD (a git bundle), never the working tree.
+# local and the guests test the committed HEAD (a git bundle); here tests the checkout it runs in.
 # Exit: 0 passed, 1 the suite failed, 3 the environment could not be started.
 # Each run writes test/.runs/<env>-<timestamp>/: log, result, validate.txt, meta.
 
@@ -252,7 +252,7 @@ env_here() {
 # Outer half: checks, a fresh HOME, then re-runs this script under env -i so no
 # variable from the calling session (HERDR_*, TMUX*, XDG_*, ZDOTDIR, ...) survives.
 env_local() {
-  local real tmpbase home path brewp missing=() pair rc=0 start=$SECONDS
+  local real tmpbase home path brewp missing=() pair pairs rc=0 start=$SECONDS
   real="$(real_home)"
   RUN="$(new_run_dir local)"
   tmpbase="$(cd "${TMPDIR:-/tmp}" && pwd -P)"
@@ -269,12 +269,16 @@ env_local() {
   # bootstrap.sh would install a missing system package (brew/apt): a machine
   # change outside $HOME. Stop instead.
   if [[ "$(uname)" == Darwin ]]; then
-    for pair in $(sed -n 's/^  for pair in \(.*\); do$/\1/p' "$REPO/bootstrap.sh" | head -1) herdr; do
+    pairs="$(sed -n 's/^  for pair in \(.*\); do$/\1/p' "$REPO/bootstrap.sh" | head -1)"
+    [[ -n "$pairs" ]] || { rm -rf "$home"; die3 "no macOS 'for pair in' loop found in bootstrap.sh (reformatted?)"; }
+    for pair in $pairs herdr; do
       PATH="$path" command -v "${pair#*:}" >/dev/null 2>&1 || missing+=("${pair%%:*}")
     done
     brew list --cask font-jetbrains-mono-nerd-font >/dev/null 2>&1 || missing+=("--cask font-jetbrains-mono-nerd-font")
   else
-    for pair in $(sed -n 's/^  for pair in \(.*\); do$/\1/p' "$REPO/bootstrap.sh" | sed -n 2p); do
+    pairs="$(sed -n 's/^  for pair in \(.*\); do$/\1/p' "$REPO/bootstrap.sh" | sed -n 2p)"
+    [[ "$pairs" == *stow* ]] || { rm -rf "$home"; die3 "no Linux 'for pair in' loop found in bootstrap.sh (reformatted?)"; }
+    for pair in $pairs; do
       case "${pair#*:}" in jj|lazyjj) continue ;; esac   # release binaries, installed into HOME
       PATH="$path" command -v "${pair#*:}" >/dev/null 2>&1 || missing+=("${pair%%:*}")
     done
@@ -348,6 +352,7 @@ env_vm() {
   vm_wait "$RUN" "$BOOT_TIMEOUT" || die3 "guest never became reachable"
   if ! vm_ssh "$RUN" 'test -d dotfiles'; then
     bundle_head "$RUN/repo.bundle"
+    meta_set "$RUN" commit "$(git -C "$REPO" rev-parse --short HEAD)"   # the commit actually bundled
     vm_ssh "$RUN" 'cat > repo.bundle' < "$RUN/repo.bundle" || die3 "copying the bundle failed"
     vm_ssh "$RUN" 'git clone -q repo.bundle dotfiles' || die3 "clone in the guest failed"
   fi
