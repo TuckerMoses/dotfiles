@@ -112,6 +112,8 @@ if have tmux; then
   elif ! have wl-copy && ! have xclip; then fail "tmux: copy-mode y has neither wl-copy nor xclip to pipe to (re-run ./bootstrap.sh)"
   elif { have wl-copy && [[ -n "${WAYLAND_DISPLAY:-}" ]]; } || { have xclip && [[ -n "${DISPLAY:-}" ]]; }; then
     pass "tmux: copy-mode y copies to this session's clipboard"
+  elif [[ -n "${WAYLAND_DISPLAY:-}" ]]; then warn "tmux: Wayland session but wl-copy is not installed, so copy-mode y fills tmux's buffer only"
+  elif [[ -n "${DISPLAY:-}" ]]; then warn "tmux: X11 session but xclip is not installed, so copy-mode y fills tmux's buffer only"
   else warn "tmux: this session has no Wayland or X11 display, so copy-mode y fills tmux's buffer only"; fi
 fi
 

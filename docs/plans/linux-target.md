@@ -118,7 +118,7 @@ one line per core step (`pass`/`fail` and why), and the `validate.sh` output. `t
 - `zsh/.zshrc`: source zsh-vi-mode from brew when brew has it, else from the Oh My Zsh custom plugin; put
   `~/.local/bin` (and atuin's bin dir if its installer uses one) on `PATH` only when missing; guard the
   `launchctl` alias to macOS.
-- `tmux/.tmux.conf`: copy with `pbcopy` on macOS; on Linux pick, at each copy, `wl-copy` in a Wayland session, else `xclip` in an X11 one, else tmux's own buffer.
+- `tmux/.tmux.conf`: copy with `pbcopy` on macOS; on Linux pick, at each copy, `wl-copy` in a Wayland session, else `xclip`, if installed, in an X11 one, else tmux's own buffer.
 - `ghostty/`: Linux cannot be exercised headless. If a `ghostty` binary can be had cheaply in the arm64 guest,
   run `+validate-config` against the repo config there once and record the result; otherwise say untested.
 - `herdr/`, `herdr-summarizer/`: fix whatever the guests show (the hook's `/usr/bin/python3`, `SEARCH_PATH`,

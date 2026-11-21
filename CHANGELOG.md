@@ -17,7 +17,7 @@ Queued work lives in `docs/proposals/`.
 
 ### Fixed
 - `zsh/.zshrc` no longer needs Homebrew: zsh-vi-mode comes from brew when brew has it, else from the Oh My Zsh custom plugin; the `launchctl` alias is macOS-only; `~/.local/bin` is put on `PATH` when missing
-- tmux copy mode on Linux picks, at each copy, `wl-copy` in a Wayland session, `xclip` in an X11 one, else tmux's own buffer, where it used to assume `xclip`
+- tmux copy mode on Linux picks, at each copy, `wl-copy` in a Wayland session, `xclip`, if installed, in an X11 one, else tmux's own buffer, where it used to assume `xclip`
 - bootstrap on a machine with no `~/.zshrc`: the Oh My Zsh installer wrote a template there, which made stow abort
 - bootstrap reinstalled the herdr plugins on some re-runs: `herdr plugin list | grep -q` failed under `pipefail` when grep exited first
 - bootstrap's Linux downloads give up on a dead connection (under 1 KB/s for a minute) and retry; plain `curl` waited on one forever, which hung an emulated test guest for six hours

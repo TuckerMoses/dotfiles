@@ -44,7 +44,7 @@ and stow rules bind every phase here.
   `git worktree remove --force` and `git branch -D`, and dispatch one replacement briefed with the reason. Stop fixing
   a failure when the replacement is also rejected or returns no commit, or when the same step fails again in the same
   environment (Phase 6), or the same `validate.sh` line fails again (Phase 7), after a fix for it, yours or a fix
-  agent's; at most two fixes per phase, yours included.
+  agent's; at most two merged fixes per phase across all failures and environments, yours included; a third is a stop.
 - **Subagents change nothing outside their worktree**: nothing in `$HOME`, no installs, no pushes.
   The exceptions are `test/suite.sh local`, which may create its throwaway `$HOME` under `$TMPDIR` and nothing
   else (the VM environments are Phase 6's), and the Phase 8 review's fixers, which edit the main checkout.
@@ -186,10 +186,10 @@ links for a new package are already checked, because `validate.sh` reads the pac
    `README.md`, and update `docs/herdr.html` if anything a herdr user would see changed.
 5. Commit all of it on the integration branch. Remove every unit worktree; keep the integration
    worktree, because Phase 6 runs from it.
-6. Install the system packages this branch adds to `bootstrap.sh`'s `for pair in` loops
-   (`git diff master...HEAD -- bootstrap.sh`, checked against the plans and unit reports) that are missing on this
-   host, with the command `bootstrap.sh` would use (brew, apt or dnf): `test/suite.sh local` refuses to start
-   without them. Tell the user which, then install without waiting; if an install fails or needs a password, stop
+6. In `.worktrees/integration`, for each pair `git diff master...HEAD -- bootstrap.sh` adds to this host's
+   `for pair in` loop whose part after `:` fails `command -v`,
+   install the part before `:` as `bootstrap.sh` would: `test/suite.sh local` refuses to start without them.
+   Tell the user which, then install without waiting; if an install fails or needs a password, stop
    before Phase 6, report the package and the command for the user to run, and leave the integration worktree in place.
 
 ## Phase 6: test in three environments
@@ -214,19 +214,19 @@ test/suite.sh vm-emulated   # fresh Ubuntu guest, the other arch (TCG: several t
    - On `1`: read the run dir (`log`, `result`, `validate.txt`; for guests `console.log` and
      `guest/`), fix on the branch (small fixes yourself, larger ones through a fix agent), commit, and re-run that environment fresh. Do not `--resume` a guest after a fix: it
      keeps the clone it already has. A fix is a new commit, so re-run any environment that passed
-     on the old one. A guest log showing `timed out after` while the running step was still printing output, in a step the
-     branch did not change, or a network or download error nothing on the branch caused, has nothing to fix: re-run
-     that environment fresh, unchanged, once per commit (after a timeout, with `--timeout` twice the value that ran
-     out); this does not count toward the fix-agent bound, and if the re-run fails the same way, handle it like `3`.
-     A failure the fix-agent rule says to stop on is handled like `3`.
-   - On `3`: report which environment and why, list the packages Phase 5 step 6 installed (they stay
+     on the old one. A guest log showing `timed out after` within 5 minutes of the last `[suite …]` line before it,
+     or a network or download error nothing on the branch caused, has nothing to fix: re-run that environment fresh,
+     unchanged, once per commit (after a timeout, with `--timeout` twice the value that ran out); this does not count
+     toward the fix-agent bound. A re-run that fails the same way, or a failure the fix-agent rule says to stop on, is
+     handled like `3`.
+   - On `3`: report which environment and why, list the system packages installed so far (they stay
      installed), and stop the whole run (no Phase 7, 8 or 9), leaving the branch and integration
      worktree as they are until the user says how to proceed. Never skip an
      environment silently, and never go on to the live phase on two out of three.
 4. `local` is fully isolated and must never be worked around. Never run herdr, `stow` or
    `bootstrap.sh` by hand against the real `$HOME` to help a failing run; a `local` that refuses
    to start (for example, a system package `bootstrap.sh` would install is missing) is a `3`, unless the package
-   it names is one this branch added to `bootstrap.sh`'s loop: install it as in Phase 5 step 6 and re-run.
+   it names is one this branch added to `bootstrap.sh`'s loop: install it as in Phase 5 step 6 and re-run (not a fix; an install that fails or needs a password is a `3`).
 5. What the suite cannot show is reported as **not tested**, never as passed: anything a headless
    guest cannot show (Ghostty rendering, clipboard, fonts on screen, sounds), model calls (the
    summarizer runs dry), and `dnf` (no Fedora guest).
@@ -268,7 +268,7 @@ Commit the fixes it applies, in the main checkout. Then run `./validate.sh` agai
 
 ## Phase 9: the pull request
 
-Push, then open one PR against `master` with `gh pr create`. The body has, in this order:
+Run `git push -u origin feat/build-proposals-<date>`, then open one PR against `master` with `gh pr create`. The body has, in this order:
 
 1. **What to review first:** anything that needs the user's decision, and blocked proposals with
    the exact question each one is waiting on.
@@ -277,7 +277,7 @@ Push, then open one PR against `master` with `gh pr create`. The body has, in th
 4. **Three environments:** the Phase 6 `test/suite.sh report` table, side by side, with the
    commit and wall time of each, and the not-tested list. Commits added by Phases 7 and 8 were
    validated by `validate.sh` only, not the suite: say so.
-5. **Machine changes from Phases 5 and 7:** tools installed, files in `$HOME` replaced (with the backup
+5. **Machine changes from Phases 5 to 7:** tools installed, files in `$HOME` replaced (with the backup
    path), and the steps still to do by hand.
 6. **Validation:** baseline against final, as counts, plus any remaining warning.
 7. **Adversarial review:** rounds, what was fixed, accepted risks, and the path to its summary.
@@ -285,4 +285,4 @@ Push, then open one PR against `master` with `gh pr create`. The body has, in th
 9. **Rollback:** `git checkout master && ./bootstrap.sh`, plus what that does not undo.
 
 Then tell the user: the PR link, that the main checkout is on the integration branch and
-therefore live, and the decisions waiting on them.
+therefore live (after a Phase 7 step 6 revert: on `master`, item 9 already run), and the decisions waiting on them.
