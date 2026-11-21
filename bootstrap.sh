@@ -4,7 +4,8 @@ set -euo pipefail
 # ── Dotfiles bootstrap ──────────────────────────────────────────────────────
 # Clone this repo to ~/dotfiles, then run: ./bootstrap.sh
 # Idempotent — safe to re-run on updates.
-# Contract: "==> Installing" is printed whenever, and only when, something is installed (test/suite.sh's third run relies on it).
+# Contract: "==> Installing" is printed before every install attempt, so a run that prints none installed nothing
+# (test/suite.sh's third run relies on it); TPM's plugin sync is not covered.
 #
 DOTFILES_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$DOTFILES_DIR"

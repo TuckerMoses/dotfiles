@@ -101,14 +101,18 @@ if have tmux; then
   tmux -L "$sock" kill-server 2>/dev/null
   if [[ -z "$errs" ]]; then pass "tmux: ~/.tmux.conf loads cleanly (throwaway server)"
   else fail "tmux: $(echo "$errs" | head -3 | tr '\n' ' ')"; fi
-  # The copy-mode y binding pipes to a clipboard command chosen at load time; it must exist here.
-  ycmd="$(echo "$ybind" | sed -n 's/.*copy-pipe-and-cancel *//p' | tr -d "\"'" | awk '{print $1}')"
+  # copy-mode y: pbcopy on macOS; on Linux a pipe that picks wl-copy or xclip at each copy.
   if [[ -z "$ybind" ]]; then fail "tmux: copy-mode y is not bound"
-  elif [[ -z "$ycmd" ]]; then warn "tmux: copy-mode y copies to tmux's own buffer only (no pbcopy, wl-copy or xclip)"
-  elif ! have "$ycmd"; then fail "tmux: copy-mode y pipes to $ycmd, which is not installed"
-  elif [[ ( "$ycmd" == wl-copy && -z "${WAYLAND_DISPLAY:-}" ) || ( "$ycmd" == xclip && -z "${DISPLAY:-}" ) ]]; then
-    warn "tmux: copy-mode y pipes to $ycmd, but this session has no display for it (no clipboard reached)"
-  else pass "tmux: copy-mode y copies with $ycmd"; fi
+  elif [[ "$OS" == "Darwin" ]]; then
+    if [[ "$ybind" != *"copy-pipe-and-cancel pbcopy"* ]]; then fail "tmux: copy-mode y does not pipe to pbcopy"
+    elif ! have pbcopy; then fail "tmux: copy-mode y pipes to pbcopy, which is not installed"
+    else pass "tmux: copy-mode y copies with pbcopy"; fi
+  elif [[ "$ybind" != *copy-pipe-and-cancel*WAYLAND_DISPLAY*wl-copy*DISPLAY*xclip* ]]; then
+    fail "tmux: copy-mode y does not pipe to the wl-copy/xclip selector"
+  elif ! have wl-copy && ! have xclip; then fail "tmux: copy-mode y has neither wl-copy nor xclip to pipe to (re-run ./bootstrap.sh)"
+  elif { have wl-copy && [[ -n "${WAYLAND_DISPLAY:-}" ]]; } || { have xclip && [[ -n "${DISPLAY:-}" ]]; }; then
+    pass "tmux: copy-mode y copies to this session's clipboard"
+  else warn "tmux: this session has no Wayland or X11 display, so copy-mode y fills tmux's buffer only"; fi
 fi
 
 ghostty=""

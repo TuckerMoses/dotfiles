@@ -32,9 +32,8 @@ and stow rules bind every phase here.
   main checkout; running it elsewhere repoints the user's live config. The one exception is
   `test/suite.sh`, which stows only into a throwaway `$HOME`, inside a guest, or (for `here` with
   `DOTFILES_TEST_DISPOSABLE=1`, in CI) into the CI container's `$HOME`. Agents never
-  run `here` or set `DOTFILES_TEST_DISPOSABLE=1`. Only Phases 7 and 8 touch the live machine (Phase 8 only through
-  edits to the checked-out repo), and only from the main checkout; the one earlier change is the system-package
-  install in Phase 5 step 6.
+  run `here` or set `DOTFILES_TEST_DISPOSABLE=1`. Only Phases 7 and 8 touch the live machine, and only from the main checkout;
+  the one earlier change is the system-package install in Phase 5 step 6 (or Phase 6 step 4, for a package it missed).
 - **A fix agent** is created from the main checkout at `.worktrees/fix-<short-name>`, on branch `fix/<short-name>` cut from
   the integration branch's HEAD, and briefed as in Phase 4 with the commit under test and the failure evidence in place of
   the plan text: in Phase 6 the failing run dir's absolute path (it may read, not write, that dir), in Phase 7 the failing `bootstrap.sh`/`validate.sh` output
@@ -43,9 +42,9 @@ and stow rules bind every phase here.
   `git branch -d`, all where the integration branch is checked out (the integration worktree in Phase 6, the main
   checkout in Phase 7). If it fails those grounds, or the agent returns no commit, do not merge it: remove it with
   `git worktree remove --force` and `git branch -D`, and dispatch one replacement briefed with the reason. Stop fixing
-  a failure when the replacement is also rejected or returns no commit, or when the same suite step (Phase 6) or
-  `validate.sh` line (Phase 7) fails again after a merged fix for it; at most two merged fixes per phase, counting
-  the ones you make yourself. Then in Phase 6 handle it like `3`; in Phase 7 go to step 6.
+  a failure when the replacement is also rejected or returns no commit, or when the same step fails again in the same
+  environment (Phase 6), or the same `validate.sh` line fails again (Phase 7), after a fix for it, yours or a fix
+  agent's; at most two fixes per phase, yours included.
 - **Subagents change nothing outside their worktree**: nothing in `$HOME`, no installs, no pushes.
   The exceptions are `test/suite.sh local`, which may create its throwaway `$HOME` under `$TMPDIR` and nothing
   else (the VM environments are Phase 6's), and the Phase 8 review's fixers, which edit the main checkout.
@@ -70,8 +69,8 @@ Stop and tell the user if any of these fails.
 3. Run `./validate.sh` and keep the full output as the **baseline**. Failures that exist before
    you start are recorded, not blamed on a proposal.
 
-Then tell the user in two lines what is about to happen, including that the system packages the plans
-need are installed before Phase 6, and that Phase 7 will switch the live config to the integration branch
+Then tell the user in two lines what is about to happen, including that the system packages the branch
+adds are installed before Phase 6, and that Phase 7 will switch the live config to the integration branch
 and may install tools, after the Phase 6 test passes.
 
 ## Phase 1: read the queue
@@ -152,7 +151,7 @@ and the blocked and done proposals with their reasons. With `--dry-run`, stop he
      (`tmux -L <name> -f /dev/null new-session -d 'sleep 5' \; source-file <file>`);
    - that it may run `test/suite.sh local` (not the VM environments; Phase 6 runs those) to check its own work: the suite
      is safe from a worktree and tests the committed `HEAD`, so commit first. It must still never
-     stow or bootstrap by hand. A `local` that exits 3 only because its own plan's new system package is
+     stow or bootstrap by hand. A `local` that exits 3 only because a system package it adds to `bootstrap.sh` is
      missing is reported as that, and does not fail the unit;
    - the files it must **not** edit, because you own them: `CHANGELOG.md`, `CLAUDE.md`,
      `README.md`, `docs/herdr.html`, and everything under `docs/plans/` and `docs/proposals/`;
@@ -187,9 +186,11 @@ links for a new package are already checked, because `validate.sh` reads the pac
    `README.md`, and update `docs/herdr.html` if anything a herdr user would see changed.
 5. Commit all of it on the integration branch. Remove every unit worktree; keep the integration
    worktree, because Phase 6 runs from it.
-6. Install the system packages the merged plans list under **Outside the repo**, with the command
-   `bootstrap.sh` would use (brew, apt or dnf), after telling the user which. You do this, never a
-   subagent: `test/suite.sh local` refuses to install them, and it is the only install before Phase 7.
+6. Install the system packages this branch adds to `bootstrap.sh`'s `for pair in` loops
+   (`git diff master...HEAD -- bootstrap.sh`, checked against the plans and unit reports) that are missing on this
+   host, with the command `bootstrap.sh` would use (brew, apt or dnf): `test/suite.sh local` refuses to start
+   without them. Tell the user which, then install without waiting; if an install fails or needs a password, stop
+   before Phase 6, report the package and the command for the user to run, and leave the integration worktree in place.
 
 ## Phase 6: test in three environments
 
@@ -213,17 +214,19 @@ test/suite.sh vm-emulated   # fresh Ubuntu guest, the other arch (TCG: several t
    - On `1`: read the run dir (`log`, `result`, `validate.txt`; for guests `console.log` and
      `guest/`), fix on the branch (small fixes yourself, larger ones through a fix agent), commit, and re-run that environment fresh. Do not `--resume` a guest after a fix: it
      keeps the clone it already has. A fix is a new commit, so re-run any environment that passed
-     on the old one. A log showing `timed out after`, or a network or download error nothing on the branch caused,
-     has nothing to fix: re-run that environment fresh once, unchanged (with a larger `--timeout` after a timeout);
-     this does not count toward the fix-agent bound, and a second such failure there is handled like `3`. A failure
-     the fix-agent rule says to stop on is handled like `3`.
-   - On `3`: report which environment and why, and stop the whole run (no Phase 7, 8 or 9), leaving the branch and integration
+     on the old one. A guest log showing `timed out after` while the running step was still printing output, in a step the
+     branch did not change, or a network or download error nothing on the branch caused, has nothing to fix: re-run
+     that environment fresh, unchanged, once per commit (after a timeout, with `--timeout` twice the value that ran
+     out); this does not count toward the fix-agent bound, and if the re-run fails the same way, handle it like `3`.
+     A failure the fix-agent rule says to stop on is handled like `3`.
+   - On `3`: report which environment and why, list the packages Phase 5 step 6 installed (they stay
+     installed), and stop the whole run (no Phase 7, 8 or 9), leaving the branch and integration
      worktree as they are until the user says how to proceed. Never skip an
      environment silently, and never go on to the live phase on two out of three.
 4. `local` is fully isolated and must never be worked around. Never run herdr, `stow` or
    `bootstrap.sh` by hand against the real `$HOME` to help a failing run; a `local` that refuses
-   to start (for example, a system package `bootstrap.sh` would install is missing) is a `3`, unless a plan
-   lists that package: then Phase 5 step 6 missed it; install it as there and re-run.
+   to start (for example, a system package `bootstrap.sh` would install is missing) is a `3`, unless the package
+   it names is one this branch added to `bootstrap.sh`'s loop: install it as in Phase 5 step 6 and re-run.
 5. What the suite cannot show is reported as **not tested**, never as passed: anything a headless
    guest cannot show (Ghostty rendering, clipboard, fonts on screen, sounds), model calls (the
    summarizer runs dry), and `dnf` (no Fedora guest).
@@ -235,8 +238,7 @@ test/suite.sh vm-emulated   # fresh Ubuntu guest, the other arch (TCG: several t
 
 ## Phase 7: validate the integration branch live
 
-This follows "Worktree testing" in `CLAUDE.md`. It and Phase 8 are the phases that change the machine
-(besides Phase 5 step 6's packages).
+This follows "Worktree testing" in `CLAUDE.md`.
 
 1. In the main checkout: `git checkout feat/build-proposals-<date>`. The stowed config is now
    the branch's version.
@@ -247,9 +249,10 @@ This follows "Worktree testing" in `CLAUDE.md`. It and Phase 8 are the phases th
    `./validate.sh` in full. Compare with the Phase 0 baseline.
 4. Prove each new check once on the live machine: break what it guards, see it fail, restore.
 5. Fix failures on the branch: small ones yourself, larger ones through a fix agent. Re-run, within the fix-agent rule's bound, until no failure remains that was not in the baseline.
-6. If the fix-agent rule says to stop, say so. Open the PR as a draft with the failures listed, or, if
-   the branch leaves the machine in a bad state, `git checkout master && ./bootstrap.sh` and
-   report. Tools already installed stay installed; list them.
+6. If the fix-agent rule says to stop, skip Phase 8. If a failure not in the baseline breaks the login shell,
+   stow links, or tmux or herdr startup, first run `git checkout master && ./bootstrap.sh`. Either way open the
+   Phase 9 PR as a draft, with the remaining failures under item 6 and "not run (Phase 7 stopped)" under item 7.
+   Tools already installed stay installed; list them.
 
 ## Phase 8: adversarial review
 

@@ -58,7 +58,8 @@ bundle_head() { # bundle_head <file>: HEAD (and its branch, so the clone checks 
 # ── the core ────────────────────────────────────────────────────────────────
 # Runs with HOME already set to the home under test and DOT pointing at a clone
 # inside it. Each step writes $RUN/state/<n>; a passed step is not repeated on
-# --resume (the herdr server is always re-checked, it does not survive a reboot).
+# --resume, except server, validate and teardown, which always run (the herdr server
+# does not survive a reboot).
 
 record() { # record <n> <status> <detail>
   printf '%s\t%s\t%s\t%s\n' "$1" "${STEPS[$(( $1 - 1 ))]}" "$2" "$3" > "$RUN/state/$1"
@@ -325,7 +326,8 @@ env_local_inner() {
       log "refusing: $v is set"; exit 3 ;; esac
   done
   [[ "$TMUX_TMPDIR" == "$HOME"/* ]] || { log "refusing: TMUX_TMPDIR is outside HOME"; exit 3; }
-  # Step 1's bootstrap.sh already talks to herdr (plugin and integration installs).
+  # Step 1's bootstrap.sh already talks to herdr (plugin and integration installs). Only a herdr
+  # already on PATH can be checked here; one bootstrap installs is first checked in step 2.
   if command -v herdr >/dev/null 2>&1; then herdr_guard || exit 3; fi
   run_core || exit 1
 }

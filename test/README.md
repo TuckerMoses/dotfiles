@@ -28,5 +28,5 @@ Results go to `test/.runs/<env>-<timestamp>/` (gitignored, so removing the check
   `qemu` has all of them). Images are cached, checksum-verified, in
   `${DOTFILES_TEST_CACHE:-${XDG_CACHE_HOME:-~/.cache}/dotfiles-test}` (about 900 MB each); every run boots a fresh overlay.
 - `--keep` leaves the throwaway HOME or the guest (a failed `local` run keeps its HOME anyway; path in `meta` as `home`); `--resume <run-dir>` reboots a kept guest and
-  continues an interrupted or timed-out run, re-running the steps that have not passed; a finished run is re-reported, not re-run. Tunables: `--boot-timeout`, `--timeout`,
+  continues an interrupted or timed-out run, re-running the steps that have not passed (server, validate and teardown always run); a finished run is re-reported, not re-run. Tunables: `--boot-timeout`, `--timeout`,
   `DOTFILES_TEST_CPUS`, `DOTFILES_TEST_MEM`.
