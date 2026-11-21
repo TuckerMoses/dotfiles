@@ -183,7 +183,7 @@ Each Claude session should follow this workflow at the start:
 
 ### Worktree testing
 
-Stow symlinks point to absolute paths in the main repo directory. **Never run `stow` or `bootstrap.sh` from a worktree** — it will repoint symlinks to the worktree, and they'll break when the worktree is cleaned up. The one exception is `test/suite.sh`, which is safe from a worktree: it stows only into a throwaway `$HOME` or inside a VM guest, from a clone of the committed `HEAD`.
+Stow symlinks point to absolute paths in the main repo directory. **Never run `stow` or `bootstrap.sh` from a worktree** — it will repoint symlinks to the worktree, and they'll break when the worktree is cleaned up. The one exception is `test/suite.sh`, which is safe from a worktree: it stows only into a throwaway `$HOME` or inside a VM guest (both from a clone of the committed `HEAD`), or, for `here` with `DOTFILES_TEST_DISPOSABLE=1`, into the `$HOME` of a disposable Linux machine such as the CI container.
 
 To test changes made in a worktree:
 

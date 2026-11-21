@@ -155,7 +155,7 @@ else: print("pass %d hook runs succeeded (%s)" % (len(logs), ",".join(sorted(set
 core_zsh() {
   # A real interactive zsh in a pty (a throwaway tmux server): zsh-vi-mode runs
   # zvm_after_init (fzf, atuin) at the first prompt, which `zsh -i -c` never shows.
-  # PATH is the one the suite started with, so ~/.local/bin must come from .zshrc.
+  # In `here` (guests, CI) PATH is the one the suite started with, so ~/.local/bin must come from .zshrc; in `local` it is already on the starting PATH.
   local sock="dotfiles-suite-zsh" probe="$RUN/zsh-probe.zsh" out="$RUN/zsh-probe.out" err="$RUN/zsh-stderr.txt" i missing=""
   cat > "$probe" <<'EOF'
 print -r -- "zvm=${+functions[zvm_init]}"

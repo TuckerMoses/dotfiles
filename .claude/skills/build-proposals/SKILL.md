@@ -30,9 +30,12 @@ and stow rules bind every phase here.
   final PR is where this skill stops.
 - **Never run `stow`, `bootstrap.sh` or an installer from a worktree.** Stow links point at the
   main checkout; running it elsewhere repoints the user's live config. The one exception is
-  `test/suite.sh`, which stows only into a throwaway `$HOME` or inside a guest. Only Phase 7
+  `test/suite.sh`, which stows only into a throwaway `$HOME`, inside a guest, or (`here`, only with
+  `DOTFILES_TEST_DISPOSABLE=1`) into the `$HOME` of a disposable Linux machine such as the CI container. Only Phase 7
   touches the live machine, and only from the main checkout.
 - **Subagents change nothing outside their worktree**: nothing in `$HOME`, no installs, no pushes.
+  The exception is `test/suite.sh`, which may create its throwaway `$HOME` under `$TMPDIR`, the image
+  cache and guests, and nothing else.
 - **Being in `docs/proposals/` on `master` is the approval.** Do not re-argue whether a proposal
   is worth doing. Do check whether it is still correct and executable.
 - **Only `master` counts.** A proposal in an open PR, on another branch, or in the scout's
@@ -126,7 +129,7 @@ and the blocked and done proposals with their reasons. With `--dry-run`, stop he
    and `model: "opus"`. The brief is the agent's only context. Give it:
    - the absolute worktree path, and the instruction to work only there;
    - the full plan text;
-   - the rules: no `stow`, no `bootstrap.sh`, no installs, nothing outside the worktree, no push;
+   - the rules: no `stow`, no `bootstrap.sh`, no installs, nothing outside the worktree (the suite excepted, per the rules above), no push;
    - **the validation requirement** (below);
    - the static checks it can run from a worktree: `bash -n`, `zsh -n`, a Python compile,
      `HERDR_CONFIG_PATH=<file> herdr config check`, `ghostty +validate-config --config-file=<file>`,
@@ -246,7 +249,8 @@ Push, then open one PR against `master` with `gh pr create`. The body has, in th
 2. **Proposals table:** proposal, verdict, result, the plan file, the validation check added.
 3. **Differences from the proposals**, and deviations the agents reported.
 4. **Three environments:** the Phase 6 `test/suite.sh report` table, side by side, with the
-   commit and wall time of each, and the not-tested list.
+   commit and wall time of each, and the not-tested list. Commits added by Phases 7 and 8 were
+   validated by `validate.sh` only, not the suite: say so.
 5. **Machine changes from Phase 7:** tools installed, files in `$HOME` replaced (with the backup
    path), and the steps still to do by hand.
 6. **Validation:** baseline against final, as counts, plus any remaining warning.

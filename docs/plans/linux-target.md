@@ -144,8 +144,8 @@ baseline's failures and no new ones.
 
 ## Outside the repo
 
-- `${XDG_CACHE_HOME:-~/.cache}/dotfiles-test/`: two Ubuntu cloud images (about 600 MB each), kept between
-  runs. Overridable with `DOTFILES_TEST_CACHE`.
+- `${DOTFILES_TEST_CACHE:-${XDG_CACHE_HOME:-~/.cache}/dotfiles-test}`: two Ubuntu cloud images (about 900 MB each), kept between
+  runs.
 - Nothing is stowed into the real `$HOME`, nothing is installed on the host, no entry in `~/.zshrc.local`.
 
 ## The `/build-proposals` change (last unit)

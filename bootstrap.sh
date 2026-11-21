@@ -29,7 +29,7 @@ if [[ "$(uname)" == "Darwin" ]]; then
   fi
 
   echo "==> Checking brew packages..."
-  # cmd:formula pairs (cmd=formula when they match)
+  # formula:cmd pairs (cmd=formula when they match)
   for pair in stow tmux neovim:nvim starship fzf zoxide atuin jq lazygit lazyjj; do
     formula="${pair%%:*}"
     cmd="${pair#*:}"
