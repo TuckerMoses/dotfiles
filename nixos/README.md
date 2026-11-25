@@ -21,7 +21,7 @@ Edit the checkout on the machine (`~/dotfiles`), then:
 | Command | Use it for | If you do nothing |
 |---|---|---|
 | `safe-switch` | Ordinary changes (packages, services, settings) | Undone after 5 minutes; if nobody can log in after that, it reboots into the last confirmed system |
-| `trial-boot` | Changes that need a reboot (kernel, drivers, boot settings). `safe-switch` refuses and tells you when the kernel, initrd, kernel modules, firmware, kernel parameters or fstab differ from what is booted | Reboots back into the old system after 10 minutes |
+| `trial-boot` | Changes that need a reboot (kernel, drivers, boot settings). `safe-switch` refuses and tells you when | Reboots back into the old system after 10 minutes |
 | `safe-confirm` | Keeping either kind of change. Run it from a **new** SSH session: that login is the proof you can still get in. A Tailscale SSH login proves only the Tailscale path; when the change touched sshd or the firewall, confirm from `ssh -p 2222 homepc` | |
 | `host-check` | Checking the machine is healthy and reachable. Run it after every change | |
 
@@ -31,10 +31,10 @@ Rules while away from the machine:
 - Do not run `nix flake update`. It changes the kernel and Tailscale together.
 - Two ways in over Tailscale: `ssh homepc` (port 22, answered by Tailscale SSH) and
   `ssh -p 2222 homepc` (OpenSSH). If one is broken, use the other.
-- A change that disables SSH, Tailscale, the firewall holes, the login key or sudo will not build.
+- A change that disables SSH, Tailscale, the OpenSSH firewall hole, the login key or sudo will not build.
   That is the guard in `lifeline.nix`, not a bug.
 
-What these do not cover: a trial system that hangs before it finishes booting and does not
+What these do not cover: a trial system that hangs in the kernel or initrd, before systemd starts, and does not
 panic. The watchdog resets most hangs; for the rest, cut the power with the smart plug (the
 machine then boots the old system).
 
@@ -108,8 +108,9 @@ Each of these must end with the machine reachable over Tailscale and `host-check
    It must come back by itself within a few minutes. `host-check` must show the hardware
    watchdog as armed. A FAIL on the watchdog line means `sp5100_tco` did not bind on this
    board: look for a watchdog or TCO setting in the BIOS; only if there is none, set
-   `hostCheck.requireWatchdog = false` in `hosts/homepc/default.nix` and rely on the
-   connectivity watchdog.
+   `hostCheck.requireWatchdog = false` in `hosts/homepc/default.nix`. Then a kernel or
+   systemd hang that does not panic is no longer reset; the only remedy is cutting the
+   power with the smart plug.
 8. Power off the router and the PC together, power the PC on first and the router about 3 minutes
    later. The PC must be reachable within 25 minutes.
 9. Run `nixos/test/drills.sh x86_64` once in the x86_64 VM, so the drills have run on the same

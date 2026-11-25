@@ -210,8 +210,7 @@ let
   # on-disk defaults match the old system again, then reboot into it. (The EFI
   # variable that pins the old entry is the first line of defence; this keeps
   # the profile and loader.conf from pointing at the failed trial if firmware
-  # drops that variable after the revert. It cannot help if the variable is lost
-  # during the trial itself.)
+  # drops that variable after the revert.)
   trial-revert = pkgs.writeShellApplication {
     name = "trial-revert";
     inherit runtimeInputs;
@@ -323,6 +322,9 @@ let
       fi
 
       if [[ -e $STATE/trial ]]; then
+        if systemctl is-active --quiet trial-reboot.service; then
+          die "the trial is being reverted right now; wait for the reboot, then check with host-check."
+        fi
         # Drop the pin on the old entry: the boot loader's own default is this
         # system. Only then stop the revert timer, so a failure leaves it running.
         bootctl set-default "" || true
@@ -386,15 +388,18 @@ in
         fi
         if [[ -n $pinned && $selected != "$pinned" ]]; then
           mkdir -p "$STATE"
-          echo "''${selected:-unknown}" > "$STATE/trial"
-          echo "trial boot of ''${selected:-unknown}: rebooting into $pinned in ${toString trialMinutes} minutes unless safe-confirm is run"
-          # --no-block and no default dependencies, on the timer and on the
-          # service it fires: this runs inside sysinit, and a unit that waits
-          # for sysinit or basic.target would never run if boot stalls first.
-          systemd-run --quiet --no-block --collect --unit=trial-reboot \
+          # --no-block and no default dependencies on timer and service: this
+          # runs inside sysinit (see above). Arm first, mark second: with no
+          # marker, lifeline-watchdog stays active if the revert cannot be armed.
+          if systemd-run --quiet --no-block --collect --unit=trial-reboot \
             --on-active=${toString trialMinutes}m --timer-property=AccuracySec=1s \
             --timer-property=DefaultDependencies=no --property=DefaultDependencies=no \
-            ${trial-revert}/bin/trial-revert
+            ${trial-revert}/bin/trial-revert; then
+            echo "''${selected:-unknown}" > "$STATE/trial"
+            echo "trial boot of ''${selected:-unknown}: rebooting into $pinned in ${toString trialMinutes} minutes unless safe-confirm is run"
+          else
+            echo "trial-boot-watch: ERROR: could not arm the trial revert; no trial marker written, so lifeline-watchdog stays active" >&2
+          fi
         fi
       '';
     };

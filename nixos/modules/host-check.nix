@@ -80,6 +80,11 @@ let
         else
           ${if cfg.requireTailnet then "fail" else "warn"} "joined to the tailnet but it has no tailnet address"
         fi
+        if [[ "$(jq -r '.Self.Online // false' <<<"$ts")" == true ]]; then
+          pass "Tailscale's coordination server sees this machine online"
+        else
+          ${if cfg.requireTailnet then "fail" else "warn"} "Tailscale's coordination server does not see this machine online"
+        fi
         ts_health="$(jq -r '(.Health // []) | join("; ")' <<<"$ts")"
         if [[ -z $ts_health ]]; then
           pass "Tailscale reports no problems"
@@ -112,7 +117,7 @@ let
         pass "the default route is over $dev"
       fi
       # Connect to this machine's own address: it catches a blanket drop that a
-      # rule check cannot (a missing accept rule is caught by the firewall check).
+      # rule check cannot.
       if [[ -n $dev ]]; then
         own_ip="$(ip -4 -o addr show dev "$dev" scope global | awk '{ sub("/.*", "", $4); print $4; exit }' || true)"
         if [[ -z $own_ip ]]; then

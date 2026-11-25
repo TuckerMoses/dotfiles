@@ -23,6 +23,10 @@
   boot.initrd.kernelModules = [ "sp5100_tco" ];
   boot.kernelModules = [ "sp5100_tco" ];
 
+  # Not in hardware-configuration.nix: the install regenerates that file. Without
+  # it there is no firmware for the RTL8125 wired port or the Wi-Fi.
+  hardware.enableRedistributableFirmware = true;
+
   # Off for the baseline. See nixos/modules/desktop.nix before turning on.
   desktop = {
     enable = false;
