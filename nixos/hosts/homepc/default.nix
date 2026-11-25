@@ -36,7 +36,7 @@
   # nixos/modules/desktop.nix.
   desktop = {
     nvidia = true;
-    enable = false;
+    enable = true;
     remoteDesktop = false;
   };
 }
