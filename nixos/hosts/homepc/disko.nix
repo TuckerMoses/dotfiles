@@ -7,7 +7,7 @@
 {
   disko.devices.disk.main = {
     type = "disk";
-    device = "/dev/disk/by-id/REPLACE-WITH-THE-980-PRO";
+    device = "/dev/disk/by-id/nvme-Samsung_SSD_980_PRO_1TB_S5P2NL0X103304K";
     content = {
       type = "gpt";
       partitions = {
