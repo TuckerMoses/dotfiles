@@ -35,7 +35,8 @@
     "virtio_net"
     "usbhid"
   ];
-  # QEMU's emulated watchdog card (x86 guests).
+  # QEMU's emulated watchdog card (x86 guests). Loaded in the initrd, as on homepc.
+  boot.initrd.kernelModules = lib.optional pkgs.stdenv.hostPlatform.isx86_64 "i6300esb";
   boot.kernelModules = lib.optional pkgs.stdenv.hostPlatform.isx86_64 "i6300esb";
 
   # Serial console, so the guest can be driven without a display.

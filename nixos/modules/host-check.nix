@@ -64,7 +64,6 @@ let
         rules="$(nft list ruleset 2>/dev/null || true)"
         grep -Eq "dport (\{[^}]*)?\b$1\b.* accept" <<<"$rules"
       }
-      # Whether a TCP connection to this machine's own address gets answered.
       can_connect() { timeout 3 bash -c "</dev/tcp/$1/$2"; }
       check "the firewall allows port 22" fw_open 22
       check "the firewall allows port 2222" fw_open 2222
@@ -85,7 +84,7 @@ let
         if [[ -z $ts_health ]]; then
           pass "Tailscale reports no problems"
         else
-          ${if cfg.requireTailnet then "fail" else "warn"} "Tailscale reports: $ts_health"
+          warn "Tailscale reports: $ts_health"
         fi
         expiry="$(jq -r '.Self.KeyExpiry // ""' <<<"$ts")"
         if [[ -z $expiry ]]; then

@@ -54,8 +54,7 @@ let
         "$FLAKE#nixosConfigurations.$HOST.config.system.build.toplevel"
     }
 
-    # True when the new system needs a reboot to take effect: a different
-    # kernel, initrd, kernel modules, firmware, kernel parameters or fstab.
+    # True when the new system needs a reboot to take effect.
     needs_reboot() {
       local new="$1" part
       for part in kernel initrd kernel-modules firmware; do
@@ -211,7 +210,8 @@ let
   # on-disk defaults match the old system again, then reboot into it. (The EFI
   # variable that pins the old entry is the first line of defence; this keeps
   # the profile and loader.conf from pointing at the failed trial if firmware
-  # drops that variable.)
+  # drops that variable after the revert. It cannot help if the variable is lost
+  # during the trial itself.)
   trial-revert = pkgs.writeShellApplication {
     name = "trial-revert";
     inherit runtimeInputs;
@@ -315,15 +315,19 @@ let
         fi
         bootctl set-default "" 2>/dev/null || true
         rm -f "$STATE/pending"
+        if [[ -n "$(loader_var LoaderEntryDefault)" ]]; then
+          die "the change is now the profile default, but an old entry is still pinned and the next reboot will boot it. Run: sudo bootctl set-default \"\"  then check with host-check."
+        fi
         echo "Confirmed: this configuration is now the boot default."
         did=1
       fi
 
       if [[ -e $STATE/trial ]]; then
+        # Drop the pin on the old entry: the boot loader's own default is this
+        # system. Only then stop the revert timer, so a failure leaves it running.
+        bootctl set-default "" || true
+        [[ -z "$(loader_var LoaderEntryDefault)" ]] || die "could not clear the pinned default entry; the trial revert is still armed"
         systemctl stop trial-reboot.timer 2>/dev/null || true
-        # Drop the pin on the old entry: the boot loader's own default is this system.
-        bootctl set-default ""
-        [[ -z "$(loader_var LoaderEntryDefault)" ]] || die "could not clear the pinned default entry"
         rm -f "$STATE/trial"
         echo "Confirmed: the trial system is now the boot default."
         did=1
@@ -363,6 +367,8 @@ in
     systemd.services.trial-boot-watch = {
       description = "Reboot out of an unconfirmed trial boot";
       wantedBy = [ "sysinit.target" ];
+      wants = [ "sys-firmware-efi-efivars.mount" ];
+      after = [ "sys-firmware-efi-efivars.mount" ];
       before = [ "shutdown.target" ];
       conflicts = [ "shutdown.target" ];
       unitConfig.DefaultDependencies = false;
@@ -375,15 +381,19 @@ in
         ${common}
         selected="$(loader_var LoaderEntrySelected)"
         pinned="$(loader_var LoaderEntryDefault)"
-        if [[ -n $pinned && -n $selected && $selected != "$pinned" ]]; then
+        if [[ -n $pinned && -z $selected ]]; then
+          echo "trial-boot-watch: WARNING: the running entry cannot be read but a default is pinned; treating this boot as a trial" >&2
+        fi
+        if [[ -n $pinned && $selected != "$pinned" ]]; then
           mkdir -p "$STATE"
-          echo "$selected" > "$STATE/trial"
-          echo "trial boot of $selected: rebooting into $pinned in ${toString trialMinutes} minutes unless safe-confirm is run"
-          # --no-block and no default dependencies: this runs inside sysinit,
-          # and a timer that waits for sysinit would wait for this script.
+          echo "''${selected:-unknown}" > "$STATE/trial"
+          echo "trial boot of ''${selected:-unknown}: rebooting into $pinned in ${toString trialMinutes} minutes unless safe-confirm is run"
+          # --no-block and no default dependencies, on the timer and on the
+          # service it fires: this runs inside sysinit, and a unit that waits
+          # for sysinit or basic.target would never run if boot stalls first.
           systemd-run --quiet --no-block --collect --unit=trial-reboot \
             --on-active=${toString trialMinutes}m --timer-property=AccuracySec=1s \
-            --timer-property=DefaultDependencies=no \
+            --timer-property=DefaultDependencies=no --property=DefaultDependencies=no \
             ${trial-revert}/bin/trial-revert
         fi
       '';

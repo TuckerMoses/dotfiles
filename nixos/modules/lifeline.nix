@@ -13,9 +13,6 @@
 let
   cfg = config.lifeline;
 
-  # Runs every few minutes. If the machine has no way in (no default route, or
-  # sshd or Tailscale not working), it restarts the network and Tailscale, and
-  # after a long failure reboots, at most three times in a row.
   lifeline-watchdog = pkgs.writeShellApplication {
     name = "lifeline-watchdog";
     runtimeInputs = [
@@ -60,7 +57,7 @@ let
       echo "$fails" > "$fails_file"
       echo "lifeline-watchdog: no way in ($reason); failure $fails"
 
-      # Failures are two minutes apart: restart services from 4 minutes on...
+      # Failures are two minutes apart: restart services from about 7 minutes after boot...
       if (( fails >= 2 && fails < 8 && fails % 2 == 0 )); then
         echo "lifeline-watchdog: restarting the network and Tailscale"
         systemctl start sshd.service || true
@@ -68,7 +65,7 @@ let
         systemctl restart tailscaled.service || true
       fi
 
-      # ...and reboot after about 16 minutes, but never more than 3 times
+      # ...and reboot about 19 minutes after boot, but never more than 3 times
       # without a healthy check in between (a dead router must not loop it).
       if (( fails >= 8 )); then
         reboots=0
@@ -172,13 +169,12 @@ in
     systemd.enableEmergencyMode = false;
     # A kernel panic or a failed early boot restarts the machine instead of
     # sitting there; after a trial boot that lands back on the old system.
-    # An oops or a soft lockup (a driver fault that leaves the machine half
-    # alive, with the watchdog still fed) is made into a panic, so it resets too.
+    # Oopses and soft lockups are not made into panics: a deterministic driver
+    # fault would then reboot forever. A machine left half alive is handled by
+    # lifeline-watchdog below, which has a reboot cap.
     boot.kernelParams = [
       "panic=30"
       "boot.panic_on_fail"
-      "oops=panic"
-      "softlockup_panic=1"
     ];
     # The board's watchdog resets the machine if systemd stops responding.
     systemd.settings.Manager = {
@@ -189,7 +185,8 @@ in
     # ── Reachable, not just alive ─────────────────────────────────────
     # The watchdog above only sees a hung systemd. This one sees a machine that
     # is up but has no way in (router late after a power cut, a wedged NIC,
-    # tailscaled stuck): it restarts networking, then reboots as a last resort.
+    # tailscaled stuck): it restarts networking, then reboots as a last resort,
+    # at most three times in a row.
     systemd.services.lifeline-watchdog = {
       description = "Recover the network and Tailscale if the machine has no way in";
       serviceConfig = {
@@ -207,16 +204,19 @@ in
     };
 
     # ── Memory pressure ───────────────────────────────────────────────
-    # A runaway workload must not starve sshd and tailscaled: compressed swap,
-    # an early killer for everything else, and those two last in line.
+    # A runaway workload must not starve the way in: compressed swap, an early
+    # killer for everything else, and the network path last in line. sshd gets no
+    # score: its children (login shells, runaway jobs) would inherit it and become
+    # unkillable.
     zramSwap.enable = true;
     systemd.oomd = {
       enable = true;
       enableRootSlice = true;
       enableUserSlices = true;
     };
-    systemd.services.sshd.serviceConfig = {
-      OOMScoreAdjust = -900;
+    systemd.services.sshd.serviceConfig.ManagedOOMPreference = "omit";
+    systemd.services.NetworkManager.serviceConfig = {
+      OOMScoreAdjust = -500;
       ManagedOOMPreference = "omit";
     };
     systemd.services.tailscaled.serviceConfig = {

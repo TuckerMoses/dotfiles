@@ -14,8 +14,7 @@
     authorizedKeys = [
       "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOvX4BZrlfstsKxjAkWBWRc5nmCCrkvlLyuPUMNptDui"
     ];
-    # install.sh refuses to erase a disk that reports any other model (the
-    # Windows disk is a Samsung too). Exactly as `lsblk -dno MODEL` prints it.
+    # The Windows disk is a Samsung too; see lifeline.installDiskModel.
     installDiskModel = "Samsung SSD 980 PRO 1TB";
   };
 

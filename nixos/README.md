@@ -106,10 +106,12 @@ Each of these must end with the machine reachable over Tailscale and `host-check
    about 10 minutes (this is the firmware check the VM could not do). Undo the edit afterwards.
 7. Crash it on purpose: `sudo sh -c 'echo 1 > /proc/sys/kernel/sysrq; echo c > /proc/sysrq-trigger'`.
    It must come back by itself within a few minutes. `host-check` must show the hardware
-   watchdog as armed (a "warn" there means `sp5100_tco` did not bind on this board).
+   watchdog as armed. A FAIL on the watchdog line means `sp5100_tco` did not bind on this
+   board: look for a watchdog or TCO setting in the BIOS; only if there is none, set
+   `hostCheck.requireWatchdog = false` in `hosts/homepc/default.nix` and rely on the
+   connectivity watchdog.
 8. Power off the router and the PC together, power the PC on first and the router about 3 minutes
-   later. The PC must be reachable within 20 minutes (the connectivity watchdog restarts the
-   network after about 4 minutes, and reboots after about 16).
+   later. The PC must be reachable within 25 minutes.
 9. Run `nixos/test/drills.sh x86_64` once in the x86_64 VM, so the drills have run on the same
    architecture as the real machine.
 
