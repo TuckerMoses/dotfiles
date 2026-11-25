@@ -58,12 +58,6 @@ in
       services.gnome.gnome-remote-desktop.enable = true;
       systemd.services.gnome-remote-desktop.wantedBy = [ "graphical.target" ];
       environment.systemPackages = [ pkgs.gnome-remote-desktop ];
-
-      # RDP needs the password itself, not a hash, so it cannot be stored the
-      # way login passwords are. With access to the TPM the service seals it
-      # there; without, it falls back to a plain file only root can read.
-      security.tpm2.enable = true;
-      users.users.gnome-remote-desktop.extraGroups = [ "tss" ];
     })
 
     {
