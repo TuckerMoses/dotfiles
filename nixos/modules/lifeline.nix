@@ -7,10 +7,83 @@
 {
   config,
   lib,
+  pkgs,
   ...
 }:
 let
   cfg = config.lifeline;
+
+  # Runs every few minutes. If the machine has no way in (no default route, or
+  # sshd or Tailscale not working), it restarts the network and Tailscale, and
+  # after a long failure reboots, at most three times in a row.
+  lifeline-watchdog = pkgs.writeShellApplication {
+    name = "lifeline-watchdog";
+    runtimeInputs = [
+      config.systemd.package
+      config.services.tailscale.package
+      pkgs.coreutils
+      pkgs.iproute2
+      pkgs.jq
+    ];
+    text = ''
+      dir=/var/lib/lifeline
+      fails_file=/run/lifeline-fails
+      mkdir -p "$dir"
+
+      # A safe-switch or trial boot has its own recovery; leave it alone.
+      [[ ! -e /run/safe-rebuild/pending ]] || exit 0
+      [[ ! -e /run/safe-rebuild/trial ]] || exit 0
+
+      healthy() {
+        local st
+        [[ -n "$(ip -4 route show default 2>/dev/null)" ]] || { echo "no default route"; return 1; }
+        systemctl is-active --quiet sshd.service || { echo "sshd is not running"; return 1; }
+        systemctl is-active --quiet tailscaled.service || { echo "tailscaled is not running"; return 1; }
+        st="$(timeout 20 tailscale status --json 2>/dev/null | jq -r '.BackendState // "unknown"' || true)"
+        # NeedsLogin and NeedsMachineAuth wait for a person; a reboot cannot fix them.
+        case $st in
+          Running | NeedsLogin | NeedsMachineAuth) ;;
+          *) echo "tailscale state is $st"; return 1 ;;
+        esac
+      }
+
+      if reason="$(healthy)"; then
+        rm -f "$fails_file"
+        echo 0 > "$dir/reboots"
+        exit 0
+      fi
+
+      fails=0
+      [[ ! -r $fails_file ]] || fails="$(cat "$fails_file")"
+      [[ $fails =~ ^[0-9]+$ ]] || fails=0
+      fails=$((fails + 1))
+      echo "$fails" > "$fails_file"
+      echo "lifeline-watchdog: no way in ($reason); failure $fails"
+
+      # Failures are two minutes apart: restart services from 4 minutes on...
+      if (( fails >= 2 && fails < 8 && fails % 2 == 0 )); then
+        echo "lifeline-watchdog: restarting the network and Tailscale"
+        systemctl start sshd.service || true
+        systemctl restart NetworkManager.service || true
+        systemctl restart tailscaled.service || true
+      fi
+
+      # ...and reboot after about 16 minutes, but never more than 3 times
+      # without a healthy check in between (a dead router must not loop it).
+      if (( fails >= 8 )); then
+        reboots=0
+        [[ ! -r $dir/reboots ]] || reboots="$(cat "$dir/reboots")"
+        [[ $reboots =~ ^[0-9]+$ ]] || reboots=0
+        if (( reboots >= 3 )); then
+          echo "lifeline-watchdog: already rebooted $reboots times without recovering; not rebooting again"
+          exit 0
+        fi
+        echo $((reboots + 1)) > "$dir/reboots"
+        echo "lifeline-watchdog: rebooting (reboot $((reboots + 1)) of 3)"
+        systemctl reboot
+      fi
+    '';
+  };
 in
 {
   options.lifeline = {
@@ -21,6 +94,15 @@ in
     authorizedKeys = lib.mkOption {
       type = lib.types.listOf lib.types.str;
       description = "Public keys allowed to log in as the admin account.";
+    };
+    installDiskModel = lib.mkOption {
+      type = lib.types.str;
+      default = "";
+      description = ''
+        The model string `lsblk` shows for the disk install.sh may erase, exactly as printed.
+        install.sh refuses to go on if the disk it would erase reports anything else.
+        Empty skips the check (the VM).
+      '';
     };
     flakeAttr = lib.mkOption {
       type = lib.types.str;
@@ -90,14 +172,56 @@ in
     systemd.enableEmergencyMode = false;
     # A kernel panic or a failed early boot restarts the machine instead of
     # sitting there; after a trial boot that lands back on the old system.
+    # An oops or a soft lockup (a driver fault that leaves the machine half
+    # alive, with the watchdog still fed) is made into a panic, so it resets too.
     boot.kernelParams = [
       "panic=30"
       "boot.panic_on_fail"
+      "oops=panic"
+      "softlockup_panic=1"
     ];
     # The board's watchdog resets the machine if systemd stops responding.
     systemd.settings.Manager = {
       RuntimeWatchdogSec = "60s";
       RebootWatchdogSec = "5min";
+    };
+
+    # ── Reachable, not just alive ─────────────────────────────────────
+    # The watchdog above only sees a hung systemd. This one sees a machine that
+    # is up but has no way in (router late after a power cut, a wedged NIC,
+    # tailscaled stuck): it restarts networking, then reboots as a last resort.
+    systemd.services.lifeline-watchdog = {
+      description = "Recover the network and Tailscale if the machine has no way in";
+      serviceConfig = {
+        Type = "oneshot";
+        ExecStart = "${lifeline-watchdog}/bin/lifeline-watchdog";
+      };
+    };
+    systemd.timers.lifeline-watchdog = {
+      wantedBy = [ "timers.target" ];
+      timerConfig = {
+        OnBootSec = "5min";
+        OnUnitActiveSec = "2min";
+        AccuracySec = "10s";
+      };
+    };
+
+    # ── Memory pressure ───────────────────────────────────────────────
+    # A runaway workload must not starve sshd and tailscaled: compressed swap,
+    # an early killer for everything else, and those two last in line.
+    zramSwap.enable = true;
+    systemd.oomd = {
+      enable = true;
+      enableRootSlice = true;
+      enableUserSlices = true;
+    };
+    systemd.services.sshd.serviceConfig = {
+      OOMScoreAdjust = -900;
+      ManagedOOMPreference = "omit";
+    };
+    systemd.services.tailscaled.serviceConfig = {
+      OOMScoreAdjust = -900;
+      ManagedOOMPreference = "omit";
     };
 
     # ── Nothing changes without the owner ─────────────────────────────

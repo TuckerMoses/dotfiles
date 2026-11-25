@@ -14,9 +14,14 @@
     authorizedKeys = [
       "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOvX4BZrlfstsKxjAkWBWRc5nmCCrkvlLyuPUMNptDui"
     ];
+    # install.sh refuses to erase a disk that reports any other model (the
+    # Windows disk is a Samsung too). Exactly as `lsblk -dno MODEL` prints it.
+    installDiskModel = "Samsung SSD 980 PRO 1TB";
   };
 
-  # AMD's chipset watchdog, so a hung system resets itself.
+  # AMD's chipset watchdog, so a hung system resets itself. Loaded in the
+  # initrd as well, so it exists before systemd tries to open it.
+  boot.initrd.kernelModules = [ "sp5100_tco" ];
   boot.kernelModules = [ "sp5100_tco" ];
 
   # Off for the baseline. See nixos/modules/desktop.nix before turning on.

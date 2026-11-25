@@ -21,8 +21,8 @@ Edit the checkout on the machine (`~/dotfiles`), then:
 | Command | Use it for | If you do nothing |
 |---|---|---|
 | `safe-switch` | Ordinary changes (packages, services, settings) | Undone after 5 minutes; if nobody can log in after that, it reboots into the last confirmed system |
-| `trial-boot` | Changes that need a reboot (kernel, drivers, boot settings). `safe-switch` tells you when | Reboots back into the old system after 10 minutes |
-| `safe-confirm` | Keeping either kind of change. Run it from a **new** SSH session: that login is the proof you can still get in | |
+| `trial-boot` | Changes that need a reboot (kernel, drivers, boot settings). `safe-switch` refuses and tells you when the kernel, initrd, kernel modules, firmware, kernel parameters or fstab differ from what is booted | Reboots back into the old system after 10 minutes |
+| `safe-confirm` | Keeping either kind of change. Run it from a **new** SSH session: that login is the proof you can still get in. A Tailscale SSH login proves only the Tailscale path; when the change touched sshd or the firewall, confirm from `ssh -p 2222 homepc` | |
 | `host-check` | Checking the machine is healthy and reachable. Run it after every change | |
 
 Rules while away from the machine:
@@ -61,7 +61,7 @@ Needs a wired keyboard and a USB stick (4 GB or more).
    ```
 5. **From the Mac**, copy the repo over and log in (`<ip>` from the last step):
    ```
-   tar -C ~/dotfiles -cf - flake.nix flake.lock nixos | ssh nixos@<ip> 'mkdir cfg && tar -xf - -C cfg'
+   COPYFILE_DISABLE=1 tar -C ~/dotfiles --no-xattrs --exclude nixos/test/.vm -cf - flake.nix flake.lock nixos | ssh nixos@<ip> 'mkdir cfg && tar -xf - -C cfg'
    ssh nixos@<ip>
    ```
 6. **In that session**, fill in the two machine-specific files:
@@ -69,9 +69,12 @@ Needs a wired keyboard and a USB stick (4 GB or more).
    cd cfg
    ls -l /dev/disk/by-id/ | grep -v part          # find the 980 PRO, by model AND size
    nano nixos/hosts/homepc/disko.nix              # put its nvme-Samsung_SSD_980_PRO_... name in `device`
+   lsblk -dno NAME,MODEL,SIZE                     # the model and size must be the 980 PRO's
    nixos-generate-config --no-filesystems --show-hardware-config > nixos/hosts/homepc/hardware-configuration.nix
    ```
-7. **Install.** It shows the disk, asks you to type its model, then asks for a root password
+7. **Install.** It first refuses unless the disk's model matches `installDiskModel` in
+   `hosts/homepc/default.nix` (and the disk is not the one the installer booted from), then shows
+   the disk, asks you to type its model, then asks for a root password
    (the way in from the keyboard if SSH is ever broken):
    ```
    ./nixos/install.sh homepc
@@ -98,6 +101,17 @@ Each of these must end with the machine reachable over Tailscale and `host-check
 4. Make a harmless change, run `safe-switch 2`, and do **not** confirm. After 2 minutes
    `host-check` must show nothing pending and the change gone.
 5. Push the branch, and on the machine replace the copied `~/dotfiles` with a real `git clone`.
+6. Trial-boot a harmless change that needs a reboot (add `boot.kernelParams = [ "drill=1" ];`),
+   run `trial-boot`, and do **not** confirm. It must be back on the old system by itself within
+   about 10 minutes (this is the firmware check the VM could not do). Undo the edit afterwards.
+7. Crash it on purpose: `sudo sh -c 'echo 1 > /proc/sys/kernel/sysrq; echo c > /proc/sysrq-trigger'`.
+   It must come back by itself within a few minutes. `host-check` must show the hardware
+   watchdog as armed (a "warn" there means `sp5100_tco` did not bind on this board).
+8. Power off the router and the PC together, power the PC on first and the router about 3 minutes
+   later. The PC must be reachable within 20 minutes (the connectivity watchdog restarts the
+   network after about 4 minutes, and reboots after about 16).
+9. Run `nixos/test/drills.sh x86_64` once in the x86_64 VM, so the drills have run on the same
+   architecture as the real machine.
 
 ## Testing in a VM
 

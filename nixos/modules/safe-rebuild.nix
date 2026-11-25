@@ -54,15 +54,19 @@ let
         "$FLAKE#nixosConfigurations.$HOST.config.system.build.toplevel"
     }
 
-    # True when the new system needs a reboot to take effect.
+    # True when the new system needs a reboot to take effect: a different
+    # kernel, initrd, kernel modules, firmware, kernel parameters or fstab.
     needs_reboot() {
       local new="$1" part
-      for part in kernel initrd; do
+      for part in kernel initrd kernel-modules firmware; do
         if [[ "$(readlink -f "$new/$part")" != "$(readlink -f "/run/booted-system/$part")" ]]; then
           return 0
         fi
       done
       if ! cmp -s "$new/kernel-params" /run/booted-system/kernel-params; then
+        return 0
+      fi
+      if ! cmp -s "$new/etc/fstab" /run/booted-system/etc/fstab; then
         return 0
       fi
       return 1
@@ -76,12 +80,13 @@ let
       ${common}
       old="$(cat "$STATE/old")"
       echo "safe-rollback: not confirmed in time, restoring $old"
+      # From here on there is nothing left to confirm.
+      rm -f "$STATE/pending"
       if ! "$old/bin/switch-to-configuration" test; then
         echo "safe-rollback: restoring failed, rebooting into the boot default"
         systemctl reboot
         exit 0
       fi
-      rm -f "$STATE/pending"
       # Logins from here on count as proof the restore worked.
       restored_at="$(date +%s)"
       sleep 5
@@ -162,7 +167,7 @@ let
       [[ $minutes =~ ^[0-9]+$ ]] || die "usage: safe-switch [minutes]"
       new="$(build_system)"
       if needs_reboot "$new"; then
-        die "this change touches the kernel, initrd or kernel parameters, which only a reboot applies. Use: trial-boot"
+        die "this change touches the kernel, initrd, kernel modules, firmware, kernel parameters or fstab, which only a reboot applies. Use: trial-boot"
       fi
       exec sudo ${safe-activate}/bin/safe-activate "$new" "$minutes"
     '';
@@ -202,6 +207,29 @@ let
     '';
   };
 
+  # What the trial timer runs when a trial is not confirmed in time: make the
+  # on-disk defaults match the old system again, then reboot into it. (The EFI
+  # variable that pins the old entry is the first line of defence; this keeps
+  # the profile and loader.conf from pointing at the failed trial if firmware
+  # drops that variable.)
+  trial-revert = pkgs.writeShellApplication {
+    name = "trial-revert";
+    inherit runtimeInputs;
+    text = ''
+      ${common}
+      pinned="$(loader_var LoaderEntryDefault)"
+      if [[ $pinned =~ ^nixos-generation-([0-9]+)\.conf$ ]]; then
+        gen="''${BASH_REMATCH[1]}"
+        old="$(readlink -f "/nix/var/nix/profiles/system-$gen-link" || true)"
+        if [[ -x $old/bin/switch-to-configuration ]]; then
+          timeout 60 nix-env -p /nix/var/nix/profiles/system --set "$old" || true
+          timeout 300 "$old/bin/switch-to-configuration" boot || true
+        fi
+      fi
+      systemctl reboot
+    '';
+  };
+
   trial-boot = pkgs.writeShellApplication {
     name = "trial-boot";
     inherit runtimeInputs;
@@ -224,7 +252,7 @@ let
       # Confirming from the session that made the change proves nothing:
       # only a login made after it shows the machine is still reachable.
       require_new_session() {
-        local armed="$1" pid=$$ comm age change_age
+        local armed="$1" pid=$$ comm age change_age sid started started_s
         [[ $force -eq 0 ]] || return 0
         change_age=$(( $(date +%s) - armed ))
         while [[ $pid -gt 1 ]]; do
@@ -240,21 +268,51 @@ let
           pid="$(ps -o ppid= -p "$pid" | tr -d ' ')"
           [[ -n $pid ]] || break
         done
-        return 0
+        # No sshd above us (a Tailscale SSH or console login): ask logind when
+        # this login began. If that cannot be told, refuse rather than guess.
+        sid="$(cat /proc/$$/sessionid 2>/dev/null || true)"
+        if [[ $sid =~ ^[0-9]+$ ]]; then
+          started="$(loginctl show-session "$sid" -p Timestamp --value 2>/dev/null || true)"
+          started_s="$(date -d "$started" +%s 2>/dev/null || true)"
+          if [[ -n $started_s ]]; then
+            if (( started_s <= armed )); then
+              die "this login is older than the change. Open a NEW session and run safe-confirm there."
+            fi
+            return 0
+          fi
+        fi
+        die "cannot tell when this login began (it is not an OpenSSH session). Open a NEW session with: ssh -p 2222 ... and run safe-confirm there (or use: safe-confirm --force)."
       }
+
+      # A rollback that has already started must finish; confirming now would
+      # make the boot default a system that is being undone.
+      if systemctl is-active --quiet safe-rollback.service; then
+        die "a rollback is running right now. Wait for it to finish, then check with host-check."
+      fi
 
       did=0
 
       if [[ -e $STATE/pending ]]; then
         require_new_session "$(cat "$STATE/armed")"
         systemctl stop safe-rollback.timer 2>/dev/null || true
+        if systemctl is-active --quiet safe-rollback.service; then
+          die "a rollback is running right now. Wait for it to finish, then check with host-check."
+        fi
         new="$(cat "$STATE/new")"
         if [[ "$(readlink -f /run/current-system)" != "$new" ]]; then
           rm -f "$STATE/pending"
           die "the pending change is no longer running (it was rolled back). Nothing confirmed."
         fi
-        nix-env -p /nix/var/nix/profiles/system --set "$new"
-        "$new/bin/switch-to-configuration" boot
+        # Nothing may stay half done with the rollback disarmed: if making the
+        # change the boot default fails, put the profile back and re-arm.
+        if ! { nix-env -p /nix/var/nix/profiles/system --set "$new" \
+          && "$new/bin/switch-to-configuration" boot; }; then
+          nix-env -p /nix/var/nix/profiles/system --set "$(cat "$STATE/old")" || true
+          systemd-run --quiet --collect --unit=safe-rollback \
+            --on-active=2m --timer-property=AccuracySec=1s \
+            ${safe-rollback}/bin/safe-rollback || true
+          die "could not make the change the boot default. The rollback is re-armed for 2 minutes."
+        fi
         bootctl set-default "" 2>/dev/null || true
         rm -f "$STATE/pending"
         echo "Confirmed: this configuration is now the boot default."
@@ -300,9 +358,14 @@ in
     # ── Trial-boot watch ────────────────────────────────────────────────
     # At every boot: if the running entry is not the pinned default, this is a
     # trial. Reboot back to the default unless `safe-confirm` is run in time.
+    # It starts in sysinit, not multi-user: a trial that never finishes booting
+    # (a failed unit or mount) must still be reverted.
     systemd.services.trial-boot-watch = {
       description = "Reboot out of an unconfirmed trial boot";
-      wantedBy = [ "multi-user.target" ];
+      wantedBy = [ "sysinit.target" ];
+      before = [ "shutdown.target" ];
+      conflicts = [ "shutdown.target" ];
+      unitConfig.DefaultDependencies = false;
       path = runtimeInputs;
       serviceConfig = {
         Type = "oneshot";
@@ -316,9 +379,12 @@ in
           mkdir -p "$STATE"
           echo "$selected" > "$STATE/trial"
           echo "trial boot of $selected: rebooting into $pinned in ${toString trialMinutes} minutes unless safe-confirm is run"
-          systemd-run --quiet --collect --unit=trial-reboot \
+          # --no-block and no default dependencies: this runs inside sysinit,
+          # and a timer that waits for sysinit would wait for this script.
+          systemd-run --quiet --no-block --collect --unit=trial-reboot \
             --on-active=${toString trialMinutes}m --timer-property=AccuracySec=1s \
-            systemctl reboot
+            --timer-property=DefaultDependencies=no \
+            ${trial-revert}/bin/trial-revert
         fi
       '';
     };

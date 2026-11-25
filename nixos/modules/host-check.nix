@@ -27,6 +27,7 @@ let
       pkgs.iproute2
       pkgs.iptables
       pkgs.jq
+      pkgs.nftables
       pkgs.util-linux
     ];
     text = ''
@@ -55,7 +56,18 @@ let
       if grep -qix 'pubkeyauthentication yes' <<<"$sshd_conf"; then pass "key logins are on"; else fail "key logins are on"; fi
       if [[ -s /etc/ssh/authorized_keys.d/${user} ]]; then pass "${user} has an authorized key"; else fail "${user} has an authorized key"; fi
       check "${user} can sudo without a password" sudo -u ${user} sudo -n true
-      check "the firewall allows port 22" bash -c "iptables -S 2>/dev/null | grep -q -- '--dport 22 -j nixos-fw-accept' || nft list ruleset 2>/dev/null | grep -Eq 'dport \{?[^}]*\b22\b'"
+      # A firewall rule that accepts the port (iptables or nftables backend).
+      fw_open() {
+        local rules
+        rules="$(iptables -S 2>/dev/null || true)"
+        if grep -q -- "--dport $1 -j nixos-fw-accept" <<<"$rules"; then return 0; fi
+        rules="$(nft list ruleset 2>/dev/null || true)"
+        grep -Eq "dport (\{[^}]*)?\b$1\b.* accept" <<<"$rules"
+      }
+      # Whether a TCP connection to this machine's own address gets answered.
+      can_connect() { timeout 3 bash -c "</dev/tcp/$1/$2"; }
+      check "the firewall allows port 22" fw_open 22
+      check "the firewall allows port 2222" fw_open 2222
 
       echo "Tailscale"
       check "tailscaled is running" systemctl is-active --quiet tailscaled.service
@@ -63,7 +75,18 @@ let
       ts="$(tailscale status --json 2>/dev/null || echo '{}')"
       ts_state="$(jq -r '.BackendState // "unknown"' <<<"$ts")"
       if [[ $ts_state == Running ]]; then
-        pass "joined to the tailnet ($(jq -r '.Self.TailscaleIPs[0] // "no address"' <<<"$ts"))"
+        ts_ip="$(jq -r '.Self.TailscaleIPs[0] // empty' <<<"$ts")"
+        if [[ -n $ts_ip ]]; then
+          pass "joined to the tailnet ($ts_ip)"
+        else
+          ${if cfg.requireTailnet then "fail" else "warn"} "joined to the tailnet but it has no tailnet address"
+        fi
+        ts_health="$(jq -r '(.Health // []) | join("; ")' <<<"$ts")"
+        if [[ -z $ts_health ]]; then
+          pass "Tailscale reports no problems"
+        else
+          ${if cfg.requireTailnet then "fail" else "warn"} "Tailscale reports: $ts_health"
+        fi
         expiry="$(jq -r '.Self.KeyExpiry // ""' <<<"$ts")"
         if [[ -z $expiry ]]; then
           pass "node key does not expire"
@@ -89,6 +112,18 @@ let
       else
         pass "the default route is over $dev"
       fi
+      # Connect to this machine's own address: it catches a blanket drop that a
+      # rule check cannot (a missing accept rule is caught by the firewall check).
+      if [[ -n $dev ]]; then
+        own_ip="$(ip -4 -o addr show dev "$dev" scope global | awk '{ sub("/.*", "", $4); print $4; exit }' || true)"
+        if [[ -z $own_ip ]]; then
+          fail "$dev has an IPv4 address"
+        else
+          for p in 22 2222; do
+            if can_connect "$own_ip" "$p"; then pass "port $p answers on $own_ip"; else fail "port $p answers on $own_ip"; fi
+          done
+        fi
+      fi
 
       echo "Staying up"
       for t in sleep suspend hibernate hybrid-sleep; do
@@ -96,10 +131,18 @@ let
       done
       wd="$(systemctl show -P RuntimeWatchdogUSec)"
       if [[ -n $wd && $wd != 0 && $wd != infinity ]]; then
-        if [[ -e /dev/watchdog0 ]]; then pass "hardware watchdog is armed ($wd)"; else warn "watchdog is configured but this machine exposes no watchdog device"; fi
+        wd_state="$(cat /sys/class/watchdog/watchdog0/state 2>/dev/null || true)"
+        if [[ ! -e /dev/watchdog0 ]]; then
+          ${if cfg.requireWatchdog then "fail" else "warn"} "watchdog is configured but this machine exposes no watchdog device"
+        elif [[ $wd_state == active ]]; then
+          pass "hardware watchdog is armed and running ($wd; $(cat /sys/class/watchdog/watchdog0/identity 2>/dev/null || echo unknown))"
+        else
+          ${if cfg.requireWatchdog then "fail" else "warn"} "a watchdog device exists but systemd is not feeding it (state: ''${wd_state:-unknown})"
+        fi
       else
         fail "watchdog is configured"
       fi
+      check "the connectivity watchdog timer is active" systemctl is-active --quiet lifeline-watchdog.timer
       if systemctl list-timers --all --no-legend 2>/dev/null | grep -q nixos-upgrade; then fail "automatic upgrades are off"; else pass "automatic upgrades are off"; fi
       if findmnt -rn -t ntfs,ntfs3,fuseblk >/dev/null 2>&1; then warn "a Windows (NTFS) partition is mounted"; else pass "no Windows partition is mounted"; fi
       used="$(df --output=pcent / | tail -1 | tr -dc 0-9)"
@@ -157,6 +200,11 @@ in
       type = lib.types.bool;
       default = true;
       description = "Fail (not warn) when the machine is not on the tailnet with a non-expiring key.";
+    };
+    requireWatchdog = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = "Fail (not warn) when the hardware watchdog is missing or not armed.";
     };
     requireFirmwareOrder = lib.mkOption {
       type = lib.types.bool;

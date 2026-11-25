@@ -31,6 +31,27 @@ if [[ ! -b $device ]]; then
 fi
 real="$(readlink -f "$device")"
 
+# The disk must be the one this host expects, and not the one the installer
+# runs from. Both checks happen before anything is shown or asked.
+want="$(nix eval --raw "$cfg.lifeline.installDiskModel")"
+if [[ -n $want ]]; then
+  have="$(lsblk -dno MODEL "$real" | sed 's/ *$//')"
+  if [[ $have != "$want" ]]; then
+    echo "error: $device reports the model '$have', but this host expects '$want'." >&2
+    echo "Nothing was changed. If this really is the right disk, set lifeline.installDiskModel" >&2
+    echo "in nixos/hosts/$host/default.nix to exactly that model." >&2
+    exit 1
+  fi
+fi
+mounts="$(lsblk -nr -o MOUNTPOINTS "$real")"
+busy="$(tr ' ' '\n' <<<"$mounts" | grep -v -e '^$' -e '^/mnt' || true)"
+if [[ -n $busy ]]; then
+  echo "error: $device has filesystems mounted that are not part of a previous install:" >&2
+  echo "$busy" >&2
+  echo "That is probably the disk the installer booted from. Nothing was changed." >&2
+  exit 1
+fi
+
 echo "This will ERASE everything on:"
 echo "  $device"
 echo
@@ -53,7 +74,7 @@ sudo nixos-install "${install_args[@]}"
 
 echo "── Copying this repo to $dest"
 sudo mkdir -p "/mnt$dest"
-sudo cp -a "$flake/." "/mnt$dest/"
+tar -C "$flake" --exclude='./nixos/test/.vm' -cf - . | sudo tar -C "/mnt$dest" -xf -
 sudo nixos-enter --root /mnt -c "chown -R $user:users $dest"
 
 echo
