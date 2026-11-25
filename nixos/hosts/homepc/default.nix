@@ -32,9 +32,11 @@
   # it there is no firmware for the RTL8125 wired port or the Wi-Fi.
   hardware.enableRedistributableFirmware = true;
 
-  # Off for the baseline. See nixos/modules/desktop.nix before turning on.
+  # All off for the baseline. Turn on one at a time, in this order; see
+  # nixos/modules/desktop.nix.
   desktop = {
+    nvidia = false;
     enable = false;
-    nvidia = true;
+    remoteDesktop = false;
   };
 }
