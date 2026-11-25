@@ -58,6 +58,13 @@ in
       services.gnome.gnome-remote-desktop.enable = true;
       systemd.services.gnome-remote-desktop.wantedBy = [ "graphical.target" ];
       environment.systemPackages = [ pkgs.gnome-remote-desktop ];
+
+      # The RDP credentials (set with `grdctl --system rdp set-credentials`)
+      # stay in the service's root-only file on purpose. Giving the service the
+      # TPM makes it seal them there, and they then fail to load after a reboot
+      # ("Esys_ContextLoad failed: integrity check failed"), which locks remote
+      # desktop out of an unattended machine. Use a password that is used
+      # nowhere else.
     })
 
     {
