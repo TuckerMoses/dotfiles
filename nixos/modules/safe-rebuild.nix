@@ -134,6 +134,9 @@ let
         echo "Nothing to do: that is already the running system."
         exit 0
       fi
+      if systemctl is-active --quiet safe-rollback.service; then
+        die "a rollback is running right now. Wait for it to finish, then check with host-check."
+      fi
       echo "$old" > "$STATE/old"
       echo "$new" > "$STATE/new"
       date +%s > "$STATE/armed"
@@ -167,7 +170,7 @@ let
     text = ''
       ${common}
       minutes="''${1:-5}"
-      [[ $minutes =~ ^[0-9]+$ ]] || die "usage: safe-switch [minutes]"
+      [[ $minutes =~ ^[0-9]+$ ]] && (( minutes >= 1 && minutes <= 30 )) || die "usage: safe-switch [minutes 1-30]"
       new="$(build_system)"
       if needs_reboot "$new"; then
         die "this change touches the kernel, initrd, kernel modules, firmware, kernel parameters or fstab, which only a reboot applies. Use: trial-boot"

@@ -4,7 +4,7 @@
 
 | Path | What it is |
 |---|---|
-| `modules/lifeline.nix` | What keeps a machine reachable: SSH, Tailscale, firewall, no sleep, watchdog, and a guard that fails the build if a change would cut SSH, Tailscale, the login key, sudo or NetworkManager, or turn on sleep or auto-upgrades |
+| `modules/lifeline.nix` | What keeps a machine reachable: SSH, Tailscale, firewall, no sleep, watchdog, and a guard that fails the build if a change would cut SSH, Tailscale, the OpenSSH firewall hole, the login key, sudo or NetworkManager, or turn on sleep or auto-upgrades |
 | `modules/safe-rebuild.nix` | `safe-switch`, `trial-boot`, `safe-confirm` |
 | `modules/host-check.nix` | `host-check`, the on-machine test suite |
 | `modules/base.nix` | Boot loader, Nix settings, tools |
@@ -31,12 +31,10 @@ Rules while away from the machine:
 - Do not run `nix flake update`. It changes the kernel and Tailscale together.
 - Two ways in over Tailscale: `ssh homepc` (port 22, answered by Tailscale SSH) and
   `ssh -p 2222 homepc` (OpenSSH). If one is broken, use the other.
-- A change that disables SSH, Tailscale, the OpenSSH firewall hole, the login key or sudo will not build.
-  That is the guard in `lifeline.nix`, not a bug.
+- A change the `lifeline.nix` guard rejects (see the file table) will not build. That is not a bug.
 
-What these do not cover: a trial system that hangs in the kernel or initrd, before systemd starts, and does not
-panic. The watchdog only covers hangs after systemd has started; for a hang before that, cut the power with the smart plug (the
-machine then boots the old system).
+What these do not cover: a trial system that hangs before systemd starts (kernel or initrd) and does not
+panic. The watchdog cannot reset that; cut the power with the smart plug (the machine then boots the old system).
 
 ## Installing `homepc`
 
@@ -108,9 +106,8 @@ Each of these must end with the machine reachable over Tailscale and `host-check
    It must come back by itself within a few minutes. `host-check` must show the hardware
    watchdog as armed. A FAIL on the watchdog line means `sp5100_tco` did not bind on this
    board: look for a watchdog or TCO setting in the BIOS; only if there is none, set
-   `hostCheck.requireWatchdog = false` in `hosts/homepc/default.nix`. Then a kernel or
-   systemd hang that does not panic is no longer reset; the only remedy is cutting the
-   power with the smart plug.
+   `hostCheck.requireWatchdog = false` in `hosts/homepc/default.nix`. Then a hang that
+   does not panic is no longer reset (see "What these do not cover").
 8. Power off the router and the PC together, power the PC on first and the router about 3 minutes
    later. The PC must be reachable within 25 minutes.
 9. Run `nixos/test/drills.sh x86_64` once in the x86_64 VM, so the drills have run on the same
