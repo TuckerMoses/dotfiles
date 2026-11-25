@@ -147,6 +147,8 @@ let
         fail "watchdog is configured"
       fi
       check "the connectivity watchdog timer is active" systemctl is-active --quiet lifeline-watchdog.timer
+      # A watchdog whose own script crashes protects nothing, so a failed run is a FAIL.
+      check "the connectivity watchdog's last run succeeded" test "$(systemctl show -P Result lifeline-watchdog.service)" = success
       if systemctl list-timers --all --no-legend 2>/dev/null | grep -q nixos-upgrade; then fail "automatic upgrades are off"; else pass "automatic upgrades are off"; fi
       if findmnt -rn -t ntfs,ntfs3,fuseblk >/dev/null 2>&1; then warn "a Windows (NTFS) partition is mounted"; else pass "no Windows partition is mounted"; fi
       used="$(df --output=pcent / | tail -1 | tr -dc 0-9)"

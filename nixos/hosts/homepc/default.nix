@@ -9,6 +9,11 @@
 
   networking.hostName = "homepc";
 
+  # This machine is on Wi-Fi (no cable reaches it). The network name and
+  # password live in a root-only NetworkManager profile written by
+  # nixos/wifi-profile.sh, not here. Power saving off, so the card does not doze.
+  networking.networkmanager.wifi.powersave = false;
+
   lifeline = {
     user = "tucker";
     authorizedKeys = [
