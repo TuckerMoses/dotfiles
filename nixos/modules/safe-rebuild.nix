@@ -24,6 +24,8 @@ let
     config.nix.package
     config.systemd.package
     pkgs.coreutils
+    pkgs.gawk
+    pkgs.gnugrep
     pkgs.gnused
     pkgs.procps
   ];
@@ -80,6 +82,8 @@ let
         exit 0
       fi
       rm -f "$STATE/pending"
+      # Logins from here on count as proof the restore worked.
+      restored_at="$(date +%s)"
       sleep 5
       for unit in sshd.service tailscaled.service NetworkManager.service; do
         if ! systemctl is-active --quiet "$unit"; then
@@ -89,6 +93,23 @@ let
         fi
       done
       echo "safe-rollback: restored"
+
+      # Restoring in place can leave state behind (a stray firewall rule, say).
+      # The only proof it worked is someone getting in: if no new login shows
+      # up in time, reboot into the boot default, which is the old system.
+      deadline=$(( SECONDS + ${toString (graceMinutes * 60)} ))
+      while (( SECONDS < deadline )); do
+        # A command run over SSH is a session that lasts milliseconds, so look
+        # at what the login manager logged rather than at who is logged in now.
+        if journalctl -t systemd-logind --since "@$restored_at" --no-pager -o cat 2>/dev/null \
+          | grep "New session .* with class 'user'" | grep -qv "of user 'root'"; then
+          echo "safe-rollback: a new login arrived after the restore; staying up"
+          exit 0
+        fi
+        sleep 5
+      done
+      echo "safe-rollback: nobody could log in after the restore, rebooting into the boot default"
+      systemctl reboot
     '';
   };
 
@@ -203,13 +224,15 @@ let
       # Confirming from the session that made the change proves nothing:
       # only a login made after it shows the machine is still reachable.
       require_new_session() {
-        local armed="$1" pid=$$ comm start
+        local armed="$1" pid=$$ comm age change_age
         [[ $force -eq 0 ]] || return 0
+        change_age=$(( $(date +%s) - armed ))
         while [[ $pid -gt 1 ]]; do
           comm="$(cat "/proc/$pid/comm" 2>/dev/null || true)"
           if [[ $comm == sshd* ]]; then
-            start="$(stat -c %Y "/proc/$pid")"
-            if (( start <= armed )); then
+            # Seconds since this SSH connection's process started.
+            age="$(ps -o etimes= -p "$pid" | tr -d ' ')"
+            if (( age >= change_age )); then
               die "this SSH session is older than the change. Open a NEW session (ssh -o ControlPath=none ...) and run safe-confirm there."
             fi
             return 0
@@ -253,8 +276,14 @@ let
   };
 
   trialMinutes = config.safeRebuild.trialMinutes;
+  graceMinutes = config.safeRebuild.graceMinutes;
 in
 {
+  options.safeRebuild.graceMinutes = lib.mkOption {
+    type = lib.types.ints.positive;
+    default = 3;
+    description = "After an automatic rollback, how long to wait for a new login before rebooting.";
+  };
   options.safeRebuild.trialMinutes = lib.mkOption {
     type = lib.types.ints.positive;
     default = 10;

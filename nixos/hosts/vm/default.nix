@@ -52,4 +52,5 @@
 
   # Drills should not wait ten minutes for a trial boot to time out.
   safeRebuild.trialMinutes = 2;
+  safeRebuild.graceMinutes = 1;
 }
