@@ -4,7 +4,7 @@
 
 | Path | What it is |
 |---|---|
-| `modules/lifeline.nix` | What keeps a machine reachable: SSH, Tailscale, firewall, no sleep, watchdog, and a guard that fails the build if a change would cut any of them |
+| `modules/lifeline.nix` | What keeps a machine reachable: SSH, Tailscale, firewall, no sleep, watchdog, and a guard that fails the build if a change would cut SSH, Tailscale, the login key, sudo or NetworkManager, or turn on sleep or auto-upgrades |
 | `modules/safe-rebuild.nix` | `safe-switch`, `trial-boot`, `safe-confirm` |
 | `modules/host-check.nix` | `host-check`, the on-machine test suite |
 | `modules/base.nix` | Boot loader, Nix settings, tools |
@@ -35,7 +35,7 @@ Rules while away from the machine:
   That is the guard in `lifeline.nix`, not a bug.
 
 What these do not cover: a trial system that hangs in the kernel or initrd, before systemd starts, and does not
-panic. The watchdog resets most hangs; for the rest, cut the power with the smart plug (the
+panic. The watchdog only covers hangs after systemd has started; for a hang before that, cut the power with the smart plug (the
 machine then boots the old system).
 
 ## Installing `homepc`

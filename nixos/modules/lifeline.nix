@@ -167,10 +167,9 @@ in
     # ── Keep booting, and reset if hung ───────────────────────────────
     # A failed mount must not stop at an emergency prompt before the network.
     systemd.enableEmergencyMode = false;
-    # A kernel panic or a failed early boot restarts the machine instead of
-    # sitting there; after a trial boot that lands back on the old system.
-    # Oopses and soft lockups are not made into panics: panic reboots have no
-    # cap, so a repeating driver fault would reboot forever.
+    # A panic or a failed early boot restarts the machine (after a trial boot,
+    # into the old system). Oopses are not made into panics: panic reboots have
+    # no cap.
     boot.kernelParams = [
       "panic=30"
       "boot.panic_on_fail"
@@ -182,10 +181,8 @@ in
     };
 
     # ── Reachable, not just alive ─────────────────────────────────────
-    # The watchdog above only sees a hung systemd. This one sees a machine that
-    # is up but has no way in (router late after a power cut, a wedged NIC,
-    # tailscaled stuck): it restarts networking, then reboots as a last resort,
-    # at most three times in a row.
+    # Catches a machine that is up but has no way in (router late after a power
+    # cut, a wedged NIC, tailscaled stuck), which the watchdog above cannot see.
     systemd.services.lifeline-watchdog = {
       description = "Recover the network and Tailscale if the machine has no way in";
       serviceConfig = {
@@ -204,9 +201,8 @@ in
 
     # ── Memory pressure ───────────────────────────────────────────────
     # A runaway workload must not starve the way in: compressed swap, an early
-    # killer for everything else, and the network path last in line. neither SSH
-    # daemon (sshd, tailscaled) gets a score: their sessions (login shells,
-    # runaway jobs) would inherit it and become unkillable.
+    # killer for everything else, and the network path last in line. No OOM score
+    # on sshd or tailscaled: sessions inherit it and become unkillable.
     zramSwap.enable = true;
     systemd.oomd = {
       enable = true;

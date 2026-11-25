@@ -137,13 +137,17 @@ let
       echo "$old" > "$STATE/old"
       echo "$new" > "$STATE/new"
       date +%s > "$STATE/armed"
-      touch "$STATE/pending"
 
       systemctl stop safe-rollback.timer safe-rollback.service 2>/dev/null || true
       systemctl reset-failed safe-rollback.service safe-activate.service 2>/dev/null || true
-      systemd-run --quiet --collect --unit=safe-rollback \
+      # Arm first, mark second: a failed arm must not leave a pending marker,
+      # which would switch off lifeline-watchdog.
+      if ! systemd-run --quiet --collect --unit=safe-rollback \
         --on-active="''${minutes}m" --timer-property=AccuracySec=1s \
-        ${safe-rollback}/bin/safe-rollback
+        ${safe-rollback}/bin/safe-rollback; then
+        die "could not arm the rollback; nothing was activated"
+      fi
+      touch "$STATE/pending"
 
       echo "Activating. Rollback is armed for $minutes minutes."
       # Runs as its own unit so it finishes even if this SSH session drops.
@@ -207,10 +211,8 @@ let
   };
 
   # What the trial timer runs when a trial is not confirmed in time: make the
-  # on-disk defaults match the old system again, then reboot into it. (The EFI
-  # variable that pins the old entry is the first line of defence; this keeps
-  # the profile and loader.conf from pointing at the failed trial if firmware
-  # drops that variable after the revert.)
+  # on-disk defaults match the old system again, then reboot into it. (Covers
+  # firmware that drops the pinned EFI variable.)
   trial-revert = pkgs.writeShellApplication {
     name = "trial-revert";
     inherit runtimeInputs;
@@ -326,7 +328,7 @@ let
           die "the trial is being reverted right now; wait for the reboot, then check with host-check."
         fi
         # Drop the pin on the old entry: the boot loader's own default is this
-        # system. Only then stop the revert timer, so a failure leaves it running.
+        # system.
         bootctl set-default "" || true
         [[ -z "$(loader_var LoaderEntryDefault)" ]] || die "could not clear the pinned default entry; the trial revert is still armed"
         systemctl stop trial-reboot.timer 2>/dev/null || true
@@ -388,9 +390,8 @@ in
         fi
         if [[ -n $pinned && $selected != "$pinned" ]]; then
           mkdir -p "$STATE"
-          # --no-block and no default dependencies on timer and service: this
-          # runs inside sysinit (see above). Arm first, mark second: with no
-          # marker, lifeline-watchdog stays active if the revert cannot be armed.
+          # --no-block and DefaultDependencies=no, because this runs in sysinit.
+          # Arm first, mark second.
           if systemd-run --quiet --no-block --collect --unit=trial-reboot \
             --on-active=${toString trialMinutes}m --timer-property=AccuracySec=1s \
             --timer-property=DefaultDependencies=no --property=DefaultDependencies=no \

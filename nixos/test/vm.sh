@@ -5,9 +5,11 @@
 #
 #   vm.sh start <aarch64|x86_64> [--iso]   boot the guest (with the installer attached)
 #   vm.sh stop  <arch>                     power the guest off
-#   vm.sh wait-serial <arch> <regex> [s]   wait for text on the serial console
+#   vm.sh wait-serial <arch> <regex> [s] [from]   wait for text on the serial console
+#                                          (from: byte offset in the log to start at)
 #   vm.sh send  <arch> <text>              type a line on the serial console
 #   vm.sh ssh   <arch> <user> [cmd...]     ssh into the guest (port-forwarded)
+#   vm.sh kill  <arch>                     power off with no clean shutdown
 #   vm.sh reset <arch>                     delete the guest's disk and firmware state
 #
 # State lives in $VM_DIR (default: ./.vm next to this script, git-ignored).

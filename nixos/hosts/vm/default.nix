@@ -50,7 +50,8 @@
   hostCheck.requireFirmwareOrder = false;
   # Test guests join with a short-lived key, which always has an expiry.
   hostCheck.requireTailnet = false;
-  # No watchdog device on the aarch64 guest.
+  # Relaxed on both guests: the aarch64 one has no watchdog device, so the x86_64
+  # guest cannot show the FAIL the real machine would.
   hostCheck.requireWatchdog = false;
 
   # Drills should not wait ten minutes for a trial boot to time out.
