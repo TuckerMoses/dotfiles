@@ -3,3 +3,6 @@
 *.swo
 *~
 .worktrees/
+nixos/test/.vm/
+nixos/hosts/vm/test-override.nix
+result
