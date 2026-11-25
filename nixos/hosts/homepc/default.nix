@@ -37,6 +37,6 @@
   desktop = {
     nvidia = true;
     enable = true;
-    remoteDesktop = false;
+    remoteDesktop = true;
   };
 }
