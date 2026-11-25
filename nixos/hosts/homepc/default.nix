@@ -35,7 +35,7 @@
   # All off for the baseline. Turn on one at a time, in this order; see
   # nixos/modules/desktop.nix.
   desktop = {
-    nvidia = false;
+    nvidia = true;
     enable = false;
     remoteDesktop = false;
   };
