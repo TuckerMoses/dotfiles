@@ -27,8 +27,9 @@ let
       fails_file=/run/lifeline-fails
       mkdir -p "$dir"
 
-      # A safe-switch or trial boot has its own recovery; leave it alone.
-      [[ ! -e /run/safe-rebuild/pending ]] || exit 0
+      # A safe-switch or trial boot has its own recovery; leave it alone. A
+      # pending marker counts only while a rollback is armed or running.
+      if [[ -e /run/safe-rebuild/pending ]] && { systemctl is-active --quiet safe-rollback.timer || systemctl is-active --quiet safe-rollback.service; }; then exit 0; fi
       [[ ! -e /run/safe-rebuild/trial ]] || exit 0
 
       healthy() {
@@ -168,8 +169,7 @@ in
     # A failed mount must not stop at an emergency prompt before the network.
     systemd.enableEmergencyMode = false;
     # A panic or a failed early boot restarts the machine (after a trial boot,
-    # into the old system). Oopses are not made into panics: panic reboots have
-    # no cap.
+    # into the old system).
     boot.kernelParams = [
       "panic=30"
       "boot.panic_on_fail"

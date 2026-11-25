@@ -164,7 +164,9 @@ let
         else
           pass "no trial boot is pending"
         fi
-        if [[ -e /run/safe-rebuild/pending ]]; then warn "an unconfirmed safe-switch is active: run safe-confirm or it rolls back"; else pass "no safe-switch is pending"; fi
+        if [[ -e /run/safe-rebuild/pending ]]; then
+          if systemctl is-active --quiet safe-rollback.timer || systemctl is-active --quiet safe-rollback.service; then warn "an unconfirmed safe-switch is active: run safe-confirm or it rolls back"; else warn "a safe-switch marker is left with no rollback armed: run safe-confirm from a new session"; fi
+        else pass "no safe-switch is pending"; fi
         if [[ "$(readlink -f /run/current-system)" == "$(readlink -f /nix/var/nix/profiles/system)" ]]; then
           pass "the running system is the boot default"
         else

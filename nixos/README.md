@@ -34,7 +34,7 @@ Rules while away from the machine:
 - A change the `lifeline.nix` guard rejects (see the file table) will not build. That is not a bug.
 
 What these do not cover: a trial system that hangs before systemd starts (kernel or initrd) and does not
-panic. The watchdog cannot reset that; cut the power with the smart plug (the machine then boots the old system).
+panic, or any hang that does not panic while the hardware watchdog is off. The watchdog cannot reset that; cut the power with the smart plug (the machine then boots the old system).
 
 ## Installing `homepc`
 
@@ -44,7 +44,7 @@ Needs a wired keyboard and a USB stick (4 GB or more).
    Find the stick with `diskutil list`, then (replace `N`; this erases the stick):
    ```
    diskutil unmountDisk /dev/diskN
-   sudo dd if=~/Downloads/nixos-minimal-26.05-x86_64.iso of=/dev/rdiskN bs=4m
+   sudo dd if="$HOME/Downloads/nixos-minimal-26.05-x86_64.iso" of=/dev/rdiskN bs=4m
    ```
 2. **Before wiping anything:** boot the Windows clone on the 9100 PRO and check `C:` is on the
    2TB disk, `reagentc /info` points there, and it survives a reboot.

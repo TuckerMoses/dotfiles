@@ -170,7 +170,7 @@ let
     text = ''
       ${common}
       minutes="''${1:-5}"
-      [[ $minutes =~ ^[0-9]+$ ]] && (( minutes >= 1 && minutes <= 30 )) || die "usage: safe-switch [minutes 1-30]"
+      [[ $minutes =~ ^[1-9][0-9]?$ ]] && (( minutes >= 1 && minutes <= 30 )) || die "usage: safe-switch [minutes 1-30]"
       new="$(build_system)"
       if needs_reboot "$new"; then
         die "this change touches the kernel, initrd, kernel modules, firmware, kernel parameters or fstab, which only a reboot applies. Use: trial-boot"
@@ -189,6 +189,9 @@ let
       [[ $EUID -eq 0 ]] || die "must run as root"
       [[ ! -e $STATE/pending ]] || die "a change is waiting: run safe-confirm, or wait for its rollback"
       [[ ! -e $STATE/trial ]] || die "this is already a trial boot: run safe-confirm first"
+      if systemctl is-active --quiet safe-rollback.service; then
+        die "a rollback is running right now. Wait for it to finish, then check with host-check."
+      fi
       current="$(loader_var LoaderEntrySelected)"
       [[ -n $current ]] || die "cannot read the booted entry (not booted through systemd-boot?)"
       [[ -e ${esp}/loader/entries/$current ]] || die "booted entry $current is not on ${esp}"
@@ -312,6 +315,7 @@ let
         if ! { nix-env -p /nix/var/nix/profiles/system --set "$new" \
           && "$new/bin/switch-to-configuration" boot; }; then
           nix-env -p /nix/var/nix/profiles/system --set "$(cat "$STATE/old")" || true
+          timeout 300 "$(cat "$STATE/old")/bin/switch-to-configuration" boot || true
           systemd-run --quiet --collect --unit=safe-rollback \
             --on-active=2m --timer-property=AccuracySec=1s \
             ${safe-rollback}/bin/safe-rollback || true
@@ -394,7 +398,6 @@ in
         if [[ -n $pinned && $selected != "$pinned" ]]; then
           mkdir -p "$STATE"
           # --no-block and DefaultDependencies=no, because this runs in sysinit.
-          # Arm first, mark second.
           if systemd-run --quiet --no-block --collect --unit=trial-reboot \
             --on-active=${toString trialMinutes}m --timer-property=AccuracySec=1s \
             --timer-property=DefaultDependencies=no --property=DefaultDependencies=no \
@@ -402,7 +405,7 @@ in
             echo "''${selected:-unknown}" > "$STATE/trial"
             echo "trial boot of ''${selected:-unknown}: rebooting into $pinned in ${toString trialMinutes} minutes unless safe-confirm is run"
           else
-            echo "trial-boot-watch: ERROR: could not arm the trial revert; no trial marker written, so lifeline-watchdog stays active" >&2
+            echo "trial-boot-watch: ERROR: could not arm the trial revert; no trial marker written" >&2
           fi
         fi
       '';
