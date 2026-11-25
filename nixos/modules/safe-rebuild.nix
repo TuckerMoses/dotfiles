@@ -170,7 +170,9 @@ let
     text = ''
       ${common}
       minutes="''${1:-5}"
-      [[ $minutes =~ ^[1-9][0-9]?$ ]] && (( minutes >= 1 && minutes <= 30 )) || die "usage: safe-switch [minutes 1-30]"
+      if ! [[ $minutes =~ ^[1-9][0-9]?$ ]] || (( minutes > 30 )); then
+        die "usage: safe-switch [minutes 1-30]"
+      fi
       new="$(build_system)"
       if needs_reboot "$new"; then
         die "this change touches the kernel, initrd, kernel modules, firmware, kernel parameters or fstab, which only a reboot applies. Use: trial-boot"
