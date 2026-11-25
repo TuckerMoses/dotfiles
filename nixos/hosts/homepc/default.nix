@@ -32,6 +32,13 @@
   # it there is no firmware for the RTL8125 wired port or the Wi-Fi.
   hardware.enableRedistributableFirmware = true;
 
+  # Bluetooth, for the keyboard and mouse. Pair them once in GNOME Settings;
+  # the firmware and boot menu still need the wired keyboard.
+  hardware.bluetooth = {
+    enable = true;
+    powerOnBoot = true;
+  };
+
   # All off for the baseline. Turn on one at a time, in this order; see
   # nixos/modules/desktop.nix.
   desktop = {
