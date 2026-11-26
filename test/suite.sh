@@ -85,10 +85,10 @@ herdr_guard() {
 herdr_up() { herdr workspace list >/dev/null 2>&1; }
 
 core_bootstrap() { # core_bootstrap <n> <run#>
-  local n="$1" out="$RUN/bootstrap-$2.txt" rc=0
+  local n="$1" out="$RUN/bootstrap-$2.txt" rc=0 l
   log "running ./bootstrap.sh (run $2)"
-  (cd "$DOT" && ./bootstrap.sh) > "$out" 2>&1 || rc=$?
-  sed 's/^/    | /' "$out"
+  (cd "$DOT" && ./bootstrap.sh) 2>&1 | tee "$out" | while IFS= read -r l; do printf '    | %s\n' "$l"; done \
+    && rc=0 || rc=${PIPESTATUS[0]}
   if (( rc != 0 )); then record "$n" fail "exit $rc"; return; fi
   if [[ "$2" == 3 ]] && grep -q '^==> Installing' "$out"; then
     record "$n" fail "installed again: $(grep '^==> Installing' "$out" | head -3 | tr '\n' ';')"; return
@@ -109,10 +109,10 @@ core_server() {
 }
 
 core_nvim() {
-  local out err
+  local err l
   log "installing nvim plugins (Lazy! restore, from lazy-lock.json)"
-  out="$(cd "$HOME" && with_timeout "$NVIM_TIMEOUT" nvim --headless '+Lazy! restore' '+qa' 2>&1)" || true
-  echo "$out" | tail -20 | sed 's/^/    | /'
+  (cd "$HOME" && with_timeout "$NVIM_TIMEOUT" nvim --headless '+Lazy! restore' '+qa' 2>&1) \
+    | while IFS= read -r l; do printf '    | %s\n' "$l"; done || true
   [[ -d "$HOME/.local/share/nvim/lazy" ]] || { record 5 fail "no plugins installed"; return; }
   # A second start installs whatever LazyVim adds on first run, a third must be clean.
   (cd "$HOME" && with_timeout "$NVIM_TIMEOUT" nvim --headless '+qa' >/dev/null 2>&1) || true
@@ -371,6 +371,9 @@ env_vm() {
   (( KEEP )) && again="continue with --resume $RUN --keep"
   last=$SECONDS
   while :; do
+    if (( SECONDS - start > CORE_TIMEOUT )); then
+      log "timed out after ${CORE_TIMEOUT}s, no guest output for $(( SECONDS - last ))s (then $again)"; rc=1; to=1; break
+    fi
     if ! st="$(vm_ssh "$RUN" "tail -n +$((n + 1)) run/log 2>/dev/null")"; then
       vm_alive "$RUN" || die3 "the guest died during the run (see console.log; then $again)"
       sleep 20; continue
@@ -378,9 +381,6 @@ env_vm() {
     if [[ -n "$st" ]]; then printf '%s\n' "$st"; n=$(( n + $(printf '%s\n' "$st" | wc -l) )); last=$SECONDS; fi
     i="$(vm_ssh "$RUN" 'cat run/exit 2>/dev/null' || true)"
     [[ -n "$i" ]] && { rc="$i"; break; }
-    if (( SECONDS - start > CORE_TIMEOUT )); then
-      log "timed out after ${CORE_TIMEOUT}s, no guest output for $(( SECONDS - last ))s (then $again)"; rc=1; to=1; break
-    fi
     sleep 15
   done
   mkdir -p "$RUN/guest"

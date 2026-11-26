@@ -218,7 +218,7 @@ It cannot run until a PR exists, so it ships untested by this run and the PR say
 - Found by the guests and fixed for both OSes: the Oh My Zsh installer's template `~/.zshrc` blocked stow on a
   machine with none; `herdr plugin list | grep -q` and `fc-list | grep -q` failed under `pipefail` (SIGPIPE)
   and caused reinstalls; herdr's Claude integration needs `~/.claude` to exist.
-- The stow exception in SKILL.md and CLAUDE.md was widened to `here` with `DOTFILES_TEST_DISPOSABLE=1`
+- The stow exception in CLAUDE.md was widened to `here` with `DOTFILES_TEST_DISPOSABLE=1`
   (CI).
 - The CI job runs the suite inside an `ubuntu:26.04` container on both hosted runners, not on the runner image:
   the runners are Ubuntu 24.04, which has no lazygit package and an fzf without `--zsh`. `here` writes no `meta`

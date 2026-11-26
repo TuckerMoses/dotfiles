@@ -42,8 +42,8 @@ and stow rules bind every phase here.
   checkout in Phase 7). If it fails those grounds, or the agent returns no commit, do not merge it: remove it with
   `git worktree remove --force` and `git branch -D`, and dispatch one replacement briefed with the reason. Stop fixing
   a failure when the replacement is also rejected or returns no commit, or when the same step fails again in the same
-  environment (Phase 6), or the same `validate.sh` line fails again (Phase 7), after a fix for it; and stop at a third
-  merged fix in one phase. Both count yours and fix agents', across all failures and environments.
+  environment (Phase 6), or the same `validate.sh` line fails again (Phase 7), after a fix for it; and a third fix
+  in one phase is a stop. Both count yours and fix agents', across all failures and environments.
 - **Subagents change nothing outside their worktree**: nothing in `$HOME`, no installs, no pushes.
   The exceptions are `test/suite.sh local`, which may create its throwaway `$HOME` under `$TMPDIR` and nothing
   else, and the Phase 8 review's fixers, which edit the main checkout.
@@ -213,7 +213,7 @@ test/suite.sh vm-emulated   # fresh Ubuntu guest, the other arch (TCG: several t
    - On `1`: read the run dir (`log`, `result`, `validate.txt`; for guests `console.log` and
      `guest/`), fix on the branch (small fixes yourself, larger ones through a fix agent), commit, and re-run that environment fresh. Do not `--resume` a guest after a fix: it
      keeps the clone it already has. A fix is a new commit, so re-run any environment that passed
-     on the old one. A guest log whose `timed out after` line says `no guest output for` under 300s,
+     on the old one. A guest run's `log` (not `guest/log`) whose `timed out after` line says `no guest output for` under 300s,
      or a network or download error nothing on the branch caused, has nothing to fix: re-run that environment fresh,
      unchanged, once per commit (after a timeout, with `--timeout` twice the value that ran out); this does not count
      toward the fix-agent bound. A re-run that fails the same way, or a failure the fix-agent rule says to stop on, is
@@ -249,7 +249,7 @@ This follows "Worktree testing" in `CLAUDE.md`.
 4. Prove each new check once on the live machine: break what it guards, see it fail, restore.
 5. Fix failures on the branch: small ones yourself, larger ones through a fix agent. Re-run, within the fix-agent rule's bound, until no failure remains that was not in the baseline.
 6. If the fix-agent rule says to stop, skip Phase 8. If a failure not in the baseline breaks the login shell,
-   stow links, or tmux or herdr startup, first run `stow -D` for each new package, then `git checkout master && ./bootstrap.sh`,
+   stow links, or tmux or herdr startup, first run `stow -d . -t "$HOME" -D <pkg>` for each package directory the branch adds, then `git checkout master && ./bootstrap.sh`,
    then move each step 2 original back. Either way open the
    Phase 9 PR as a draft, with the remaining failures under item 6 and "not run (Phase 7 stopped)" under item 7.
    Tools already installed stay installed; list them.
