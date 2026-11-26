@@ -24,7 +24,7 @@ dotfiles/
 ├── .github/workflows/                — CI (Claude Code Action for PR reviews, Linux test on x86-64 and arm64)
 ├── atuin/.config/atuin/config.toml   → ~/.config/atuin/config.toml
 ├── ghostty/.config/ghostty/config    → ~/.config/ghostty/config
-├── herdr/.config/herdr/config.toml   → ~/.config/herdr/config.toml (plus herdr-summarize, herdr-recent → ~/.local/bin)
+├── herdr/.config/herdr/config.toml   → ~/.config/herdr/config.toml (plus herdr-summarize, herdr-recent, herdr-login-warning → ~/.local/bin)
 ├── herdr-summarizer/                 — opt-in herdr plugin (not stowed; herdr-summarizer/install.sh)
 ├── nvim/.config/nvim/                → ~/.config/nvim/
 ├── starship/.config/starship.toml    → ~/.config/starship.toml

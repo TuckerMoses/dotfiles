@@ -13,7 +13,7 @@ dotfiles/
 ├── test/suite.sh, test/lib/vm.sh    # Test suite + QEMU harness (not stowed, not run by bootstrap)
 ├── atuin/.config/atuin/config.toml  # Shell history config
 ├── ghostty/.config/ghostty/config   # Terminal emulator config
-├── herdr/.config/herdr/             # Herdr config + .local/bin/herdr-{summarize,recent}
+├── herdr/.config/herdr/             # Herdr config + .local/bin/herdr-{summarize,recent,login-warning}
 ├── herdr-summarizer/                # Opt-in herdr plugin (not stowed)
 ├── nvim/.config/nvim/               # Neovim config with Claude Code sync
 ├── starship/.config/starship.toml   # Prompt engine config
@@ -47,7 +47,7 @@ To add a new tool's config:
 | **nvim** | `.config/nvim/` | Neovim with Claude Code sync (auto-reload, diffview.nvim, claudecode.nvim) |
 | **starship** | `.config/starship.toml` | Starship cross-shell prompt (minimal single-line, language detection) |
 | **tmux** | `.tmux.conf` | Tmux multiplexer (vim-tmux-navigator, Catppuccin status bar, TPM plugins) |
-| **herdr** | `.config/herdr/config.toml`, `.local/bin/herdr-{summarize,recent}` | Herdr terminal workspace manager (tmux-style keys, vim-herdr-navigation, sounds, pane descriptions + `prefix+a` recent-sessions picker) — stowed with `--no-folding` |
+| **herdr** | `.config/herdr/config.toml`, `.local/bin/herdr-{summarize,recent,login-warning}` | Herdr terminal workspace manager (tmux-style keys, vim-herdr-navigation, sounds, pane descriptions + `prefix+a` recent-sessions picker, tab-bar ZOOM pill and Claude login-expiry warning) — stowed with `--no-folding` |
 | **herdr-summarizer** | *(not stowed)* `install.sh`, `plugin/` | Opt-in herdr plugin: on agent turn-end, agent-detected, pane-moved and pane-focused events it runs `herdr-summarize` (labels, status, stale reviews, descriptions). No timer. `install.sh` links it; never run by `bootstrap.sh` |
 | **zsh** | `.zshrc` | Zsh shell via Oh My Zsh (plugins: git, wd, fzf-tab, autosuggestions, syntax-highlighting) |
 

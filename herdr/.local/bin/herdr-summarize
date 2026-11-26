@@ -881,7 +881,8 @@ def publish(state, agents, ws_ids):
         try:
             report(kind, target, tokens)
         except Exception as e:
-            log("%s %s: %s" % (kind, target, e))
+            if "pane_not_found" not in str(e):  # closed since the snapshot: nothing to label, not an error
+                log("%s %s: %s" % (kind, target, e))
 
 
 def snapshot():
