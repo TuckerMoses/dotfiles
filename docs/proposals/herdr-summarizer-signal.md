@@ -36,7 +36,16 @@ source: user (audit of live herdr-summarizer state, 2026-11-26)
      tab `w3:t1`, which the summarizer itself named after the first pane.
   8. **The agent's voice leaks into descriptions.** "Next I'll commit the fix pass…" is written in
      the agent's first person.
-  9. **It is about to stop working.** `worker.log` shows `claude -p` failing on 2026-11-20 and
+  9. **The names shown cannot be used to address a session.** The sidebar shows three
+     different names, and none of them is reliably the one `herdr agent prompt <name>` accepts:
+     row one leads with the summarizer's `short` (model-written), row two is the tab label (the
+     summarizer's `topic`, or one the owner typed), and the addressable herdr agent name appears
+     nowhere. On 2026-11-26, 4 of 10 labelled rows matched a herdr name (`session-b`,
+     `requirements`, `pi-harness`, `nixos-baseline`); `bootstrap` is `herdr-plugins`, `research`
+     is `research-orchestration`, and `aios orch`, `herdr nix` and `backend` have no herdr name at
+     all. No row-two value is an agent name. Pasting one into a session gets "no such agent" and a
+     list of names the bar never shows.
+  10. **It is about to stop working.** `worker.log` shows `claude -p` failing on 2026-11-20 and
      2026-11-25 with "this sign-in ends between 2026-11-27 and 2026-11-30". After that every
      model call fails, and labels freeze without any visible sign.
 - **Proposed fixes:**
@@ -59,7 +68,14 @@ source: user (audit of live herdr-summarizer state, 2026-11-26)
   7. Show a sidebar token (`$err`, red) when the last model call failed for authentication, and
      have `validate.sh` warn on auth failures in `worker.log`. Separately, move the summarizer to
      `claude setup-token`, as the warning itself suggests.
-  8. Drop the tab from row two once the tree navigator (see `herdr-agent-tree.md`) shows tabs as
+  8. **One name per session, and it is the herdr agent name.** A session that already has a herdr
+     name keeps it, and that name becomes its `short` as-is; the model never renames it, because an
+     orchestrator addresses it by that name. A session without one gets a name from the identity
+     call, slugged to herdr's form (`aios-orch`, `[a-z][a-z0-9_-]{0,31}`, unique among live
+     agents), and the summarizer sets it with `herdr agent rename <pane> <slug>`. Whatever leads
+     the sidebar label then works when pasted. The model-written `topic` stays only as the tab
+     name, and no longer appears on the agent row.
+  9. Drop the tab from row two once the tree navigator (see `herdr-agent-tree.md`) shows tabs as
      structure.
 - **Effort:** medium.
 - **Touches:** `herdr/.local/bin/herdr-summarize`, `herdr/.config/herdr/config.toml` (sidebar rows),
