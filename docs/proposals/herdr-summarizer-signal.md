@@ -36,18 +36,13 @@ source: user (audit of live herdr-summarizer state, 2026-11-26)
      tab `w3:t1`, which the summarizer itself named after the first pane.
   8. **The agent's voice leaks into descriptions.** "Next I'll commit the fix pass…" is written in
      the agent's first person.
-  9. **The names shown cannot be used to address a session.** The sidebar shows three
-     different names, and none of them is reliably the one `herdr agent prompt <name>` accepts:
-     row one leads with the summarizer's `short` (model-written), row two is the tab label (the
-     summarizer's `topic`, or one the owner typed), and the addressable herdr agent name appears
-     nowhere. On 2026-11-26, 4 of 10 labelled rows matched a herdr name (`session-b`,
-     `requirements`, `pi-harness`, `nixos-baseline`); `bootstrap` is `herdr-plugins`, `research`
-     is `research-orchestration`, and `aios orch`, `herdr nix` and `backend` have no herdr name at
-     all. No row-two value is an agent name. Pasting one into a session gets "no such agent" and a
-     list of names the bar never shows.
-  10. **It is about to stop working.** `worker.log` shows `claude -p` failing on 2026-11-20 and
-     2026-11-25 with "this sign-in ends between 2026-11-27 and 2026-11-30". After that every
-     model call fails, and labels freeze without any visible sign.
+  9. **The names shown cannot be used to address a session.** Covered by its own proposal,
+     `herdr-agent-auto-names.md`, so it can be built first.
+  10. **Failures are invisible.** `worker.log` shows `claude -p` failing on 2026-11-20 and
+     2026-11-25 with "this sign-in ends between 2026-11-27 and 2026-11-30". When model calls fail,
+     labels freeze and nothing on screen says so. The login was renewed on 2026-11-26 (now
+     expiring 2026-12-26), and the tab bar now warns a day before any login expires, but other
+     failures (network, rate limits) are still silent.
 - **Proposed fixes:**
   1. Replace the `you/working/idle/done` status and the free-text state with one short **ask**,
      2 to 4 words in the imperative, taken from what `your_move` says. Examples: "approve plan",
@@ -65,17 +60,10 @@ source: user (audit of live herdr-summarizer state, 2026-11-26)
      tab label, else the cwd basename. Never publish the opening prompt's first words.
   6. Fit names to whole words or hyphen-segments: `research-pricing` becomes `pricing` when
      `research` is shared with another open session, not `research-prici`.
-  7. Show a sidebar token (`$err`, red) when the last model call failed for authentication, and
-     have `validate.sh` warn on auth failures in `worker.log`. Separately, move the summarizer to
-     `claude setup-token`, as the warning itself suggests.
-  8. **One name per session, and it is the herdr agent name.** A session that already has a herdr
-     name keeps it, and that name becomes its `short` as-is; the model never renames it, because an
-     orchestrator addresses it by that name. A session without one gets a name from the identity
-     call, slugged to herdr's form (`aios-orch`, `[a-z][a-z0-9_-]{0,31}`, unique among live
-     agents), and the summarizer sets it with `herdr agent rename <pane> <slug>`. Whatever leads
-     the sidebar label then works when pasted. The model-written `topic` stays only as the tab
-     name, and no longer appears on the agent row.
-  9. Drop the tab from row two once the tree navigator (see `herdr-agent-tree.md`) shows tabs as
+  7. Show a sidebar token (`$err`, red) when the last model call failed, and have `validate.sh`
+     warn on recent failures in `worker.log`. Consider moving the summarizer to
+     `claude setup-token`, which Claude Code recommends for unattended jobs.
+  8. Drop the tab from row two once the tree navigator (see `herdr-agent-tree.md`) shows tabs as
      structure.
 - **Effort:** medium.
 - **Touches:** `herdr/.local/bin/herdr-summarize`, `herdr/.config/herdr/config.toml` (sidebar rows),
@@ -84,5 +72,5 @@ source: user (audit of live herdr-summarizer state, 2026-11-26)
   (`HERDR_SUMMARIZER_STATE` plus a throwaway herdr session), never against the live herdr.
 - **Notes for the plan:** Before building, replay the current transcripts through both the old and
   new prompts offline (`HERDR_SUMMARIZER_STATE` pointed at a scratch dir, tabs off) and show the
-  two sets of labels side by side. The auth fix (item 7, token) is urgent and independent: the
-  sign-in expires 2026-11-27 to 2026-11-30.
+  two sets of labels side by side. Build `herdr-agent-auto-names.md` first: fixes 5 and 6 here
+  assume each session's `short` is its herdr agent name.
