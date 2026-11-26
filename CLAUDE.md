@@ -140,6 +140,29 @@ variable pointing elsewhere (`ZDOTDIR`, `STARSHIP_CONFIG`, `NVIM_APPNAME`, ...),
 its config before the last change (with the command to fix it). It reads package, tool and plugin lists from
 `bootstrap.sh`, so new packages are covered automatically. Run it after any change; it exits 1 on failure.
 
+## NixOS hosts
+
+`flake.nix` and `nixos/` define NixOS machines; they are not Stow packages and `bootstrap.sh` does
+not touch them. `nixos/README.md` is the guide: the modules, the install, the drills, and how to
+change a machine remotely. The one real host is `homepc` (the home PC, reached over Tailscale; use
+`ssh -p 2222 tucker@homepc`, since port 22 there is Tailscale SSH and asks for browser approval).
+
+Rules for any session working on a NixOS host, and above all one running **on** that host:
+
+- **Never activate a config directly.** No `nixos-rebuild switch|boot|test`, with or without sudo.
+  Use `safe-switch`, or `trial-boot` when it says the change needs a reboot.
+- **Never run `safe-confirm` yourself.** It is the owner's proof, from a new SSH login, that the
+  machine is still reachable. Stop after `safe-switch` or `trial-boot` and tell the user to confirm.
+- **Never run `nix flake update`.** It moves the kernel and Tailscale together.
+- **Do not stop, restart, mask or disable** sshd, tailscaled, NetworkManager or the firewall, and
+  do not reboot or power off the machine, unless the user asked for exactly that.
+- **`nixos/modules/lifeline.nix` is what keeps the machine reachable.** Change it only when the
+  task is about it, and say so before you do.
+- **Secrets never go in the config.** The Nix store is world-readable.
+- Run `host-check` after any change. `nixos/test/drills.sh` runs the lockout drills in a VM.
+- On homepc, `~/.claude/env/` does not exist and the environment catalog the global `CLAUDE.md`
+  points to describes the Mac. Do not apply Mac paths or conventions there.
+
 ## CI / GitHub Actions
 
 A GitHub Actions workflow (`.github/workflows/claude-pr-review.yml`) runs the `anthropics/claude-code-action@v1` action. It triggers when the repo owner writes an inline PR review comment containing `/claude`; comments from anyone else are ignored. Claude reads the comment, implements the requested change (following this file's conventions), and replies.
