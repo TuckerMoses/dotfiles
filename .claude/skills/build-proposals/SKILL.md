@@ -230,7 +230,10 @@ test/suite.sh vm-emulated   # fresh Ubuntu guest, the other arch (TCG: several t
    it names is one this branch added to `bootstrap.sh`'s loop: install it as in Phase 5 step 6 and re-run (not a fix; an install that fails or needs a password is a `3`).
 5. What the suite cannot show is reported as **not tested**, never as passed: anything a headless
    guest cannot show (Ghostty rendering, clipboard, fonts on screen, sounds), model calls (the
-   summarizer runs dry), and `dnf` (no Fedora guest).
+   summarizer runs dry), `dnf` (no Fedora guest), and each plugin `bootstrap.sh` skipped in an
+   environment because its build tool is missing there (name the plugin and the environments: the
+   guests have no go or cargo, and `local` runs under `env -i`, so a tool only in a user directory
+   such as `~/.cargo/bin` is missing there too).
 6. When all three pass on the same commit, save the output of
    `test/suite.sh report <run-dir> <run-dir> <run-dir>` (a side-by-side table: each step, commit,
    wall time, exit) to the session scratchpad for the PR: removing the integration worktree deletes
@@ -273,7 +276,7 @@ This follows "Worktree testing" in `CLAUDE.md`.
    that way.
 5. Fix failures on the branch: small ones yourself, larger ones through a fix agent. Re-run, within the fix-agent rule's bound, until no failure remains that was not in the baseline.
 6. If the fix-agent rule says to stop, say so and skip Phase 8. Open the Phase 9 PR as a draft, with the remaining
-   failures under item 6 and "not run (Phase 7 stopped)" under item 7. If a failure not in the baseline breaks the
+   failures under item 6 and "not run (Phase 7 stopped)" under item 7. In that case, if a failure not in the baseline breaks the
    login shell, stow links, or tmux or herdr startup, roll back first: say why and what the rollback does, and run it
    only after the user's explicit yes (the step 0 yes does not cover it). Without one, leave the machine as it is
    and report its state in the PR. The rollback, in the main checkout:
@@ -303,7 +306,8 @@ needs a restow or a `./bootstrap.sh` re-run is covered by the Phase 7 step 0 yes
 If the user said no at Phase 7 step 0, the main checkout is on `master`: make the fixes in a new
 worktree of the integration branch (`git worktree add .worktrees/integration feat/build-proposals-<date>`),
 never by checking the branch out in the main checkout, and run nothing there that `CLAUDE.md` forbids in a
-worktree. Push them, and say in the PR that they were not validated live. A no at Phase 7 step 0 does not skip
+worktree, except `test/suite.sh local`, which is allowed there: run it on the commit with the fixes before
+pushing. Push them, and say in the PR that they were not validated live. A no at Phase 7 step 0 does not skip
 Phase 8; a Phase 7 stopped at step 6 does.
 
 ## Phase 9: the pull request
@@ -315,8 +319,9 @@ Run `git push -u origin feat/build-proposals-<date>`, then open one PR against `
 2. **Proposals table:** proposal, verdict, result, the plan file, the validation check added.
 3. **Differences from the proposals**, and deviations the agents reported.
 4. **Three environments:** the Phase 6 `test/suite.sh report` table, side by side, with the
-   commit and wall time of each, and the not-tested list. Commits added by Phases 7 and 8 were
-   validated by `validate.sh` only, not the suite: say so.
+   commit and wall time of each, and the not-tested list. Say how commits added after Phase 6 were
+   checked: on the live path, by `validate.sh` in the main checkout only, not the suite; after a no at
+   Phase 7 step 0, by `test/suite.sh local` only (Phase 8), and not live.
 5. **Machine changes from Phases 5 to 7:** tools installed, herdr plugins installed, files in `$HOME` replaced (with the backup
    path), and the steps still to do by hand.
 6. **Validation:** baseline against final, as counts, plus any remaining warning.

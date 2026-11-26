@@ -316,9 +316,9 @@ check_rules_pin() {  # <owner/repo> <commit the copied rules match> <label>
 check_bound_plugin_actions() {  # <config.toml> <`herdr plugin action list` JSON>
   local out w need skipped=""
   # Plugins bootstrap.sh skips on purpose because their build tool is missing (plugin_needs):
-  # a key bound to one of them warns, like the install check, and does not fail.
-  for w in $(sed -n -e 's/.*herdr plugin list.*grep -q \([a-z][a-z0-9.-]*\); then$/\1/p' \
-                    -e 's/.*grep -q \([a-z][a-z0-9.-]*\) <<<"\$herdr_plugins"; then$/\1/p' "$BOOTSTRAP"); do
+  # a key bound to one of them warns, like the install check, and does not fail, but only
+  # while that plugin is also not installed (an installed plugin's renamed action still fails).
+  for w in $(plugin_names); do
     need="$(plugin_needs "$w")"
     [[ -n "$need" ]] && ! have "$need" && skipped+="$w:$need "
   done
@@ -326,7 +326,9 @@ check_bound_plugin_actions() {  # <config.toml> <`herdr plugin action list` JSON
 import json, sys, tomllib
 with open(sys.argv[1], "rb") as f:
     cfg = tomllib.load(f)
-listed = {a["plugin_id"] + "." + a["action_id"] for a in json.loads(sys.argv[2])["result"]["actions"]}
+actions = json.loads(sys.argv[2])["result"]["actions"]
+listed = {a["plugin_id"] + "." + a["action_id"] for a in actions}
+installed = {a["plugin_id"] for a in actions}
 skipped = dict(s.split(":", 1) for s in sys.argv[3].split())  # bootstrap grep name -> missing tool
 binds = [k for k in cfg.get("keys", {}).get("command", []) if k.get("type") == "plugin_action"]
 bad = [k for k in binds if k.get("command") not in listed]
@@ -334,7 +336,7 @@ fails = 0
 for k in bad:
     pid = str(k.get("command", "")).rsplit(".", 1)[0]
     why = next((t for w, t in skipped.items() if pid == w or pid.endswith("." + w)), None)
-    if why:
+    if why and pid not in installed:
         print(f"WARN key {k.get('key')} runs {k.get('command')}: its plugin is not installed because {why} is missing (bootstrap.sh skips it)")
     else:
         fails += 1
@@ -512,9 +514,19 @@ check_plugin_pins() {
 # plugin-name sed below accepts: `if ! herdr plugin list ... | grep -q <name>; then` and
 # `if ! grep -q <name> <<<"$herdr_plugins"; then`.
 plugin_needs() {  # <name from the grep -q>
-  awk -v w="$1" 'f { if (match($0, /if command -v [A-Za-z0-9_.-]+/)) print substr($0, RSTART + 14, RLENGTH - 14); exit }
+  # Scans the plugin's block from its grep line to its `herdr plugin install` line, the same span
+  # herdr-plugins' needs_tool reads, so comments between them do not change the answer.
+  awk -v w="$1" 'f && /if command -v [A-Za-z0-9_.-]+/ { match($0, /if command -v [A-Za-z0-9_.-]+/); print substr($0, RSTART + 14, RLENGTH - 14); exit }
+    f && /^[ \t]*herdr plugin install / { exit }
     /^[ \t]*if ! herdr plugin list/ && index($0, "grep -q " w "; then") { f = 1 }
     /^[ \t]*if ! grep -q / && index($0, "grep -q " w " <<<\"$herdr_plugins\"; then") { f = 1 }' "$BOOTSTRAP"
+}
+
+# The plugin names bootstrap.sh tests for, in either line shape it has used. Empty means the shape
+# changed again and every per-plugin check would silently do nothing, so callers fail on it.
+plugin_names() {
+  sed -n -e 's/.*herdr plugin list.*grep -q \([a-z][a-z0-9.-]*\); then$/\1/p' \
+         -e 's/.*grep -q \([a-z][a-z0-9.-]*\) <<<"\$herdr_plugins"; then$/\1/p' "$BOOTSTRAP"
 }
 
 # herdr-plugins (stowed to ~/.local/bin) must be the one on PATH and run from this checkout.
@@ -599,8 +611,12 @@ if have herdr; then
   if herdr workspace list >/dev/null 2>&1; then
     pass "server running"
     plugins="$(herdr plugin list 2>/dev/null)"
-    for want in $(sed -n -e 's/.*herdr plugin list.*grep -q \([a-z][a-z0-9.-]*\); then$/\1/p' \
-                         -e 's/.*grep -q \([a-z][a-z0-9.-]*\) <<<"\$herdr_plugins"; then$/\1/p' "$BOOTSTRAP"); do
+    names="$(plugin_names)"
+    npins="$(grep -c '^[[:space:]]*herdr plugin install [^ ]* --ref ' "$BOOTSTRAP" || true)"
+    if [[ -z "$names" ]]; then fail "no herdr plugin found in bootstrap.sh's install checks (did their line shape change? see plugin_names)"
+    elif (( $(wc -w <<<"$names") != npins )); then
+      fail "bootstrap.sh pins $npins herdr plugins but plugin_names finds $(wc -w <<<"$names") ($(echo $names)): a plugin's install check has a line shape plugin_names does not read"; fi
+    for want in $names; do
       line="$(echo "$plugins" | grep -E "^- [^ ]*$want " || true)"
       # bootstrap skips a plugin whose build tool is missing, so missing it then is expected
       need="$(plugin_needs "$want")"
