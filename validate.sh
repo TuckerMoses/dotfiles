@@ -280,6 +280,13 @@ if have herdr; then
   if grep -E '^[[:space:]]*tab_bar_right[[:space:]]*=' "$HOME/.config/herdr/config.toml" 2>/dev/null | grep -q 'type = "zoom"'; then
     pass "zoom indicator in the tab bar"
   else fail "no zoom indicator: tab_bar_right in ~/.config/herdr/config.toml has no { type = \"zoom\" } entry"; fi
+  # Claude login warning: wired into the tab bar, runs, and (if it prints) the login needs renewing now.
+  lw="$HOME/.local/bin/herdr-login-warning"
+  if ! grep -E '^[[:space:]]*tab_bar_right[[:space:]]*=' "$HOME/.config/herdr/config.toml" 2>/dev/null | grep -q 'herdr-login-warning'; then
+    fail "no Claude login warning: tab_bar_right in ~/.config/herdr/config.toml does not run herdr-login-warning"
+  elif ! [[ -x "$lw" ]] || ! msg="$("$lw" 2>&1)"; then fail "herdr-login-warning missing or failing ($lw)"
+  elif [[ -n "$msg" ]]; then warn "tab bar shows: $msg"
+  else pass "Claude login warning wired into the tab bar (login more than a day from expiry)"; fi
   if herdr workspace list >/dev/null 2>&1; then
     pass "server running"
     plugins="$(herdr plugin list 2>/dev/null)"
