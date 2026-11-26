@@ -251,7 +251,8 @@ This follows "Worktree testing" in `CLAUDE.md`.
    `command -v` does not find: name them) and may be re-run after the fixes of step 5 and Phase 8, which herdr
    plugins it will install at their pins with `--yes` (the pinned plugins `herdr plugin list` does not
    show and whose `if command -v` tool is present; bootstrap skips installed ones at any commit; one
-   line each: repo, sha7, and the `[[build]]` command of its `herdr-plugin.toml` at the pin), that Phase 8's review fixes will be made there too, on the live branch, and the checks
+   line each: repo, sha7, and the `[[build]]` command of its `herdr-plugin.toml` at the pin; those builds
+   already ran in Phase 6, but only in the suite's throwaway `$HOME` and guests, so this is about your real herdr), that Phase 8's review fixes will be made there too, on the live branch, and the checks
    step 4 proves (one line per new check, saying whether step 4 breaks it live (and what it breaks)
    or proves it against a stub).
    Ask whether to go ahead, and wait for the user's explicit yes in this session before step 1.
