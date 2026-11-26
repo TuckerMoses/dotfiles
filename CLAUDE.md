@@ -68,6 +68,9 @@ pack on 2026-11-12.
   sha256), herdr (its installer), zsh-vi-mode (as an Oh My Zsh custom plugin) and the Nerd Font
   (`~/.local/share/fonts`). User-level binaries go to `~/.local/bin`; every download is picked by `uname -m`
 
+Before replacing any of this install layer (for example with nixpkgs), read "For the nix migration" in
+`docs/plans/linux-target.md`: it lists what a package-manager change deletes, keeps and must rework.
+
 ## Design Conventions
 
 - **Theme**: Catppuccin Mocha everywhere (ghostty, tmux status bar, starship accents)
