@@ -30,9 +30,8 @@ and stow rules bind every phase here.
   final PR is where this skill stops.
 - **Never run `stow`, `bootstrap.sh` or an installer from a worktree.** Stow links point at the
   main checkout; running it elsewhere repoints the user's live config. The one exception is
-  `test/suite.sh`, which stows only into a throwaway `$HOME`, inside a guest, or (for `here` with
-  `DOTFILES_TEST_DISPOSABLE=1`, in CI) into the CI container's `$HOME`. Agents never
-  run `here` or set `DOTFILES_TEST_DISPOSABLE=1`. Only Phases 7 and 8 touch the live machine, and only from the main checkout;
+  `test/suite.sh`, which stows only into a throwaway `$HOME` or inside a guest (CI and `here`: see
+  "Worktree testing" in `CLAUDE.md`). Only Phases 7 and 8 touch the live machine, and only from the main checkout;
   the one earlier change is the system-package install in Phase 5 step 6 (or Phase 6 step 4, for a package it missed).
 - **A fix agent** is created from the main checkout at `.worktrees/fix-<short-name>`, on branch `fix/<short-name>` cut from
   the integration branch's HEAD, and briefed as in Phase 4 with the commit under test and the failure evidence in place of
@@ -43,11 +42,11 @@ and stow rules bind every phase here.
   checkout in Phase 7). If it fails those grounds, or the agent returns no commit, do not merge it: remove it with
   `git worktree remove --force` and `git branch -D`, and dispatch one replacement briefed with the reason. Stop fixing
   a failure when the replacement is also rejected or returns no commit, or when the same step fails again in the same
-  environment (Phase 6), or the same `validate.sh` line fails again (Phase 7), after a fix for it, yours or a fix
-  agent's; at most two merged fixes per phase across all failures and environments, yours included; a third is a stop.
+  environment (Phase 6), or the same `validate.sh` line fails again (Phase 7), after a fix for it; and stop at a third
+  merged fix in one phase. Both count yours and fix agents', across all failures and environments.
 - **Subagents change nothing outside their worktree**: nothing in `$HOME`, no installs, no pushes.
   The exceptions are `test/suite.sh local`, which may create its throwaway `$HOME` under `$TMPDIR` and nothing
-  else (the VM environments are Phase 6's), and the Phase 8 review's fixers, which edit the main checkout.
+  else, and the Phase 8 review's fixers, which edit the main checkout.
 - **Being in `docs/proposals/` on `master` is the approval.** Do not re-argue whether a proposal
   is worth doing. Do check whether it is still correct and executable.
 - **Only `master` counts.** A proposal in an open PR, on another branch, or in the scout's
@@ -70,7 +69,7 @@ Stop and tell the user if any of these fails.
    you start are recorded, not blamed on a proposal.
 
 Then tell the user in two lines what is about to happen, including that the system packages the branch
-adds are installed before Phase 6, and that Phase 7 will switch the live config to the integration branch
+adds are installed before or during Phase 6, and that Phase 7 will switch the live config to the integration branch
 and may install tools, after the Phase 6 test passes.
 
 ## Phase 1: read the queue
@@ -186,11 +185,11 @@ links for a new package are already checked, because `validate.sh` reads the pac
    `README.md`, and update `docs/herdr.html` if anything a herdr user would see changed.
 5. Commit all of it on the integration branch. Remove every unit worktree; keep the integration
    worktree, because Phase 6 runs from it.
-6. In `.worktrees/integration`, for each pair `git diff master...HEAD -- bootstrap.sh` adds to this host's
-   `for pair in` loop whose part after `:` fails `command -v`,
-   install the part before `:` as `bootstrap.sh` would: `test/suite.sh local` refuses to start without them.
+6. For each word on this host's `for pair in` line of `bootstrap.sh` on `feat/build-proposals-<date>` but not on
+   `master`'s (`package:command`, or one word for both) whose command fails `command -v`, install its package
+   as `bootstrap.sh` would: `test/suite.sh local` refuses to start without them.
    Tell the user which, then install without waiting; if an install fails or needs a password, stop
-   before Phase 6, report the package and the command for the user to run, and leave the integration worktree in place.
+   before Phase 6, report the packages installed so far, the one that failed, and its command, and leave the integration worktree in place.
 
 ## Phase 6: test in three environments
 
@@ -214,7 +213,7 @@ test/suite.sh vm-emulated   # fresh Ubuntu guest, the other arch (TCG: several t
    - On `1`: read the run dir (`log`, `result`, `validate.txt`; for guests `console.log` and
      `guest/`), fix on the branch (small fixes yourself, larger ones through a fix agent), commit, and re-run that environment fresh. Do not `--resume` a guest after a fix: it
      keeps the clone it already has. A fix is a new commit, so re-run any environment that passed
-     on the old one. A guest log showing `timed out after` within 5 minutes of the last `[suite …]` line before it,
+     on the old one. A guest log whose `timed out after` line says `no guest output for` under 300s,
      or a network or download error nothing on the branch caused, has nothing to fix: re-run that environment fresh,
      unchanged, once per commit (after a timeout, with `--timeout` twice the value that ran out); this does not count
      toward the fix-agent bound. A re-run that fails the same way, or a failure the fix-agent rule says to stop on, is
@@ -250,7 +249,8 @@ This follows "Worktree testing" in `CLAUDE.md`.
 4. Prove each new check once on the live machine: break what it guards, see it fail, restore.
 5. Fix failures on the branch: small ones yourself, larger ones through a fix agent. Re-run, within the fix-agent rule's bound, until no failure remains that was not in the baseline.
 6. If the fix-agent rule says to stop, skip Phase 8. If a failure not in the baseline breaks the login shell,
-   stow links, or tmux or herdr startup, first run `git checkout master && ./bootstrap.sh`. Either way open the
+   stow links, or tmux or herdr startup, first run `stow -D` for each new package, then `git checkout master && ./bootstrap.sh`,
+   then move each step 2 original back. Either way open the
    Phase 9 PR as a draft, with the remaining failures under item 6 and "not run (Phase 7 stopped)" under item 7.
    Tools already installed stay installed; list them.
 

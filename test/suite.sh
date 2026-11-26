@@ -334,7 +334,7 @@ env_local_inner() {
 
 # ── vm-native / vm-emulated ─────────────────────────────────────────────────
 env_vm() {
-  local env="$1" arch mode rc=0 start=$SECONDS n=0 st i
+  local env="$1" arch mode rc=0 start=$SECONDS n=0 st i last to=0
   if [[ -n "$RESUME" ]]; then
     RUN="$(cd "$RESUME" && pwd -P)"; env="$(meta_get "$RUN" env)"
     [[ -f "$RUN/overlay.qcow2" ]] || die3 "$RUN has no kept guest to resume"
@@ -369,21 +369,24 @@ env_vm() {
   log "suite running in the guest (log follows)"
   local again="re-run fresh, or with --keep to be able to resume"
   (( KEEP )) && again="continue with --resume $RUN --keep"
+  last=$SECONDS
   while :; do
     if ! st="$(vm_ssh "$RUN" "tail -n +$((n + 1)) run/log 2>/dev/null")"; then
       vm_alive "$RUN" || die3 "the guest died during the run (see console.log; then $again)"
       sleep 20; continue
     fi
-    if [[ -n "$st" ]]; then printf '%s\n' "$st"; n=$(( n + $(printf '%s\n' "$st" | wc -l) )); fi
+    if [[ -n "$st" ]]; then printf '%s\n' "$st"; n=$(( n + $(printf '%s\n' "$st" | wc -l) )); last=$SECONDS; fi
     i="$(vm_ssh "$RUN" 'cat run/exit 2>/dev/null' || true)"
     [[ -n "$i" ]] && { rc="$i"; break; }
-    if (( SECONDS - start > CORE_TIMEOUT )); then log "timed out after ${CORE_TIMEOUT}s (then $again)"; rc=1; break; fi
+    if (( SECONDS - start > CORE_TIMEOUT )); then
+      log "timed out after ${CORE_TIMEOUT}s, no guest output for $(( SECONDS - last ))s (then $again)"; rc=1; to=1; break
+    fi
     sleep 15
   done
   mkdir -p "$RUN/guest"
   vm_ssh "$RUN" 'tar -C run -cf - .' | tar -C "$RUN/guest" -xf - || log "could not copy results out of the guest"
   for i in result validate.txt; do cp "$RUN/guest/$i" "$RUN/$i" 2>/dev/null || true; done
-  [[ -f "$RUN/result" ]] || rc=3
+  [[ -f "$RUN/result" ]] || (( to )) || rc=3   # a timeout stays 1
   finish "$RUN" "$rc" "$start"
   return "$rc"
 }
