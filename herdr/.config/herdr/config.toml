@@ -7,7 +7,8 @@ onboarding = false
 sidebar_width = 34                # room for herdr-summarizer labels (default 26)
 agent_panel_sort = "priority"      # sidebar as an attention queue: blocked agents first
 pane_outer_borders = false         # tmux-style internal splitters, no outer frame
-tab_bar_right = [{ type = "hostname" }, { type = "datetime", format = "%H:%M  %d %b" }]
+# zoom: a ZOOM pill at the top right while the active tab is zoomed (prefix z / ctrl+z)
+tab_bar_right = [{ type = "zoom" }, { type = "hostname" }, { type = "datetime", format = "%H:%M  %d %b" }]
 
 [ui.toast]
 delivery = "herdr"

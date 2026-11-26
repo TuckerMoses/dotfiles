@@ -276,6 +276,10 @@ section "herdr"
 if have herdr; then
   out="$(herdr config check 2>&1)"
   if echo "$out" | grep -q 'config: ok'; then pass "config.toml valid"; else fail "config.toml: $(echo "$out" | tail -2 | tr '\n' ' ')"; fi
+  # The ZOOM pill is a tab_bar_right entry; "herdr loaded its config" above says whether it is live.
+  if grep -E '^[[:space:]]*tab_bar_right[[:space:]]*=' "$HOME/.config/herdr/config.toml" 2>/dev/null | grep -q 'type = "zoom"'; then
+    pass "zoom indicator in the tab bar"
+  else fail "no zoom indicator: tab_bar_right in ~/.config/herdr/config.toml has no { type = \"zoom\" } entry"; fi
   if herdr workspace list >/dev/null 2>&1; then
     pass "server running"
     plugins="$(herdr plugin list 2>/dev/null)"
