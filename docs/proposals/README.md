@@ -45,4 +45,15 @@ is present, `/build-proposals` skips the proposal and reports the question:
 
 Delete the section, with your answer written into the proposal, to put it back in the queue.
 
+A proposal that cannot be executed until something outside this repo changes (usually an upstream
+feature) carries this section instead. `/build-proposals` skips it the same way and reports what it is
+waiting on:
+
+```markdown
+## Waiting on
+<the capability, where it is tracked or that it is not, and how to tell it has landed>
+```
+
+Delete the section when the capability exists to put the proposal back in the queue.
+
 No step-by-step implementation and no blocks of config: that is the plan's job.
