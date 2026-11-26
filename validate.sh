@@ -250,11 +250,17 @@ fi
 
 # zsh: startup files it loads that the repo does not manage.
 # ~/.zshrc.local is the deliberate machine-local layer (.zshrc sources it, and it
-# can hold secrets), so it is expected to stay out of the repo.
+# can hold secrets), so it is expected to stay out of the repo. So are two more machine-local files:
+# ~/.zshenv (PATH and env for non-interactive shells such as agent hooks, which never read .zshrc)
+# and ~/.zprofile (brew shellenv, which must run before oh-my-zsh builds completions in .zshrc).
 for f in .zshenv .zprofile .zlogin .zlogout; do
   [[ -e "$HOME/$f" ]] || continue
   [[ "$(real "$HOME/$f")" == "$DOTFILES_DIR"/* ]] && continue
-  warn "zsh loads ~/$f, which is not in dotfiles"
+  case "$f" in
+    .zshenv)   info "~/.zshenv: machine-local env for non-interactive shells, untracked by design" ;;
+    .zprofile) info "~/.zprofile: machine-local login setup (brew shellenv before .zshrc), untracked by design" ;;
+    *)         warn "zsh loads ~/$f, which is not in dotfiles" ;;
+  esac
 done
 [[ -e "$HOME/.zshrc.local" ]] && info "~/.zshrc.local: machine-local layer, untracked by design (keep secrets out of the repo)"
 
@@ -339,9 +345,15 @@ print(len(bad), len(logs))' 2>/dev/null || echo "0 0")"
     else fail "$nbad of the last $nall plugin hook runs failed (herdr plugin log list --plugin herdr-summarizer)"; fi
     [[ -e "$HOME/.local/state/herdr-summarizer/only-sessions" ]] && warn "test guard present: the plugin ignores your sessions (delete ~/.local/state/herdr-summarizer/only-sessions)"
     wlog="$HOME/.local/state/herdr-summarizer/worker.log"
-    if [[ -s "$wlog" ]] && tail -50 "$wlog" | grep -q 'Traceback\|Error'; then
-      warn "worker logged errors recently: $(grep -E 'Error|error' "$wlog" | tail -1 | cut -c1-120)"
-    else pass "worker log clean"; fi
+    # Only the last day counts: the log holds nothing but errors, so any old line would warn forever.
+    # Lines start "YYYY-MM-DD HH:MM:SS", which compares correctly as text; untimestamped lines (a
+    # traceback) belong to the timestamped line above them.
+    since="$(/usr/bin/python3 -I -c 'import time; print(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time() - 86400)))')"
+    recent="$( [[ -s "$wlog" ]] && awk -v c="$since" '/^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9] / { keep = (substr($0, 1, 19) >= c) } keep' "$wlog" \
+               | grep -E 'Traceback|Error|error|failed' || true)"
+    if [[ -n "$recent" ]]; then
+      warn "worker logged $(wc -l <<<"$recent" | tr -d ' ') error(s) in the last day: $(tail -1 <<<"$recent" | cut -c1-120)"
+    else pass "worker log: no errors in the last day"; fi
   fi
 fi
 
