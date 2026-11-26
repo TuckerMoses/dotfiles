@@ -24,7 +24,8 @@ fi
 
 # ── Verdict ─────────────────────────────────────────────────────────────────
 # Unreadable status is reported too: a silent entry would look like a healthy login.
-printf '%s' "$status" | /usr/bin/env python3 -c '
+# -I: herdr runs this in the active pane's directory; never import modules from there.
+printf '%s' "$status" | /usr/bin/env python3 -I -c '
 import json, sys, datetime
 warn = float(sys.argv[1])
 try:
