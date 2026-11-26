@@ -61,7 +61,7 @@ jj-only repos the git tokens are empty and `$jj_status` alone shows.
 - Show each fails against a broken copy (a template typo; the token removed from the row).
 
 ## Outside the repo
-None; reload herdr config in Phase 6 and open a workspace in `~/Vault`.
+None; reload herdr config in Phase 7 and open a workspace in `~/Vault`.
 
 ## Edge cases
 - A workspace whose home pane is in a subdirectory of a jj repo: the ancestor walk finds it.

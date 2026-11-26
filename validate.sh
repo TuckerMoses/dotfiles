@@ -69,6 +69,7 @@ else fail "hardcoded home directory path (use \$HOME, ~ or a relative path): $(e
 section "Tools installed by bootstrap"
 if [[ "$OS" == "Darwin" ]]; then pairs="$(sed -n 's/^  for pair in \(.*\); do$/\1/p' "$BOOTSTRAP" | head -1)"
 else pairs="$(sed -n 's/^  for pair in \(.*\); do$/\1/p' "$BOOTSTRAP" | sed -n 2p)"; fi
+[[ -n "$pairs" ]] || fail "bootstrap.sh: no 'for pair in' tool loop found (reformatted?)"
 for cmd in $(for pair in $pairs starship atuin herdr; do echo "${pair#*:}"; done | awk '!seen[$0]++'); do
   if have "$cmd"; then pass "$cmd"; else fail "$cmd not on PATH"; fi
 done
@@ -77,6 +78,17 @@ done
 section "Configs parse and load"
 if have zsh; then
   if err="$(zsh -n "$HOME/.zshrc" 2>&1)"; then pass "zsh: ~/.zshrc syntax"; else fail "zsh: $err"; fi
+  # An interactive start must print nothing on stderr and must load zsh-vi-mode
+  # (sourced from brew or from the Oh My Zsh custom plugin, whichever exists).
+  # HISTFILE and ZSH_COMPDUMP point at a throwaway dir so the real ones are not rewritten.
+  zt="$(mktemp -d)"
+  out="$(cd "$HOME" && HISTFILE=/dev/null ZSH_COMPDUMP="$zt/zcompdump" zsh -i -c 'print -r -- "zvm-loaded=${+functions[zvm_init]}"' </dev/null 2>&1)"
+  rm -rf "$zt"
+  errs="$(echo "$out" | grep -v '^zvm-loaded=' || true)"
+  if [[ -n "$errs" ]]; then fail "zsh: interactive start writes to stderr: $(echo "$errs" | head -2 | tr '\n' ' ')"
+  else pass "zsh: interactive start is clean"; fi
+  if echo "$out" | grep -qx 'zvm-loaded=1'; then pass "zsh: zsh-vi-mode loaded"
+  else fail "zsh: zsh-vi-mode not loaded (brew install zsh-vi-mode, or re-run ./bootstrap.sh)"; fi
 fi
 
 if have tmux; then
@@ -85,9 +97,24 @@ if have tmux; then
   # are only shown to the first attached client, so they would be missed.
   sock="dotfiles-validate-$$"
   errs="$(tmux -L "$sock" -f /dev/null new-session -d 'sleep 5' \; source-file "$HOME/.tmux.conf" 2>&1)"
+  ybind="$(tmux -L "$sock" list-keys -T copy-mode-vi 2>/dev/null | grep -E '^bind-key +-T copy-mode-vi +y ' || true)"
   tmux -L "$sock" kill-server 2>/dev/null
   if [[ -z "$errs" ]]; then pass "tmux: ~/.tmux.conf loads cleanly (throwaway server)"
   else fail "tmux: $(echo "$errs" | head -3 | tr '\n' ' ')"; fi
+  # copy-mode y: pbcopy on macOS; on Linux a pipe that picks wl-copy or xclip at each copy.
+  if [[ -z "$ybind" ]]; then fail "tmux: copy-mode y is not bound"
+  elif [[ "$OS" == "Darwin" ]]; then
+    if [[ "$ybind" != *"copy-pipe-and-cancel pbcopy"* ]]; then fail "tmux: copy-mode y does not pipe to pbcopy"
+    elif ! have pbcopy; then fail "tmux: copy-mode y pipes to pbcopy, which is not installed"
+    else pass "tmux: copy-mode y copies with pbcopy"; fi
+  elif [[ "$ybind" != *copy-pipe-and-cancel*WAYLAND_DISPLAY*wl-copy*DISPLAY*xclip* ]]; then
+    fail "tmux: copy-mode y does not pipe to the wl-copy/xclip selector"
+  elif ! have wl-copy && ! have xclip; then fail "tmux: copy-mode y has neither wl-copy nor xclip to pipe to (re-run ./bootstrap.sh)"
+  elif { have wl-copy && [[ -n "${WAYLAND_DISPLAY:-}" ]]; } || { have xclip && [[ -n "${DISPLAY:-}" ]]; }; then
+    pass "tmux: copy-mode y copies to this session's clipboard"
+  elif [[ -n "${WAYLAND_DISPLAY:-}" ]]; then warn "tmux: Wayland session but wl-copy is not installed, so copy-mode y fills tmux's buffer only"
+  elif [[ -n "${DISPLAY:-}" ]]; then warn "tmux: X11 session but xclip is not installed, so copy-mode y fills tmux's buffer only"
+  else warn "tmux: this session has no Wayland or X11 display, so copy-mode y fills tmux's buffer only"; fi
 fi
 
 ghostty=""
@@ -97,6 +124,15 @@ if [[ -n "$ghostty" ]]; then
   if err="$("$ghostty" +validate-config 2>&1)"; then pass "ghostty: config valid"
   else fail "ghostty: $(echo "$err" | head -3 | tr '\n' ' ')"; fi
 else info "ghostty not installed; config not checked"; fi
+
+# The Nerd Font the Ghostty config names (the JetBrains Mono Nerd Font family).
+font="$(sed -n 's/^font-family *= *//p' "$DOTFILES_DIR/ghostty/.config/ghostty/config" | head -1 | tr -d '"')"
+font="${font:-JetBrainsMono Nerd Font}"
+if [[ "$OS" == "Darwin" ]]; then
+  if have brew && brew list --cask font-jetbrains-mono-nerd-font >/dev/null 2>&1; then pass "font: JetBrains Mono Nerd Font installed (brew cask)"
+  else fail "font: JetBrains Mono Nerd Font not installed (brew install --cask font-jetbrains-mono-nerd-font)"; fi
+elif have fc-list && fc-list : family 2>/dev/null | tr ',' '\n' | grep -ixF "$font" >/dev/null; then pass "font: $font installed (fontconfig)"
+else fail "font: $font not found by fc-list (run ./bootstrap.sh)"; fi
 
 if have starship; then
   err="$(starship print-config 2>&1 >/dev/null | grep -iE 'unable|error|invalid' || true)"
@@ -177,13 +213,16 @@ if [[ "$OS" == "Darwin" ]]; then
     if [[ -s "$f" ]]; then fail "ghostty also loads ${f/#$HOME/~} after the dotfiles config, overriding it"
     else info "ghostty: ${f/#$HOME/~} exists but is empty (harmless; anything added there overrides the dotfiles config)"; fi
   done
-  gpid="$(pgrep -f 'Ghostty.app/Contents/MacOS/ghostty' | head -1)"
-  if [[ -n "$gpid" ]]; then
-    gstart="$(/usr/bin/python3 -c 'import sys,time; print(int(time.mktime(time.strptime(sys.argv[1].strip(), "%a %b %d %H:%M:%S %Y"))))' "$(ps -o lstart= -p "$gpid")" 2>/dev/null || echo 0)"
-    gconf="$(mtime "$HOME/.config/ghostty/config")"
-    if (( gstart < gconf )); then warn "ghostty started before its config changed $(when "$gconf"): reload it (cmd+shift+,) unless you already have"
-    else pass "ghostty started after the last config change"; fi
-  fi
+fi
+# A running Ghostty keeps the config it started with.
+if [[ "$OS" == "Darwin" ]]; then gpid="$(pgrep -f 'Ghostty.app/Contents/MacOS/ghostty' | head -1)"
+else gpid="$(pgrep -x ghostty | head -1)"; fi
+if [[ -n "$gpid" ]]; then
+  gstart="$(/usr/bin/python3 -c 'import sys,time; print(int(time.mktime(time.strptime(sys.argv[1].strip(), "%a %b %d %H:%M:%S %Y"))))' "$(ps -o lstart= -p "$gpid")" 2>/dev/null || echo 0)"
+  gconf="$(mtime "$HOME/.config/ghostty/config")"
+  if [[ "$OS" == "Darwin" ]]; then greload="cmd+shift+,"; else greload="ctrl+shift+,"; fi
+  if (( gstart < gconf )); then warn "ghostty started before its config changed $(when "$gconf"): reload it ($greload) unless you already have"
+  else pass "ghostty started after the last config change"; fi
 fi
 
 # nvim: its config dir comes from the repo, but it also loads plugin, ftplugin,
@@ -275,18 +314,33 @@ check_rules_pin() {  # <owner/repo> <commit the copied rules match> <label>
 # Every plugin_action key binding must name an action herdr lists. `herdr config check` accepts
 # any name, so a misspelled, renamed or uninstalled action is a key that silently does nothing.
 check_bound_plugin_actions() {  # <config.toml> <`herdr plugin action list` JSON>
-  local out
-  out="$("$tomlpy" - "$1" "$2" 2>&1 <<'PY'
+  local out w need skipped=""
+  # Plugins bootstrap.sh skips on purpose because their build tool is missing (plugin_needs):
+  # a key bound to one of them warns, like the install check, and does not fail.
+  for w in $(sed -n -e 's/.*herdr plugin list.*grep -q \([a-z][a-z0-9.-]*\); then$/\1/p' \
+                    -e 's/.*grep -q \([a-z][a-z0-9.-]*\) <<<"\$herdr_plugins"; then$/\1/p' "$BOOTSTRAP"); do
+    need="$(plugin_needs "$w")"
+    [[ -n "$need" ]] && ! have "$need" && skipped+="$w:$need "
+  done
+  out="$("$tomlpy" - "$1" "$2" "$skipped" 2>&1 <<'PY'
 import json, sys, tomllib
 with open(sys.argv[1], "rb") as f:
     cfg = tomllib.load(f)
 listed = {a["plugin_id"] + "." + a["action_id"] for a in json.loads(sys.argv[2])["result"]["actions"]}
+skipped = dict(s.split(":", 1) for s in sys.argv[3].split())  # bootstrap grep name -> missing tool
 binds = [k for k in cfg.get("keys", {}).get("command", []) if k.get("type") == "plugin_action"]
 bad = [k for k in binds if k.get("command") not in listed]
+fails = 0
 for k in bad:
-    print(f"FAIL key {k.get('key')} runs plugin action {k.get('command')}, which herdr does not list (plugin missing, or action renamed)")
-if not bad:
-    print(f"PASS all {len(binds)} plugin_action key bindings name an action herdr lists")
+    pid = str(k.get("command", "")).rsplit(".", 1)[0]
+    why = next((t for w, t in skipped.items() if pid == w or pid.endswith("." + w)), None)
+    if why:
+        print(f"WARN key {k.get('key')} runs {k.get('command')}: its plugin is not installed because {why} is missing (bootstrap.sh skips it)")
+    else:
+        fails += 1
+        print(f"FAIL key {k.get('key')} runs plugin action {k.get('command')}, which herdr does not list (plugin missing, or action renamed)")
+if not fails:
+    print(f"PASS {len(binds) - len(bad)} of {len(binds)} plugin_action key bindings name an action herdr lists" + (f"; {len(bad)} wait on a skipped plugin" if bad else ""))
 PY
 )"
   emit "key bindings" <<<"$out"
@@ -454,10 +508,13 @@ check_plugin_pins() {
 }
 
 # The tool bootstrap.sh requires before installing a plugin: an `if command -v <tool>` right after
-# that plugin's `herdr plugin list ... grep -q <name>; then` line (fingers: cargo, herdr-plus: go).
+# that plugin's `grep -q <name>` line (fingers: cargo, herdr-plus: go). Both line shapes the
+# plugin-name sed below accepts: `if ! herdr plugin list ... | grep -q <name>; then` and
+# `if ! grep -q <name> <<<"$herdr_plugins"; then`.
 plugin_needs() {  # <name from the grep -q>
   awk -v w="$1" 'f { if (match($0, /if command -v [A-Za-z0-9_.-]+/)) print substr($0, RSTART + 14, RLENGTH - 14); exit }
-    /^[ \t]*if ! herdr plugin list/ && index($0, "grep -q " w "; then") { f = 1 }' "$BOOTSTRAP"
+    /^[ \t]*if ! herdr plugin list/ && index($0, "grep -q " w "; then") { f = 1 }
+    /^[ \t]*if ! grep -q / && index($0, "grep -q " w " <<<\"$herdr_plugins\"; then") { f = 1 }' "$BOOTSTRAP"
 }
 
 # herdr-plugins (stowed to ~/.local/bin) must be the one on PATH and run from this checkout.
@@ -542,7 +599,8 @@ if have herdr; then
   if herdr workspace list >/dev/null 2>&1; then
     pass "server running"
     plugins="$(herdr plugin list 2>/dev/null)"
-    for want in $(sed -n 's/.*herdr plugin list.*grep -q \([a-z][a-z0-9.-]*\); then$/\1/p' "$BOOTSTRAP"); do
+    for want in $(sed -n -e 's/.*herdr plugin list.*grep -q \([a-z][a-z0-9.-]*\); then$/\1/p' \
+                         -e 's/.*grep -q \([a-z][a-z0-9.-]*\) <<<"\$herdr_plugins"; then$/\1/p' "$BOOTSTRAP"); do
       line="$(echo "$plugins" | grep -E "^- [^ ]*$want " || true)"
       # bootstrap skips a plugin whose build tool is missing, so missing it then is expected
       need="$(plugin_needs "$want")"
@@ -562,7 +620,8 @@ if have herdr; then
       check_reviewr_config "$(plugin_config_dir persiyanov.reviewr)/config.toml"
     fi
     out="$(herdr integration status 2>&1 | grep -i claude || true)"
-    if [[ -z "$out" ]] || echo "$out" | grep -qi 'not installed'; then fail "Claude integration not installed (herdr integration install claude)"
+    if [[ ! -d "$HOME/.claude" ]]; then info "Claude Code not set up (no ~/.claude); integration not checked"
+    elif [[ -z "$out" ]] || echo "$out" | grep -qi 'not installed'; then fail "Claude integration not installed (herdr integration install claude)"
     elif echo "$out" | grep -qi 'outdated'; then warn "Claude integration outdated (herdr integration install claude)"
     else pass "Claude integration current"; fi
   else warn "server not running; plugins and integration not checked"; fi
@@ -603,7 +662,8 @@ if [[ -f "$hcfg" ]]; then
     pass "herdr sidebar spaces row shows \$jj_status"
   else fail "herdr sidebar: [ui.sidebar.spaces] rows in ~/.config/herdr/config.toml lack \$jj_status"; fi
 fi
-if [[ "$OS" == "Darwin" ]] && launchctl print "gui/$(id -u)/dev.dotfiles.herdr-summarizer" >/dev/null 2>&1; then
+if [[ "$OS" != "Darwin" ]]; then info "launchd: macOS only (old launchd job not checked)"
+elif launchctl print "gui/$(id -u)/dev.dotfiles.herdr-summarizer" >/dev/null 2>&1; then
   fail "the old launchd job is still loaded (run herdr-summarizer/install.sh to remove it)"
 fi
 if have herdr && herdr workspace list >/dev/null 2>&1; then

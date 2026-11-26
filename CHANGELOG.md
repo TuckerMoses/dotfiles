@@ -9,12 +9,25 @@ Queued work lives in `docs/proposals/`.
 ## [2026-11-18]
 
 ### Added
+- Linux is a tested target on x86-64 and arm64 (Ubuntu 26.04; `dnf` distros stay best-effort and untested). `bootstrap.sh` now installs everything the Mac gets: zsh, a clipboard tool, `jj` and `lazyjj` (pinned release binaries checked by sha256), herdr, zsh-vi-mode, the JetBrains Mono Nerd Font, with every installer non-interactive and user-level binaries in `~/.local/bin`
+- `test/suite.sh <local|vm-native|vm-emulated|here>`: one suite for an isolated throwaway `$HOME` on this machine, a fresh QEMU guest of the host's architecture, and an emulated guest of the other one. It runs `bootstrap.sh` three times (the third must install nothing), a headless herdr server, nvim plugins, a summarizer hook run, an interactive zsh, then `validate.sh` to exit 0. See `test/README.md`
+- `/build-proposals` runs that suite in all three environments before it touches the live machine, and stops if an environment cannot be started
+- `validate.sh`: an interactive zsh starts with nothing on stderr and with zsh-vi-mode loaded; the Nerd Font is installed; tmux's copy-mode `y` pipes to a command that exists; on Linux, a running Ghostty older than its config
+- A GitHub Actions job runs the suite on hosted x86-64 and arm64 Linux runners for pull requests that touch bootstrap, validate, the packages or `test/`
 - Every third-party herdr plugin is pinned in `bootstrap.sh`: vim-herdr-navigation at `7873100` and herdr-plus at `f38df35` join the two new pins. herdr-plus installs only when Go is present, because without Go its build step downloads the latest release binary rather than building the pin. `herdr-plugins` (stowed to `~/.local/bin`) handles updates:
   - `status` shows each plugin's pinned, installed and upstream commits
   - `review <plugin>` shows what changed and leaves the judgement to the user: the new commits, diffs of the manifest, of the scripts its build runs and of any changed build-tool file (`build.rs`, `Cargo.toml`, `Makefile`, `go.mod`, ...), the release tag when the build downloads a release, lock-file package changes and every other changed file by name; it exits 1 for a target that is not upstream's own commit and 2 when that cannot be checked (built show-only; an earlier install-script scanner was dropped before merge, see `docs/plans/herdr-plugin-pins.md`)
   - `update` is the user's: it needs a terminal and reads its confirmations from it. It steps through each plugin that is behind; on yes it reinstalls that plugin without `--yes`, then moves its pin. A plugin installed off its pin is reinstalled at the pin first. `update <plugin> <sha>` moves one plugin to that commit (a tagged release, on upstream's default branch or a tag's commit; a fork-only commit is refused) instead of upstream HEAD, and `update` refuses to run from a linked worktree
   - `update` moves the pin only after the new commit installs, and puts the old pin back if it does not
 - `validate.sh`: installed plugins match their pins (through `herdr-plugins check`), `herdr-plugins` on PATH is this checkout's, and the copied herdr-plus and reviewr config rules are checked against the commit they were read at
+
+### Fixed
+- `zsh/.zshrc` no longer needs Homebrew: zsh-vi-mode comes from brew when brew has it, else from the Oh My Zsh custom plugin; the `launchctl` alias is macOS-only; `~/.local/bin` is put on `PATH` when missing
+- tmux copy mode on Linux picks, at each copy, `wl-copy` in a Wayland session, `xclip`, if installed, in an X11 one, else tmux's own buffer, where it used to assume `xclip`
+- bootstrap on a machine with no `~/.zshrc`: the Oh My Zsh installer wrote a template there, which made stow abort
+- bootstrap reinstalled the herdr plugins on some re-runs: `herdr plugin list | grep -q` failed under `pipefail` when grep exited first
+- bootstrap's Linux downloads give up on a dead connection (under 1 KB/s for a minute) and retry; plain `curl` waited on one forever, which hung an emulated test guest for six hours
+- bootstrap skips herdr's Claude integration with a hint when `~/.claude` does not exist, and `validate.sh` reports that case as not checked, where both used to fail
 
 ## [2026-11-17]
 

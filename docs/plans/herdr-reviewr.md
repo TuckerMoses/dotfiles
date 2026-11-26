@@ -37,7 +37,7 @@ Read at the pinned commit `bb71050caa5d3a0b1a414527783eb7a772447f9f` (release v0
    ```
    The pin in a variable or inline; the grep name must be the plugin id `persiyanov.reviewr` (`herdr plugin list`
    prints ids). Bootstrap keeps `--yes` because the pin is the review (superseded: the pin is a reviewed source commit, and the binary its build downloads is trusted to the release, see As built); first install on this machine is done by hand
-   without `--yes` in Phase 6.
+   without `--yes` in Phase 7.
 2. Stowed plugin config `herdr/.config/herdr/plugins/config/persiyanov.reviewr/config.toml`:
    `auto_open = false`, `theme = "catppuccin"` (Catppuccin Mocha is the repo palette; use the theme name reviewr
    accepts for Mocha if it distinguishes flavours), `default_scope = "uncommitted"`, `toggle_placement = "split"`,
@@ -61,11 +61,11 @@ Read at the pinned commit `bb71050caa5d3a0b1a414527783eb7a772447f9f` (release v0
 - Show each fails against a broken copy before committing.
 
 ## Outside the repo
-- First install by hand (Phase 6), no `--yes`: `herdr plugin install persiyanov/herdr-reviewr --ref <sha>`.
+- First install by hand (Phase 7), no `--yes`: `herdr plugin install persiyanov/herdr-reviewr --ref <sha>`.
 - `~/.local/bin/herdr-reviewr` symlink created by the installer (not stowed; harmless; list in PR).
 - `~/.config/herdr/plugins/config/persiyanov.reviewr/` will be created by stow.
 
-## Trial in git and jj repos (Phase 6, before docs)
+## Trial in git and jj repos (Phase 7, before docs)
 Try in `~/dotfiles` (git) and `~/Vault` (colocated jj+git) and `~/aios/lib` (jj only, no `.git`). Expected: git works,
 colocated probably works through its git repo, jj-only does not. Record the result in `docs/herdr.html`; if jj
 repos do not work, it ships for git and the guide says so.

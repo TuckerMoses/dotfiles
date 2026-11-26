@@ -1,0 +1,116 @@
+name: Linux test
+
+# ── Why a container ──────────────────────────────────────────────────────────
+# test/suite.sh was proven on Ubuntu 26.04, where apt has neovim 0.11, fzf 0.67
+# (`fzf --zsh`, which .zshrc sources) and lazygit. The hosted runners are Ubuntu
+# 24.04: neovim 0.9.5 (too old for this LazyVim config), fzf 0.44 (no --zsh) and
+# no lazygit package at all, so bootstrap.sh's apt install would fail on the
+# runner image itself. The job therefore runs in an ubuntu:26.04 container on
+# both runners (x86-64 and arm64), which gives the same release as the QEMU
+# guests. Containers run as root with a minimal image, so the first step adds
+# what an Ubuntu cloud image already has (sudo, git, curl, python3, procps...).
+#
+# The suite's `here` environment bootstraps the real $HOME of the machine it is
+# on, against the checkout it is in: the container is thrown away after the job.
+
+on:
+  pull_request:
+    paths:
+      - bootstrap.sh
+      - validate.sh
+      - test/**
+      - atuin/**
+      - ghostty/**
+      - herdr/**
+      - herdr-summarizer/**
+      - nvim/**
+      - starship/**
+      - tmux/**
+      - zsh/**
+      - .github/workflows/linux-test.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  suite:
+    name: suite (${{ matrix.runner }})
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-latest, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    container:
+      image: ubuntu:26.04
+    env:
+      DEBIAN_FRONTEND: noninteractive
+      # The image has no locale; C.UTF-8 is built into glibc (tmux, zsh, starship want UTF-8).
+      LANG: C.UTF-8
+      LC_ALL: C.UTF-8
+      TERM: xterm-256color
+    steps:
+      # ── Container prerequisites ────────────────────────────────────────────
+      # git before checkout, or actions/checkout falls back to a tarball with no .git
+      # (validate.sh runs git status and git grep on the checkout).
+      - name: Install what a cloud image already has
+        run: |
+          apt-get -o Acquire::Retries=5 update -qq
+          apt-get -o Acquire::Retries=5 install -y -qq --no-install-recommends \
+            sudo git curl ca-certificates python3 procps lsof xz-utils
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ── Suite ──────────────────────────────────────────────────────────────
+      # HOME: container jobs get HOME=/github/home, but root's passwd entry says /root;
+      # use /root so $HOME and the account agree for every tool bootstrap installs.
+      # safe.directory: the workspace dir is owned by the runner's uid, not root.
+      # meta: `here` writes log, result, validate.txt and exit but no meta file, which
+      # `test/suite.sh report` reads; it is written here, in the run dir, not the suite.
+      - name: Run test/suite.sh here
+        run: |
+          export HOME=/root
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          run="$RUNNER_TEMP/run"; mkdir -p "$run"
+          {
+            echo "env=here"
+            echo "arch=$(uname -m)"
+            echo "accel=container ubuntu:26.04 on ${{ matrix.runner }}"
+            echo "os=$(. /etc/os-release && echo "$PRETTY_NAME")"
+            echo "commit=$(git rev-parse --short HEAD)"
+            echo "started=$(date '+%Y-%m-%d %H:%M:%S')"
+          } > "$run/meta"
+          start=$SECONDS rc=0
+          DOTFILES_TEST_DISPOSABLE=1 RUN_DIR="$run" test/suite.sh here || rc=$?
+          { echo "exit=$rc"; echo "seconds=$(( SECONDS - start ))"
+            echo "finished=$(date '+%Y-%m-%d %H:%M:%S')"; } >> "$run/meta"
+          exit "$rc"
+
+      - name: Step table
+        if: always()
+        run: |
+          run="$RUNNER_TEMP/run"
+          if [[ -f "$run/result" ]]; then
+            { echo "### Linux suite: $(uname -m)"; echo
+              test/suite.sh report "$run"; } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "### Linux suite: $(uname -m): no result file (the suite did not start)" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload run directory
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-suite-${{ matrix.runner }}
+          path: ${{ runner.temp }}/run
+          if-no-files-found: warn

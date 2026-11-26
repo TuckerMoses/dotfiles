@@ -53,7 +53,7 @@ Read at pinned commit `2d9fc997ce1a95976b975da758dccc7b6e011336` (HEAD on 2026-1
 - Show each fails against a broken copy before committing.
 
 ## Outside the repo
-- First install by hand in Phase 6, no `--yes`: `herdr plugin install nathan-poncet/herdr-fingers --ref <sha>`
+- First install by hand in Phase 7, no `--yes`: `herdr plugin install nathan-poncet/herdr-fingers --ref <sha>`
   (cargo build takes a minute or two).
 - Verify the copy reaches the macOS clipboard through Ghostty (`pbpaste` after picking a hint).
 

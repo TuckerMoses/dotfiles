@@ -75,7 +75,7 @@ that runs at install.
 - Missing Go: with go hidden from PATH, bootstrap's herdr-plus block skips and validate warns.
 
 ## Outside the repo
-None at build time. In Phase 6 the user can run `herdr-plugins status`.
+None at build time. In Phase 7 the user can run `herdr-plugins status`.
 
 ## Left out
 Automatic scheduled checks; updating herdr itself; the local herdr-summarizer plugin (not pinned: it is this repo).
@@ -224,3 +224,11 @@ Automatic scheduled checks; updating herdr itself; the local herdr-summarizer pl
   check; `review herdr-fingers 590d48b` (the pin's short sha) says nothing to review.
 - `validate.sh` records the commit each copied upstream rule set matches (`HERDR_PLUS_RULES_AT`, `REVIEWR_RULES_AT`)
   and warns when `bootstrap.sh` pins a different one. Plugin drift stays a warning because the plugin still works.
+- Merged with master's Linux target (2026-11-26):
+  - `bootstrap.sh` reads `herdr plugin list` once into `$herdr_plugins` and tests each plugin with
+    `if ! grep -q <name> <<<"$herdr_plugins"; then`, which fixes a SIGPIPE under `pipefail` that reinstalled plugins. The
+    Steps' `herdr plugin list | grep -q` line shape is superseded.
+  - `validate.sh`'s plugin-name sed and `plugin_needs`, and `herdr-plugins`' `needs_tool`, accept both shapes.
+  - A key bound to a plugin that bootstrap skips because its build tool is missing (herdr-plus without go, fingers without
+    cargo, as in the Linux test guests) is a warning in `check_bound_plugin_actions`, as the install check already was.
+    Any other unlisted action still fails.

@@ -16,6 +16,7 @@ writes a plan for each one at the moment it executes it, then deletes the propos
 | [neovim-claude-sync](neovim-claude-sync.md) | `done` | Keep Neovim in sync with Claude Code file changes (3 tiers) |
 | [tmux-session-persistence](tmux-session-persistence.md) | `done` | Persist tmux sessions across reboots with resurrect + continuum |
 | [claude-context-management](claude-context-management.md) | `done` | Global CLAUDE.md via Stow so every Claude Code session has context |
+| [linux-target](linux-target.md) | `done` | Linux on x86-64 and arm64 as a tested target; one test suite run in three environments before live validation |
 | [herdr-plus-wire-up](herdr-plus-wire-up.md) | `done` | herdr-plus project templates, worktree layouts and quick actions; `prefix+t`, `prefix+space` |
 | [herdr-reviewr](herdr-reviewr.md) | `done` | Review an agent's diff and send line comments back (`prefix+alt+r`), pinned |
 | [herdr-fingers-trial](herdr-fingers-trial.md) | `done` | Trial: hint-copy paths, SHAs and URLs from a pane (`prefix+f`), pinned |
@@ -33,5 +34,6 @@ In a Claude Code session started in `~/dotfiles`:
 ```
 
 It reviews each proposal against the current repo, writes its plan, implements independent units in parallel
-worktrees, has each add a `validate.sh` check, merges them into one branch, validates that branch live, runs an
+worktrees, has each add a `validate.sh` check, merges them into one branch, tests that branch with `test/suite.sh`
+in three environments (isolated local, Linux VM, emulated Linux VM), validates it live, runs an
 adversarial review, and opens one PR. It never merges to `master`. Details: `.claude/skills/build-proposals/SKILL.md`.

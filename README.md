@@ -11,13 +11,17 @@ cd ~/dotfiles
 ./validate.sh    # checks everything is linked, installed and loading cleanly
 ```
 
+Works on macOS and on Linux (x86-64 and arm64; tested on Ubuntu 26.04, `dnf` distros are best-effort).
+On Linux, bootstrap installs system packages with `sudo apt-get` and everything else into `~/.local/bin`,
+and prints the `chsh` command for making zsh your login shell without running it.
+
 ## Structure
 
 Each top-level directory is a Stow package that mirrors `$HOME`:
 
 ```
 dotfiles/
-├── .github/workflows/                — CI (Claude Code Action for PR reviews)
+├── .github/workflows/                — CI (Claude Code Action for PR reviews, Linux test on x86-64 and arm64)
 ├── atuin/.config/atuin/config.toml   → ~/.config/atuin/config.toml
 ├── ghostty/.config/ghostty/config    → ~/.config/ghostty/config
 ├── herdr/.config/herdr/config.toml   → ~/.config/herdr/config.toml (plus herdr-summarize, herdr-recent, herdr-plugins → ~/.local/bin)
@@ -29,6 +33,7 @@ dotfiles/
 ├── zsh/.zshrc                        → ~/.zshrc
 ├── bootstrap.sh                      — one-command setup
 ├── validate.sh                       — read-only check that everything here is live and working
+├── test/                             — one test suite for three environments: isolated local, Linux VM, emulated Linux VM (see test/README.md)
 ├── docs/herdr.html                   — guide to the herdr setup: sidebar, picker, summarizer, keys (open in a browser)
 ├── docs/proposals/                   — the approved queue (see docs/proposals/README.md)
 ├── docs/plans/                       — record of what was built

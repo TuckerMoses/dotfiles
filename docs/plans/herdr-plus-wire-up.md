@@ -67,7 +67,7 @@ Facts read from the installed source (`config.go`, `README.md`, `herdr-plugin.to
 ## Outside the repo
 - `~/.config/herdr/plugins/config/cloudmanic.herdr-plus/` exists and is empty, so stow links into it with no conflicts.
 - `~/.config/herdr/plugins/config/herdr-plus/` (empty, created 2026-11-17 09:23, not used by the plugin) is a stray;
-  remove it by hand in Phase 6 only if still empty.
+  remove it by hand in Phase 7 only if still empty.
 - `herdr server reload-config` after stowing.
 
 ## Edge cases

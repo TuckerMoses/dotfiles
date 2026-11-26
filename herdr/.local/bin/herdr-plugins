@@ -98,7 +98,8 @@ lookup() {  # <installed list> <owner/repo> <field 2|3>
 # The tool bootstrap.sh requires before installing <owner/repo> (its `if command -v <tool>` guard
 # inside that plugin's block), so update never installs where bootstrap would skip.
 needs_tool() {  # <owner/repo>
-  awk -v r="$1" '/herdr plugin list.*grep -q/ { t = "" }
+  # A plugin's block starts at its "is it installed" test, in either shape bootstrap.sh uses.
+  awk -v r="$1" '/herdr plugin list.*grep -q/ || /^[ \t]*if ! grep -q .*<<<"\$herdr_plugins"/ { t = "" }
     /if command -v [A-Za-z0-9_.-]+/ { match($0, /command -v [A-Za-z0-9_.-]+/); t = substr($0, RSTART + 11, RLENGTH - 11) }
     /^[ \t]*herdr plugin install / && index($0, "herdr plugin install " r " ") { print t; exit }' "$BOOTSTRAP"
 }
