@@ -1,0 +1,218 @@
+name: Nix
+
+# ── What runs here ───────────────────────────────────────────────────────────
+# The Nix route (flake.nix, nix/, nixos/): evaluation of every output and host,
+# the build-sandbox checks on both Linux architectures, and the NixOS VM tests
+# (attribute names starting with vm-) on x86-64 with KVM. test/suite.sh, the
+# Stow route, stays in linux-test.yml.
+#
+# Check lists are computed from the flake in each job, so a check added later is
+# built without editing this file. homepc's system is evaluated, never built: its
+# NVIDIA driver is unfree, cache.nixos.org does not carry it, and every run would
+# compile kernel modules. The only binary cache is cache.nixos.org.
+
+on:
+  pull_request:
+    paths:
+      - flake.nix
+      - flake.lock
+      - nix/**
+      - nixos/**
+      - atuin/**
+      - ghostty/**
+      - herdr/**
+      - nvim/**
+      - starship/**
+      - tmux/**
+      - zsh/**
+      - herdr-summarizer/**
+      - bootstrap.sh
+      - validate.sh
+      - .github/workflows/nix.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+# ── Nix ──────────────────────────────────────────────────────────────────────
+# Nix 2.34.9 is the version on homepc. The action's default installer is a newer
+# Nix, so install_url names this release and install_sha256 is that installer's
+# hash (the installer then checks its own tarball). KVM is set up by the vm job's
+# own step, not by the action, so it is visible in one place.
+# accept-flake-config = false: a nixConfig in the flake never adds a cache or a
+# setting in CI.
+
+jobs:
+  eval:
+    name: eval
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@382a9ed9481c7c1f94f68b72ef105b3417c73877 # v32.1.0
+        with:
+          install_url: https://releases.nixos.org/nix/nix-2.34.9/install
+          install_sha256: a03ce2e9eaf4ea1560260b9a93e311dbaf589d28fb5c9318f8d9e768ee6339d8
+          enable_kvm: false
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+            accept-flake-config = false
+
+      # Darwin and aarch64 included: their packages are evaluated, not built.
+      - name: nix flake check --all-systems --no-build
+        run: nix flake check --all-systems --no-build
+
+      # homepc needs nothing extra for its unfree driver: allowUnfree is set in its
+      # NixOS config (nixos/modules/desktop.nix).
+      - name: Evaluate every NixOS host
+        run: |
+          hosts=$(nix eval --json .#nixosConfigurations --apply builtins.attrNames | jq -r '.[]')
+          if [[ -z "$hosts" ]]; then
+            echo "::error::nixosConfigurations is empty"
+            exit 1
+          fi
+          { echo "### NixOS hosts (evaluated, not built)"; echo
+            echo "| Host | Result |"; echo "|---|---|"; } >> "$GITHUB_STEP_SUMMARY"
+          failed=0
+          for host in $hosts; do
+            echo "::group::$host"
+            if drv=$(nix eval --raw ".#nixosConfigurations.$host.config.system.build.toplevel.drvPath"); then
+              echo "$drv"
+              echo "| \`$host\` | pass |" >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "::error::$host failed to evaluate"
+              echo "| \`$host\` | **fail** |" >> "$GITHUB_STEP_SUMMARY"
+              failed=1
+            fi
+            echo "::endgroup::"
+          done
+          exit "$failed"
+
+  checks:
+    name: checks (${{ matrix.system }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            system: x86_64-linux
+          - runner: ubuntu-24.04-arm
+            system: aarch64-linux
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@382a9ed9481c7c1f94f68b72ef105b3417c73877 # v32.1.0
+        with:
+          install_url: https://releases.nixos.org/nix/nix-2.34.9/install
+          install_sha256: a03ce2e9eaf4ea1560260b9a93e311dbaf589d28fb5c9318f8d9e768ee6339d8
+          enable_kvm: false
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+            accept-flake-config = false
+
+      # One at a time, so the log and the summary show which check failed; a failure
+      # does not stop the rest.
+      - name: Build the build-sandbox checks
+        env:
+          SYSTEM: ${{ matrix.system }}
+        run: |
+          names=$(nix eval --json ".#checks.$SYSTEM" \
+            --apply 'c: builtins.filter (n: builtins.substring 0 3 n != "vm-") (builtins.attrNames c)' \
+            | jq -r '.[]')
+          if [[ -z "$names" ]]; then
+            echo "::error::checks.$SYSTEM has no build-sandbox checks"
+            exit 1
+          fi
+          { echo "### Build-sandbox checks: $SYSTEM"; echo
+            echo "| Check | Result |"; echo "|---|---|"; } >> "$GITHUB_STEP_SUMMARY"
+          failed=0
+          for name in $names; do
+            echo "::group::$name"
+            if nix build --no-link --print-build-logs ".#checks.$SYSTEM.$name"; then
+              echo "| \`$name\` | pass |" >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "::error::check $name failed"
+              echo "| \`$name\` | **fail** |" >> "$GITHUB_STEP_SUMMARY"
+              failed=1
+            fi
+            echo "::endgroup::"
+          done
+          exit "$failed"
+
+  vm:
+    name: vm (x86_64-linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666"' | sudo tee /etc/udev/rules.d/99-kvm.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          if [[ ! -w /dev/kvm ]]; then
+            echo "::error::/dev/kvm is not writable after the udev rule"
+            exit 1
+          fi
+
+      # system-features replaces the default list, so the defaults are repeated with kvm.
+      - name: Install Nix
+        uses: cachix/install-nix-action@382a9ed9481c7c1f94f68b72ef105b3417c73877 # v32.1.0
+        with:
+          install_url: https://releases.nixos.org/nix/nix-2.34.9/install
+          install_sha256: a03ce2e9eaf4ea1560260b9a93e311dbaf589d28fb5c9318f8d9e768ee6339d8
+          enable_kvm: false
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+            accept-flake-config = false
+            system-features = nixos-test benchmark big-parallel kvm
+
+      # No vm-* checks is a clean skip, not a failure: the VM tests may not exist yet.
+      - name: Build the VM tests
+        run: |
+          names=$(nix eval --json .#checks.x86_64-linux \
+            --apply 'c: builtins.filter (n: builtins.substring 0 3 n == "vm-") (builtins.attrNames c)' \
+            | jq -r '.[]')
+          if [[ -z "$names" ]]; then
+            echo "No vm-* checks in checks.x86_64-linux; nothing to run."
+            echo "### VM tests: none defined, skipped" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          { echo "### VM tests: x86_64-linux"; echo
+            echo "| Check | Result |"; echo "|---|---|"; } >> "$GITHUB_STEP_SUMMARY"
+          failed=0
+          for name in $names; do
+            echo "::group::$name"
+            if nix build --no-link --print-build-logs ".#checks.x86_64-linux.$name"; then
+              echo "| \`$name\` | pass |" >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "::error::check $name failed"
+              echo "| \`$name\` | **fail** |" >> "$GITHUB_STEP_SUMMARY"
+              failed=1
+            fi
+            echo "::endgroup::"
+          done
+          exit "$failed"
