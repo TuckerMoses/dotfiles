@@ -174,8 +174,9 @@ Design and reasons: `docs/design/nix-dotfiles.md`. `nix` commands run on a machi
 Mac has no Nix.
 
 - **Outputs:** `overlays.default` (adds `pkgs.dotfiles.*`, `nix/overlay.nix`); `packages.<system>`: `home-tree`,
-  `scripts`, `summarizer-plugin`, `oh-my-zsh-bundle`, `tools`, `sandbox`, `herdr-sandbox`, `dotfiles-switch`
-  (`nix/packages/`); `apps` for the two sandboxes and `dotfiles-switch`; `homeManagerModules.default`
+  `scripts`, `summarizer-plugin`, `oh-my-zsh-bundle`, `tools`, `sandbox`, `herdr-sandbox`, `dotfiles-switch`,
+  `herdr-plugins` and one `herdr-plugin-<repo>` per pinned plugin, `herdr-plugin-hashes` (`nix/packages/`); `apps`
+  for the two sandboxes, `dotfiles-switch` and `herdr-plugin-hashes`; `homeManagerModules.default`
   (`nix/home-manager/`); `homeConfigurations."<user>@<host>"` (`tucker@homepc`, `test@vm`; one `mkHome` line
   each, `nix/lib/home-configuration.nix`); `checks` (Linux only). x86_64-linux and aarch64-linux are built;
   aarch64-darwin is only evaluated.
@@ -187,6 +188,11 @@ Mac has no Nix.
   in `nix/packages/home-tree.nix`, and `link-modes` fails on a base config that names them). Stow places both.
   `dotfiles.interactiveShell` (store mode) makes herdr panes and Ghostty windows start that shell, by appending
   one setting to the placed copies of their configs, so the login shell can stay bash.
+- **herdr plugins:** on the Nix route the three pinned plugins are Nix builds at the pins in `bootstrap.sh` (still
+  the one place a pin is written), with their source and Go/Rust hashes in `nix/packages/herdr-plugins/hashes.nix`,
+  keyed by commit. The module places them under `~/.local/share/dotfiles/herdr-plugins/` and `herdr plugin link`s
+  each (`dotfiles.herdrPlugins.enable`, on in store mode). A moved pin stops the build until `hashes.nix` is
+  replaced with what `nix run .#herdr-plugin-hashes` prints.
 - **Switching a user:** `dotfiles-switch` builds the caller's `homeConfigurations."<user>@<host>"` from
   `~/dotfiles` and activates it, as the user, with no root and no `safe-switch`; `--dry-run` lists what would
   change, `--rollback` goes back one generation. herdr reloads its `config.toml` by itself (an `onChange` hook,
@@ -198,8 +204,8 @@ Mac has no Nix.
 - **Sandboxes:** `nix run .#sandbox -- [--keep] [--summarizer] [--] [<command...>]` runs `zsh -i`, or the command,
   in a throwaway `HOME` under `/tmp` filled from the build, under `env -i` with only the build's tools on `PATH`.
   `nix run .#herdr-sandbox -- [--keep] [--with-plugins] [--summarizer] [--no-attach] [--] [<command...>]` also starts
-  a herdr server inside it (`--with-plugins` installs the pinned plugins; `--summarizer` links the summarizer, run
-  dry). Both refuse to start in the real home. They isolate files and sockets; they are not a security boundary.
+  a herdr server inside it, with the plugins linked from the build (`--with-plugins` installs them with herdr's own
+  installer instead; `--summarizer` links the summarizer, run dry). Both refuse to start in the real home. They isolate files and sockets; they are not a security boundary.
 - **Testing herdr changes:** a change to `herdr/`, `herdr-summarizer/` or a herdr script is tested with a flake
   check or in `herdr-sandbox` (on the Mac, `test/suite.sh local`). An agent never tests against the owner's running
   herdr, and never runs the plugin sync (`dotfiles-herdr-plugins-sync`) outside a sandbox.

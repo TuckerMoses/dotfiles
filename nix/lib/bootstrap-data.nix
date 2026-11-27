@@ -1,5 +1,5 @@
-# What the checks read out of bootstrap.sh, parsed the way validate.sh parses it, so Nix and
-# the Stow route can never disagree about it.
+# What Nix reads out of bootstrap.sh, parsed the way validate.sh and herdr-plugins parse it, so
+# Nix and the Stow route can never disagree about it.
 { lib }:
 let
   text = builtins.readFile ../../bootstrap.sh;
@@ -52,6 +52,26 @@ let
         aarch64-linux = sumOf (lib.elemAt sumLines 1);
       };
     };
+
+  # ── herdr plugins ────────────────────────────────────────────────────────
+  # Each `herdr plugin install <owner/repo> --ref <sha>` line, read as herdr-plugins' pins() reads
+  # it. Every install line must carry a pin, as herdr-plugins sync requires.
+  installLines = lib.filter (l: builtins.match "[[:space:]]*herdr plugin install .*" l != null) lines;
+  pinOf =
+    l:
+    let
+      m = builtins.match "[[:space:]]*herdr plugin install ([^ ]*) --ref ([0-9a-f]{7,40})( .*)?" l;
+    in
+    if m == null then
+      throw "bootstrap-data: a herdr plugin install line in bootstrap.sh has no --ref pin: ${l}"
+    else
+      {
+        repo = lib.elemAt m 0;
+        rev = lib.elemAt m 1;
+      };
+  herdrPlugins =
+    assert lib.assertMsg (installLines != [ ]) "bootstrap-data: no herdr plugin install line in bootstrap.sh";
+    map pinOf installLines;
 in
 {
   # The Stow packages bootstrap.sh stows, sorted and without duplicates.
@@ -59,6 +79,11 @@ in
 
   # The tuicr release bootstrap.sh pins: { version; sha256.<system>; }.
   inherit tuicr;
+
+  # The herdr plugin pins, in bootstrap.sh's order: [ { repo = "<owner/repo>"; rev; } ].
+  # Unlike the other values here, the plugin packages read these (nix/packages/herdr-plugins),
+  # so a pin moved in bootstrap.sh moves the build too.
+  inherit herdrPlugins;
 
   # Files Home Manager itself adds to config.home.file, which belong to no Stow package; the
   # checks that compare placed files with Stow files leave these out, and only these.

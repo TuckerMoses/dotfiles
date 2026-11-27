@@ -77,6 +77,11 @@
             sandbox
             herdr-sandbox
             dotfiles-switch
+            herdr-plugin-vim-herdr-navigation
+            herdr-plugin-herdr-plus
+            herdr-plugin-herdr-fingers
+            herdr-plugins
+            herdr-plugin-hashes
             ;
         }
       );
@@ -123,6 +128,8 @@
           herdr-sandbox = app self.packages.${system}.herdr-sandbox;
           # The first switch on a machine, before dotfiles-switch is on PATH.
           dotfiles-switch = app self.packages.${system}.dotfiles-switch;
+          # After a herdr plugin pin moved in bootstrap.sh: the hashes its build needs.
+          herdr-plugin-hashes = app self.packages.${system}.herdr-plugin-hashes;
         }
       );
 

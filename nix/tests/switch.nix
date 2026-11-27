@@ -3,7 +3,9 @@
 # login shell stays bash. Generation A is homeConfigurations."test@vm"; B differs in .zshrc and
 # one herdr config line. The test switches to A, then to B with a herdr server running (the
 # onChange hook reloads it), reboots (B stays: nothing re-activates a user environment at boot),
-# and rolls back to A with no server running. SSH logins land in bash throughout.
+# and rolls back to A with no server running. SSH logins land in bash throughout. A links herdr's
+# three plugins from the build (the guest has no network to fetch them); B, with the same
+# plugin builds, links nothing again.
 #
 # The guest has no network, so nothing is built in it: both generations are built with the test
 # and handed to dotfiles-switch with --activation-package.
@@ -18,6 +20,7 @@ let
   keys = import (pkgs.path + "/nixos/tests/ssh-keys.nix") pkgs;
   mkHome = import ../lib/home-configuration.nix { inherit self inputs; };
   switch = "${self.packages.${system}.dotfiles-switch}/bin/dotfiles-switch";
+  pluginIds = lib.attrNames self.packages.${system}.herdr-plugins.plugins;
 
   homeA = self.homeConfigurations."test@vm";
   genA = homeA.activationPackage;
@@ -81,6 +84,10 @@ pkgs.testers.runNixOSTest {
     SWITCH = "${switch}"
     GEN_A, GEN_B = "${genA}", "${genB}"
     HERDR = "~/.nix-profile/bin/herdr"
+    PLUGINS = ${builtins.toJSON pluginIds}
+    # The repo's nvim spec without LazyVim (no network to install it): its init finds the editor file.
+    NVIM_PROBE = ("lua dofile(vim.fn.expand('~/.config/nvim/lua/plugins/herdr.lua'))[1].init();"
+                  " io.stdout:write(vim.fn.maparg('<C-h>', 'n', false, true).desc or 'none')")
 
     def ssh(cmd, timeout=60):
         """A non-interactive command over SSH as test, run by the login shell (bash -c)."""
@@ -123,13 +130,28 @@ pkgs.testers.runNixOSTest {
         machine.fail(ssh("test -e ~/.zshrc || test -e ~/.local/state/nix/profiles/home-manager"))
 
     with subtest("generation A: placed by the user, without root"):
-        machine.succeed(ssh(f"{SWITCH} --activation-package {GEN_A}", timeout=300))
+        out = machine.succeed(ssh(f"{SWITCH} --activation-package {GEN_A} 2>&1", timeout=300))
+        print(out)
+        for p in PLUGINS:
+            assert f"dotfiles: linked herdr plugin {p}" in out, f"A did not link {p}:\n{out}"
         assert current() == GEN_A, f"current generation is {current()}, not A"
         target = machine.succeed(ssh("readlink -f ~/.zshrc")).strip()
         assert target.startswith("/nix/store/"), f".zshrc resolves to {target}"
         machine.succeed(ssh("test -x ~/.nix-profile/bin/zsh && test -x ~/.nix-profile/bin/dotfiles-switch"))
         machine.fail(ssh("grep -q dotfiles_gen ~/.zshrc"))
         logins_ok("after A")
+
+    with subtest("herdr's plugins are the builds, at their pins, and nvim finds its half"):
+        lst = machine.succeed(ssh(f"{HERDR} plugin list"))
+        print(lst)
+        for p in PLUGINS:
+            line = next((l for l in lst.splitlines() if l.startswith(f"- {p} (")), "")
+            assert "enabled [local:/nix/store/" in line, f"{p} is not listed enabled from the store:\n{lst}"
+        check = machine.succeed(ssh("~/.local/bin/herdr-plugins check"))
+        print(check)
+        assert check.count(" at its pin ") == len(PLUGINS) and "drift" not in check and "absent" not in check, check
+        nav = machine.succeed(ssh("~/.nix-profile/bin/nvim --headless -u NONE -i NONE +" + shlex.quote(NVIM_PROBE) + " +qa 2>&1"))
+        assert "Navigate left (vim/herdr)" in nav, f"nvim did not load vim-herdr-navigation: {nav!r}"
 
     with subtest("the interactive zsh is clean"):
         err, res = "/tmp/zsh-stderr", "/tmp/zsh-probe.out"
@@ -163,6 +185,10 @@ pkgs.testers.runNixOSTest {
         out = machine.succeed(ssh(f"{SWITCH} --activation-package {GEN_B} 2>&1", timeout=300))
         print(out)
         assert "dotfiles: herdr reloaded its config" in out, f"the onChange hook did not reload herdr:\n{out}"
+        assert "linked herdr plugin" not in out, f"B re-linked plugins whose builds did not change:\n{out}"
+        lst = machine.succeed(ssh(f"{HERDR} plugin list"))
+        listed = [l for l in lst.splitlines() if l.startswith("- ")]
+        assert len(listed) == len(PLUGINS), f"after B the plugin list changed:\n{lst}"
         assert current() == GEN_B, f"current generation is {current()}, not B"
         machine.succeed(ssh("grep -q dotfiles_gen ~/.zshrc"))
         alias = machine.succeed(ssh("~/.nix-profile/bin/zsh -ic 'alias dotfiles_gen' 2>/dev/null"))

@@ -29,5 +29,24 @@ in
     sandbox = self.callPackage ./packages/sandbox.nix { };
     herdr-sandbox = self.callPackage ./packages/sandbox.nix { withHerdr = true; };
     dotfiles-switch = self.callPackage ./packages/dotfiles-switch.nix { };
+
+    # ── herdr's third-party plugins ──────────────────────────────────────────
+    # Built at the pins bootstrap.sh writes (nix/packages/herdr-plugins/source.nix).
+    herdr-plugin-vim-herdr-navigation = self.callPackage ./packages/herdr-plugins/vim-herdr-navigation.nix { };
+    herdr-plugin-herdr-plus = self.callPackage ./packages/herdr-plugins/herdr-plus.nix { };
+    herdr-plugin-herdr-fingers = self.callPackage ./packages/herdr-plugins/herdr-fingers.nix { };
+    herdr-plugins = self.callPackage ./packages/herdr-plugins { };
+    herdr-plugin-hashes = final.writeShellApplication {
+      name = "herdr-plugin-hashes";
+      # The caller's own nix, so the hashes come from the Nix that builds the plugins.
+      runtimeInputs = [
+        final.jq
+        final.gnused
+        final.gnugrep
+        final.coreutils
+      ];
+      text = builtins.readFile ./packages/herdr-plugins/hashes.sh;
+      meta.description = "Print nix/packages/herdr-plugins/hashes.nix for the pins in bootstrap.sh";
+    };
   });
 }

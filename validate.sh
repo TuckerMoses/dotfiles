@@ -627,8 +627,34 @@ check_herdr_plugins_env() {  # <herdr-plugins>
   fi
   rm -rf "$t"
 }
+# On a Nix-managed home the plugins are Nix builds, which herdr lists as local links with no commit;
+# herdr-plugins reads the commit from the .dotfiles-pin file each build writes into its root. A fake herdr
+# lists one such plugin at bootstrap.sh's first pin, then at another commit: check must report it at its pin,
+# then off it (exit 1). Runs the checkout's copy, as above.
+check_herdr_plugins_nix() {  # <herdr-plugins>
+  local t repo pin out rc=0
+  read -r repo pin < <(sed -n 's/^[[:space:]]*herdr plugin install \([^ ]*\) --ref \([0-9a-f]\{7,40\}\).*/\1 \2/p' "$BOOTSTRAP" | head -1)
+  if [[ -z "${pin:-}" ]]; then fail "herdr-plugins and Nix-built plugins: no pinned plugin in bootstrap.sh to test with"; return; fi
+  t="$(mktemp -d "${TMPDIR:-/tmp}/dotfiles-validate-hn.XXXXXX")"; mkdir -p "$t/repo" "$t/bin" "$t/plugin"
+  cp "$BOOTSTRAP" "$t/repo/bootstrap.sh"
+  printf '#!/bin/sh\ncat "%s/list.json"\n' "$t" >"$t/bin/herdr"; chmod +x "$t/bin/herdr"
+  printf '{"result":{"plugins":[{"plugin_id":"nix-built","plugin_root":"%s","source":{"kind":"local"}}]}}\n' "$t/plugin" >"$t/list.json"
+  echo "$repo $pin" >"$t/plugin/.dotfiles-pin"
+  out="$(PATH="$t/bin:$PATH" DOTFILES_DIR="$t/repo" "$1" check 2>&1)" || rc=$?
+  if (( rc != 0 )) || ! grep -qx "ok $repo at its pin ${pin:0:7}" <<<"$out"; then
+    fail "herdr-plugins check does not see a Nix-built plugin at its pin (exit $rc): $(grep -F "$repo" <<<"$out" | head -1)"
+  else
+    echo "$repo 0000000000000000000000000000000000000000" >"$t/plugin/.dotfiles-pin"
+    rc=0; out="$(PATH="$t/bin:$PATH" DOTFILES_DIR="$t/repo" "$1" check 2>&1)" || rc=$?
+    if (( rc == 1 )) && grep -qx "drift $repo at 0000000, pinned ${pin:0:7}" <<<"$out"; then
+      pass "herdr-plugins check reads a Nix-built plugin's commit (.dotfiles-pin): at its pin, and off it"
+    else fail "herdr-plugins check does not see a Nix-built plugin off its pin (exit $rc): $(grep -F "$repo" <<<"$out" | head -1)"; fi
+  fi
+  rm -rf "$t"
+}
 check_herdr_plugins_cmd
 check_herdr_plugins_env "$DOTFILES_DIR/herdr/.local/bin/herdr-plugins"
+check_herdr_plugins_nix "$DOTFILES_DIR/herdr/.local/bin/herdr-plugins"
 if have herdr; then
   out="$(herdr config check 2>&1)"
   if echo "$out" | grep -q 'config: ok'; then pass "config.toml valid"; else fail "config.toml: $(echo "$out" | tail -2 | tr '\n' ' ')"; fi

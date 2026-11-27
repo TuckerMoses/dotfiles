@@ -30,8 +30,8 @@ source: session (nixos-host)
      remove what it placed (`home-manager-path` from the profile with `nix-env -e home-manager-path`, and
      the links into the store) and re-stow.
 - **Still open after the cutover:**
-  - The third-party herdr plugins stay installed by herdr. `dotfiles-herdr-plugins-sync` refuses outside
-    a sandbox; `herdr-nix-plugin-builds.md` covers building them with Nix.
+  - Nothing for the herdr plugins: the three pinned plugins are Nix builds that the module links
+    (`docs/plans/herdr-nix-plugin-builds.md`).
   - `validate.sh` is not expected to pass in full on a Nix-managed home (it reads tool lists that assume
     apt or brew). Record what it reports, and fix only what is wrong.
   - Claude Code stays the native install in `~/.local/bin`.

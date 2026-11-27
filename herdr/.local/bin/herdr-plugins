@@ -17,6 +17,8 @@
 # (give the commit it points at).
 # DOTFILES_DIR, when set, is the directory whose bootstrap.sh is read, instead of the checkout this script is linked from
 # (a Nix build sets it). update refuses unless it is the top of a git checkout.
+# A plugin a Nix build provides (herdr lists it as a local link with a .dotfiles-pin file) counts as installed at the
+# commit that file names, for status, check and sync; update skips it (its pin moves through nix/packages/herdr-plugins).
 # sync runs only with DOTFILES_SANDBOX=1 and a HOME other than the user's own (a sandbox's throwaway HOME). It installs each
 # pin with herdr plugin install --yes, needs the build tool bootstrap.sh requires for it (go, cargo), and fails on a missing
 # tool, a herdr plugin install line without a --ref pin, or an install that does not end at the pin.
@@ -89,16 +91,26 @@ pins() {  # "<owner/repo> <sha>" per pinned plugin
   sed -n 's/^[[:space:]]*herdr plugin install \([^ ]*\) --ref \([0-9a-f]\{7,40\}\).*/\1 \2/p' "$BOOTSTRAP"
 }
 
-# "<owner/repo> <plugin id> <resolved commit>" per installed GitHub plugin; fails when herdr can't list.
+# "<owner/repo> <plugin id> <resolved commit> <github|nix>" per installed GitHub plugin, and per plugin
+# a Nix build provides (herdr lists it as a local link; the build writes "<owner/repo> <commit>" into
+# .dotfiles-pin in its root). Fails when herdr can't list.
 installed() {
   local json
   have herdr || return 1
   json="$(herdr plugin list --json 2>/dev/null)" || return 1
-  "$PY" -I -c 'import json, sys
+  "$PY" -I -c 'import json, os, sys
 for p in json.loads(sys.argv[1])["result"]["plugins"]:
     s = p.get("source", {})
     if s.get("kind") == "github":
-        print("%s/%s %s %s" % (s.get("owner"), s.get("repo"), p.get("plugin_id", "?"), s.get("resolved_commit", "?")))' "$json"
+        print("%s/%s %s %s github" % (s.get("owner"), s.get("repo"), p.get("plugin_id", "?"), s.get("resolved_commit", "?")))
+    elif s.get("kind") == "local" and p.get("plugin_root"):
+        try:
+            with open(os.path.join(p["plugin_root"], ".dotfiles-pin")) as f:
+                w = f.read().split()
+        except OSError:
+            continue
+        if len(w) == 2:
+            print("%s %s %s nix" % (w[0], p.get("plugin_id", "?"), w[1]))' "$json"
 }
 
 lookup() {  # <installed list> <owner/repo> <field 2|3>
@@ -673,6 +685,12 @@ cmd_update() {
   for repo in $targets; do
     pin="$(pins | awk -v r="$repo" '$1 == r { print $2; exit }')"
     id="$(lookup "$inst" "$repo" 2)"; got="$(lookup "$inst" "$repo" 3)"
+    # A Nix build placed this one: herdr's installer must not replace it, and the pin moves in a checkout
+    # without it (the Mac), then reaches this machine through hashes.nix and dotfiles-switch.
+    if [[ "$(lookup "$inst" "$repo" 4)" == nix ]]; then
+      echo "$repo: provided by the Nix build here, not installed by herdr; not updated. Move its pin with herdr-plugins update on a machine where herdr installs it (the pin is in bootstrap.sh), then update nix/packages/herdr-plugins/hashes.nix (nix run .#herdr-plugin-hashes) and run dotfiles-switch"
+      failed="$failed $repo"; continue
+    fi
     # Installed at a commit other than its pin: the pin is the reviewed state, so put the install back
     # on it (no review) before looking at anything newer.
     if [[ -n "$id" && "$got" != "$pin"* ]]; then

@@ -491,3 +491,10 @@ disagree, this section describes what exists.
 - **Section 7, `link-modes`:** `home-tree` marks each file `base` or `personal` (files that name the
   owner's directories); the check compares the placed set with the Stow set with the personal profile
   on, and with the Stow set minus those files with it off, and fails on a base config naming them.
+- **Section 4, "Not packaged", herdr's third-party plugins** (2026-11-27): now packaged, one Nix build each
+  (`nix/packages/herdr-plugins/`), at the pins `bootstrap.sh` writes, read through `bootstrap-data.nix`; the pins did
+  not move to a data file. Source and Go/Rust hashes live in `hashes.nix`, keyed by commit, so a moved pin stops the
+  build with a message until `nix run .#herdr-plugin-hashes` refreshes it. The module places each at
+  `~/.local/share/dotfiles/herdr-plugins/<id>` and `herdr plugin link`s it (`dotfiles.herdrPlugins.enable`); the
+  sandboxes link them too, and `--with-plugins` stays as the test of herdr's own installer.
+  Record: `docs/plans/herdr-nix-plugin-builds.md`.

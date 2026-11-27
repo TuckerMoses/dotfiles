@@ -1,5 +1,7 @@
 # tool-versions (docs/design/nix-dotfiles.md, section 7): the tools are at or above the floors the
-# repo depends on, and the tuicr package pins the release bootstrap.sh pins, by its own literals.
+# repo depends on, the tuicr package pins the release bootstrap.sh pins, by its own literals, and
+# the herdr plugin packages build the commits bootstrap.sh pins, with a hashes.nix entry for
+# exactly those commits.
 { pkgs, nixpkgs }:
 let
   lib = pkgs.lib;
@@ -32,7 +34,22 @@ let
     version = (tuicrFor system).version;
   }) data.tuicr.sha256;
 
-  # The Nix side minus the checks: none of it may read bootstrap-data.nix.
+  # ── herdr plugins ────────────────────────────────────────────────────────
+  # What each package builds, against bootstrap.sh's pins as herdr-plugins reads them. hashes.nix
+  # may hold only the pinned commits: an entry left for an old pin is a hash nothing checks.
+  pluginPkgs = lib.attrValues d.herdr-plugins.plugins;
+  pluginHashes = import ../packages/herdr-plugins/hashes.nix;
+  pluginRows = map (pin: {
+    inherit (pin) repo rev;
+    built = map (p: p.rev) (lib.filter (p: p.repo == pin.repo) pluginPkgs);
+    srcRev = map (p: p.src.rev) (lib.filter (p: p.repo == pin.repo) pluginPkgs);
+    keys = lib.attrNames (pluginHashes.${pin.repo} or { });
+  }) data.herdrPlugins;
+  strayRepos = lib.subtractLists (map (p: p.repo) data.herdrPlugins) (lib.attrNames pluginHashes);
+
+  # The Nix side minus the checks: none of it may read bootstrap-data.nix, except the herdr
+  # plugin sources, which take their pins from bootstrap.sh by design (bootstrap.sh is where a pin
+  # is written; the tuicr package instead hard-codes its pins and this check compares them).
   nixSide = lib.fileset.toSource {
     inherit root;
     fileset = lib.fileset.difference (lib.fileset.unions [
@@ -43,6 +60,7 @@ let
       (root + "/nix/checks")
       (root + "/nix/tests")
       (root + "/nix/lib/bootstrap-data.nix")
+      (root + "/nix/packages/herdr-plugins/source.nix")
     ]);
   };
 in
@@ -82,6 +100,19 @@ pkgs.runCommand "check-tool-versions" { } ''
   '') (lib.attrValues data.tuicr.sha256)}
   hits=$(grep -rln 'bootstrap-data' ${nixSide} || true)
   [ -z "$hits" ] || fail "bootstrap-data.nix is read outside the checks: $hits"
-  echo "tuicr: nix/packages/tuicr.nix hard-codes its pins; only the checks read bootstrap-data.nix"
+  echo "tuicr: nix/packages/tuicr.nix hard-codes its pins; only the checks and the herdr plugin sources read bootstrap-data.nix"
+
+  # ── herdr plugins against bootstrap.sh ───────────────────────────────────
+  [ ${toString (lib.length pluginPkgs)} = ${toString (lib.length data.herdrPlugins)} ] \
+    || fail "${toString (lib.length pluginPkgs)} herdr plugin packages, but bootstrap.sh pins ${toString (lib.length data.herdrPlugins)} plugins"
+  ${lib.concatMapStrings (r: ''
+    [ "${toString r.built}" = "${r.rev}" ] && [ "${toString r.srcRev}" = "${r.rev}" ] \
+      || fail "herdr plugin ${r.repo}: the package builds '${toString r.built}' (source '${toString r.srcRev}'), bootstrap.sh pins ${r.rev}"
+    [ "${toString r.keys}" = "${r.rev}" ] \
+      || fail "herdr plugin ${r.repo}: nix/packages/herdr-plugins/hashes.nix has entries for '${toString r.keys}', bootstrap.sh pins ${r.rev} (exactly that one)"
+    echo "herdr plugin ${r.repo}: builds ${r.rev} as bootstrap.sh pins; hashes.nix keyed by it"
+  '') pluginRows}
+  [ -z "${toString strayRepos}" ] \
+    || fail "nix/packages/herdr-plugins/hashes.nix has entries for plugins bootstrap.sh does not pin: ${toString strayRepos}"
   touch $out
 ''

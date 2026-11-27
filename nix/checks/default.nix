@@ -18,7 +18,7 @@ in
   configs = import ./configs.nix { inherit pkgs checkLib; };
   zsh-interactive = import ./zsh-interactive.nix { inherit checkLib; };
   scripts = import ./scripts.nix { inherit pkgs checkLib; };
-  herdr-headless = import ./herdr-headless.nix { inherit checkLib; };
+  herdr-headless = import ./herdr-headless.nix { inherit pkgs checkLib; };
   tool-versions = import ./tool-versions.nix {
     inherit pkgs;
     inherit (inputs) nixpkgs;

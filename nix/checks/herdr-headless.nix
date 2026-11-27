@@ -2,7 +2,16 @@
 # herdr server starts in the throwaway HOME, the packaged summarizer plugin links, and creating
 # a workspace produces hook runs that all succeed and a non-empty state file. No model calls:
 # HERDR_SUMMARIZER_DRY=1 is exported before the server starts, so every hook run inherits it.
-{ checkLib }:
+# Then herdr's three third-party plugins, the Nix builds, link as the Home Manager module links
+# them: herdr lists each enabled, herdr-plugins check finds each at its bootstrap.sh pin, every
+# plugin_action key binding names an action herdr lists, the built binaries run, and nvim finds
+# the navigation plugin's editor file.
+{ pkgs, checkLib }:
+let
+  lib = pkgs.lib;
+  plugins = pkgs.dotfiles.herdr-plugins;
+  ids = lib.attrNames plugins.plugins;
+in
 checkLib.mkCheck "herdr-headless" { } ''
   export HERDR_SUMMARIZER_DRY=1
   export HERDR_SUMMARIZER_STATE="$HOME/.local/state/herdr-summarizer"
@@ -68,6 +77,63 @@ checkLib.mkCheck "herdr-headless" { } ''
   [ -s "$HERDR_SUMMARIZER_STATE/state.json" ] \
     || fail "summarizer: hook ran but herdr-summarize wrote no state to $HERDR_SUMMARIZER_STATE/state.json within 120s"
   echo "summarizer: state file written ($(wc -c < "$HERDR_SUMMARIZER_STATE/state.json") bytes)"
+
+  # ── Third-party plugins ──────────────────────────────────────────────────
+  # The module's stable path, then one link each, as its activation step does.
+  pdir="$HOME/.local/share/dotfiles/herdr-plugins"
+  mkdir -p "$pdir"
+  for p in ${plugins}/*; do ln -s "$(readlink -f "$p")" "$pdir/''${p##*/}"; done
+  for p in "$pdir"/*; do
+    res=$(herdr plugin link "$p" 2>&1) || fail "herdr plugin link $p failed: $res"
+  done
+  list=$(herdr plugin list 2>&1)
+  for id in ${lib.escapeShellArgs ids}; do
+    grep -qE "^- $id \(.*\) enabled \[local:/nix/store/" <<<"$list" \
+      || fail "herdr plugin list does not show $id enabled and linked from the store: $list"
+  done
+  echo "plugins: ${toString (lib.length ids)} linked and enabled"
+
+  # herdr lists a link with no commit; herdr-plugins reads the build's .dotfiles-pin.
+  rc=0; out=$(herdr-plugins check 2>&1) || rc=$?
+  [ "$rc" = 0 ] || fail "herdr-plugins check exited $rc: $out"
+  n=$(grep -c '^ok .* at its pin ' <<<"$out" || true)
+  [ "$n" = ${toString (lib.length ids)} ] && ! grep -qv '^ok ' <<<"$out" \
+    || fail "herdr-plugins check does not find every plugin at its pin: $out"
+  echo "plugins: herdr-plugins check: $(tr '\n' ';' <<<"$out")"
+
+  # `herdr config check` accepts any action name, so the bindings are compared with the list.
+  res=$(herdr config check 2>&1) || fail "herdr config check failed: $res"
+  [ "$res" = "config: ok" ] || fail "herdr config check: $res"
+  res=$(python3 -I - "$HOME/.config/herdr/config.toml" "$(herdr plugin action list)" <<'PY'
+  import json, sys, tomllib
+  with open(sys.argv[1], "rb") as f:
+      cfg = tomllib.load(f)
+  listed = {a["plugin_id"] + "." + a["action_id"] for a in json.loads(sys.argv[2])["result"]["actions"]}
+  binds = [k.get("command") for k in cfg.get("keys", {}).get("command", []) if k.get("type") == "plugin_action"]
+  bad = [b for b in binds if b not in listed]
+  if not binds or bad:
+      print("bound but not listed: %s" % (bad or "no plugin_action bindings at all"))
+      sys.exit(1)
+  print("%d plugin_action bindings, all listed" % len(binds))
+  PY
+  ) || fail "plugin_action bindings: $res"
+  echo "plugins: $res"
+
+  # The binaries the manifests run, at the paths they run them from.
+  fingers="$pdir/nathan-poncet.herdr-fingers/target/release/herdr-fingers"
+  res=$(echo "commit 2d9fc997ce1a95976b975da758dccc7b6e011336" | env -u HERDR_PLUGIN_CONFIG_DIR "$fingers" scan --width 80 2>&1) \
+    || fail "herdr-fingers scan failed: $res"
+  [[ "$res" == *2d9fc997ce1a* ]] || fail "herdr-fingers scan found no hint in a line holding a SHA: $res"
+  res=$("$pdir/cloudmanic.herdr-plus/bin/herdr-plus" --version 2>&1) || fail "herdr-plus --version failed: $res"
+  [[ "$res" == herdr-plus* ]] || fail "herdr-plus --version: $res"
+  echo "plugins: herdr-fingers scans, $res runs"
+
+  # The repo's nvim spec, without LazyVim (no network here): its init finds the editor file.
+  res=$(nvim --headless -u NONE -i NONE \
+    +"lua dofile(vim.fn.expand('~/.config/nvim/lua/plugins/herdr.lua'))[1].init(); io.stdout:write((vim.fn.maparg('<C-h>', 'n', false, true).desc or 'none') .. '\n')" \
+    +qa 2>&1)
+  [[ "$res" == *"Navigate left (vim/herdr)"* ]] || fail "nvim did not load vim-herdr-navigation's editor file: $res"
+  echo "plugins: nvim maps <C-h> to vim-herdr-navigation"
 
   stop
   trap - EXIT

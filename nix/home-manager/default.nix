@@ -86,6 +86,44 @@ let
       echo "dotfiles: no herdr server running; nothing to reload"
     fi
   '';
+
+  # ── herdr plugins ──────────────────────────────────────────────────────────
+  # Each plugin's build sits at a path that stays the same across rebuilds; herdr records the
+  # store path it resolves to (it canonicalises a link), so a rebuild that changes a plugin needs
+  # a re-link, and one that does not needs nothing. `herdr plugin link` works with or without a
+  # server and replaces a link of the same id. A plugin herdr installed itself is left alone.
+  # Never fails the activation.
+  pluginDir = ".local/share/dotfiles/herdr-plugins";
+  herdrPlugins = d.herdr-plugins.plugins;
+  herdrPluginLinks = ''
+    dotfilesHerdrPlugins() {
+      local list id want kind got
+      if [[ ! -x ${herdr} ]]; then
+        echo "dotfiles: no herdr; herdr plugins not linked"; return 0
+      fi
+      if ! list=$(${herdr} plugin list --json 2>/dev/null); then
+        echo "dotfiles: herdr plugin list failed; herdr plugins not linked (run dotfiles-switch again)" >&2; return 0
+      fi
+      for id in ${lib.escapeShellArgs (lib.attrNames herdrPlugins)}; do
+        want=$(readlink -f ${lib.escapeShellArg "${config.home.homeDirectory}/${pluginDir}"}/"$id") || want=""
+        kind="" got=""
+        read -r kind got < <(${pkgs.jq}/bin/jq -r --arg id "$id" \
+          '.result.plugins[]? | select(.plugin_id == $id) | "\(.source.kind) \(.plugin_root)"' <<<"$list") || true
+        if [[ -z $want ]]; then
+          echo "dotfiles: herdr plugin $id: its build is not in place; not linked" >&2
+        elif [[ $kind == local && $got == "$want" ]]; then
+          : # linked at this build already
+        elif [[ -n $kind && $kind != local ]]; then
+          echo "dotfiles: herdr plugin $id is installed by herdr itself ($kind); left as it is. For the Nix build: herdr plugin uninstall $id, then dotfiles-switch" >&2
+        elif run ${herdr} plugin link "$want" >/dev/null; then
+          echo "dotfiles: linked herdr plugin $id"
+        else
+          echo "dotfiles: herdr plugin link $want failed; run dotfiles-switch again" >&2
+        fi
+      done
+    }
+    dotfilesHerdrPlugins || true
+  '';
 in
 {
   options.dotfiles = {
@@ -119,6 +157,16 @@ in
       description = ''
         The shell herdr panes and Ghostty windows start, when it is not the login shell. null
         leaves both to their defaults (the login shell). Store mode only.
+      '';
+    };
+    herdrPlugins.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = cfg.linkMode == "store";
+      defaultText = lib.literalExpression ''config.dotfiles.linkMode == "store"'';
+      description = ''
+        Place herdr's third-party plugins (vim-herdr-navigation, herdr-plus, herdr-fingers), built
+        by Nix at the pins in bootstrap.sh, under ~/${pluginDir}, and `herdr plugin link` each.
+        Off, none is placed or linked; turning it off later does not unlink the ones herdr has.
       '';
     };
   };
@@ -162,7 +210,14 @@ in
         ".oh-my-zsh".source = d.oh-my-zsh-bundle;
         # A path that stays the same across rebuilds; linking it into herdr stays manual.
         ".local/share/dotfiles/herdr-summarizer-plugin".source = d.summarizer-plugin;
-      };
+      }
+      // lib.optionalAttrs cfg.herdrPlugins.enable (
+        lib.mapAttrs' (id: p: lib.nameValuePair "${pluginDir}/${id}" { source = p; }) herdrPlugins
+      );
+
+    home.activation.dotfilesHerdrPlugins = lib.mkIf cfg.herdrPlugins.enable (
+      lib.hm.dag.entryAfter [ "linkGeneration" ] herdrPluginLinks
+    );
 
     # The repo's pins win on each activation, and the files stay writable.
     home.activation.dotfilesNvimFiles = lib.hm.dag.entryAfter [ "linkGeneration" ] (

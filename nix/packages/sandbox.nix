@@ -13,6 +13,7 @@
   home-tree,
   oh-my-zsh-bundle,
   summarizer-plugin,
+  herdr-plugins,
   withHerdr ? false,
 }:
 let
@@ -109,6 +110,11 @@ writeShellApplication {
       ln -s "${scripts}/bin/$s" "$home/.local/bin/$s"
     done
     ln -s ${summarizer-plugin} "$home/.local/share/dotfiles/herdr-summarizer-plugin"
+    # herdr's third-party plugins from this build, where the Home Manager module puts them.
+    mkdir -p "$home/.local/share/dotfiles/herdr-plugins"
+    for p in ${herdr-plugins}/*; do
+      ln -s "$(readlink -f "$p")" "$home/.local/share/dotfiles/herdr-plugins/''${p##*/}"
+    done
 
     # nixpkgs' zsh sources /etc/set-environment on NixOS, replacing PATH, unless
     # __NIXOS_SET_ENVIRONMENT_DONE is set.
@@ -139,8 +145,15 @@ writeShellApplication {
       for _ in $(seq 1 600); do inenv herdr workspace list >/dev/null 2>&1 && break; sleep 0.1; done
       inenv herdr workspace list >/dev/null 2>&1 \
         || { echo "sandbox: herdr server did not answer within 60s; log:" >&2; tail -20 "$home/.herdr-server.log" >&2; exit 1; }
+      # The plugins come from this build, linked as the module links them. --with-plugins
+      # installs them with herdr's own installer instead (network, go and cargo), to test it.
       if (( with_plugins )); then
         inenv dotfiles-herdr-plugins-sync || { echo "sandbox: plugin sync failed" >&2; exit 1; }
+      else
+        for p in "$home/.local/share/dotfiles/herdr-plugins"/*; do
+          inenv herdr plugin link "$p" >/dev/null \
+            || { echo "sandbox: linking the herdr plugin $p failed" >&2; exit 1; }
+        done
       fi
       if (( summarizer )); then
         inenv herdr plugin link "$home/.local/share/dotfiles/herdr-summarizer-plugin" >/dev/null \

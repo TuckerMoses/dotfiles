@@ -23,7 +23,7 @@ source: session (nixos-host)
   - The Darwin `tools` leaves out tuicr until nixpkgs carries 0.30.0 or later; it stays from Homebrew
     until then.
   - Ghostty is not in `tools`; the app stays installed as it is.
-  - The herdr plugins and Claude Code stay as they are (see `herdr-nix-plugin-builds.md`).
+  - The herdr plugins come from the build, as on homepc (`docs/plans/herdr-nix-plugin-builds.md`). Claude Code stays as it is.
   - Best after `homepc-tucker-on-nix.md`, so the module has run on one real home first.
 
 ## Needs decision
