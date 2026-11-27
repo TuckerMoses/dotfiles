@@ -1,8 +1,15 @@
 {
-  description = "NixOS hosts for the dotfiles repo";
+  description = "The dotfiles as a Nix package set, and NixOS hosts";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
+    # Only for herdr and jujutsu (nix/overlay.nix), so one fast-moving tool never moves the
+    # kernel or Tailscale.
+    nixpkgs-unstable.url = "github:NixOS/nixpkgs/nixos-unstable";
+    home-manager = {
+      url = "github:nix-community/home-manager/release-26.05";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
     disko = {
       url = "github:nix-community/disko";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -10,12 +17,36 @@
   };
 
   outputs =
-    { nixpkgs, disko, ... }:
+    inputs@{
+      self,
+      nixpkgs,
+      disko,
+      ...
+    }:
     let
+      lib = nixpkgs.lib;
+
+      # x86_64-linux and aarch64-linux are built; aarch64-darwin is evaluated only, until a Mac
+      # with Nix exists.
+      systems = [
+        "x86_64-linux"
+        "aarch64-linux"
+        "aarch64-darwin"
+      ];
+      forAllSystems = f: lib.genAttrs systems (system: f system);
+
+      pkgsFor =
+        system:
+        import nixpkgs {
+          inherit system;
+          overlays = [ self.overlays.default ];
+        };
+
       mkHost =
         name: system: host:
         nixpkgs.lib.nixosSystem {
           inherit system;
+          specialArgs = { inherit inputs; };
           modules = [
             disko.nixosModules.disko
             ./nixos/modules
@@ -26,6 +57,37 @@
         };
     in
     {
+      # ── Package set ──────────────────────────────────────────────────────────
+      overlays.default = import ./nix/overlay.nix inputs;
+
+      packages = forAllSystems (
+        system:
+        let
+          d = (pkgsFor system).dotfiles;
+        in
+        {
+          inherit (d)
+            home-tree
+            scripts
+            summarizer-plugin
+            oh-my-zsh-bundle
+            tmux-plugins
+            tools
+            ;
+          # sandbox and herdr-sandbox are added here with the sandbox apps.
+        }
+      );
+
+      # ── Home Manager module ──────────────────────────────────────────────────
+      # homeManagerModules.default goes here.
+
+      # ── Apps ─────────────────────────────────────────────────────────────────
+      # apps.<system>.sandbox and apps.<system>.herdr-sandbox go here.
+
+      # ── Checks ───────────────────────────────────────────────────────────────
+      # checks.<system>.* (build-sandbox checks and vm-* tests, Linux only) go here.
+
+      # ── NixOS hosts ──────────────────────────────────────────────────────────
       nixosConfigurations = {
         # The home PC.
         homepc = mkHost "homepc" "x86_64-linux" ./nixos/hosts/homepc;

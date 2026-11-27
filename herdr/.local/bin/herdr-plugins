@@ -9,11 +9,17 @@
 #   herdr-plugins check                    offline: exit 1 when an installed plugin is off its pin
 #   herdr-plugins review <plugin> [<ref>]  shows what changed, pin..ref (default: upstream HEAD); read-only
 #   herdr-plugins update [<plugin>... | <plugin> <sha>]  the user's: review, ask, reinstall, bump the pin (no <plugin>: all, at HEAD)
+#   herdr-plugins sync                     sandbox only: install every pinned plugin at its pin, as bootstrap.sh does
 #   herdr-plugins help
 #
 # <plugin> is a repo (herdr-plus), owner/repo, or a plugin id (cloudmanic.herdr-plus).
 # For update, <sha> is 7 to 40 lowercase hex characters, the last argument, after exactly one <plugin>; a tag name is not accepted
 # (give the commit it points at).
+# DOTFILES_DIR, when set, is the directory whose bootstrap.sh is read, instead of the checkout this script is linked from
+# (a Nix build sets it). update refuses unless it is the top of a git checkout.
+# sync runs only with DOTFILES_SANDBOX=1 and a HOME other than the user's own (a sandbox's throwaway HOME). It installs each
+# pin with herdr plugin install --yes, needs the build tool bootstrap.sh requires for it (go, cargo), and fails on a missing
+# tool, a herdr plugin install line without a --ref pin, or an install that does not end at the pin.
 # review takes any ref GitHub resolves (a branch, a tag, a sha), and the commit it resolves to must be upstream's own: on the
 # default branch's history, or the commit a tag points at (GitHub also resolves commits that exist only in a fork). "Nothing
 # to review" is said when the target resolves to the pin's commit.
@@ -26,7 +32,7 @@
 # plugin's own code, which runs whenever herdr calls it. It does not scan for fetches or decide whether a change is acceptable.
 # Exit codes: 0 ok (review: it ran); 1 drift (check), a review target GitHub shows is not upstream's own, or an update that
 # failed (unreadable upstream, a <sha> that does not resolve or is not upstream's own, failed review, failed install or pin
-# write); 2 setup or other error (review: anything else, such as a failed GitHub call, so upstream's own could not be checked);
+# write), or a sync that failed (a missing pin or build tool, a failed install); 2 setup or other error, or a sync refused (review: anything else, such as a failed GitHub call, so upstream's own could not be checked);
 # 130 Ctrl-C, which stops review and update.
 # update is the user's: run it in a terminal at the main checkout (not a linked worktree), on a branch made there, through
 # the stowed ~/.local/bin/herdr-plugins; commit the pin bump after. <sha> moves that one plugin to a commit other than
@@ -54,13 +60,17 @@ while [[ -L "$self" ]]; do
   link="$(readlink "$self")"
   case "$link" in /*) self="$link" ;; *) self="$(dirname "$self")/$link" ;; esac
 done
-REPO="$(cd "$(dirname "$self")/../../.." && pwd)"
+if [[ -n "${DOTFILES_DIR:-}" ]]; then
+  REPO="$(cd "$DOTFILES_DIR" 2>/dev/null && pwd)" || { echo "herdr-plugins: DOTFILES_DIR=$DOTFILES_DIR is not a directory" >&2; exit 2; }
+else
+  REPO="$(cd "$(dirname "$self")/../../.." && pwd)"
+fi
 BOOTSTRAP="$REPO/bootstrap.sh"
 PY=/usr/bin/python3; [[ -x "$PY" ]] || PY=python3
 # review parses manifests with a real TOML parser when one exists (Python 3.11+ tomllib)
 TOMLPY=""
-for p in python3.14 python3.13 python3.12 python3.11 python3 /usr/bin/python3; do
-  if command -v "$p" >/dev/null 2>&1 && "$p" -c 'import tomllib' 2>/dev/null; then TOMLPY="$(command -v "$p")"; break; fi
+for p in python3.14 python3.13 python3.12 python3.11 python3 "$PY"; do
+  if command -v "$p" >/dev/null 2>&1 && "$p" -I -c 'import tomllib' 2>/dev/null; then TOMLPY="$(command -v "$p")"; break; fi
 done
 
 die() { echo "herdr-plugins: $*" >&2; exit 2; }
@@ -84,7 +94,7 @@ installed() {
   local json
   have herdr || return 1
   json="$(herdr plugin list --json 2>/dev/null)" || return 1
-  "$PY" -c 'import json, sys
+  "$PY" -I -c 'import json, sys
 for p in json.loads(sys.argv[1])["result"]["plugins"]:
     s = p.get("source", {})
     if s.get("kind") == "github":
@@ -212,7 +222,7 @@ review_text() {  # <owner/repo> <pin> <target ref>
   elif (( urc != 0 )); then
     die "could not check whether ${target:0:7} ($3) is upstream's own: a GitHub API call or git ls-remote of $1 failed; not reviewed"
   fi
-  "${TOMLPY:-$PY}" - "$1" "$pin" "$target" <<'PY' || prc=$?
+  "${TOMLPY:-$PY}" -I - "$1" "$pin" "$target" <<'PY' || prc=$?
 import builtins, difflib, json, os, posixpath, re, subprocess, sys, unicodedata, urllib.parse
 repo, pin, target = sys.argv[1:4]
 TIMEOUT = 90       # seconds per gh call
@@ -635,6 +645,10 @@ cmd_update() {
   gdir="$(cd "$REPO" && cd "$(git rev-parse --git-dir 2>/dev/null)" 2>/dev/null && pwd -P)" || gdir=""
   cdir="$(cd "$REPO" && cd "$(git rev-parse --git-common-dir 2>/dev/null)" 2>/dev/null && pwd -P)" || cdir=""
   [[ -z "$gdir" || "$gdir" == "$cdir" ]] || die "$REPO is a linked git worktree. update edits bootstrap.sh and reinstalls on the live machine; the user runs it from the main checkout's stowed herdr-plugins (the first entry of 'git worktree list'); agents do not run it"
+  # A Nix build points DOTFILES_DIR at a store directory holding bootstrap.sh alone: nothing to edit or commit there.
+  local top
+  top="$(cd "$REPO" && git rev-parse --show-toplevel 2>/dev/null)" || top=""
+  [[ -n "$top" && "$(cd "$top" && pwd -P)" == "$(cd "$REPO" && pwd -P)" ]] || die "$REPO is not a git checkout of the dotfiles (DOTFILES_DIR=${DOTFILES_DIR:-unset}); update edits and commits bootstrap.sh, so the user runs it from the main checkout's stowed herdr-plugins"
   have gh || die "update needs the GitHub CLI (gh) to show what changed"
   local inst repo pin head targets="" t id got moved="" failed="" rrc want=""
   # An unreadable plugin list is not an empty one: update could otherwise move the pin of an installed plugin.
@@ -716,12 +730,54 @@ cmd_update() {
   [[ -z "$failed" ]] || return 1
 }
 
+# ── sync (sandbox only) ──────────────────────────────────────────────────────
+# A Nix-built home never runs bootstrap.sh, so this installs its pins there. It writes into HOME's herdr
+# config, so it runs only where a sandbox has made a throwaway HOME.
+passwd_home() {  # this user's home from the user database, not from $HOME
+  local u; u="$(id -un)"
+  if have getent; then getent passwd "$u" | cut -d: -f6
+  elif have dscl; then dscl . -read "/Users/$u" NFSHomeDirectory 2>/dev/null | sed -n 's/^NFSHomeDirectory: //p'
+  fi
+}
+
+canon() { (cd "$1" 2>/dev/null && pwd -P) || printf '%s\n' "$1"; }
+
+cmd_sync() {
+  local ph pinned nlines repo pin tool got failed=""
+  [[ "${DOTFILES_SANDBOX:-}" == 1 ]] || die "sync refused: it installs plugins into HOME and runs only in a sandbox (DOTFILES_SANDBOX=1, set by nix run .#sandbox and .#herdr-sandbox)"
+  ph="$(passwd_home || true)"
+  [[ -n "$ph" ]] || die "sync refused: could not read this user's home from the user database to compare with HOME"
+  [[ -n "${HOME:-}" && "$(canon "$HOME")" != "$(canon "$ph")" ]] || die "sync refused: HOME (${HOME:-unset}) is this user's real home; it runs only in a sandbox's throwaway HOME"
+  have herdr || die "sync needs herdr on PATH"
+  pinned="$(pins)"
+  # Every install line must be a pin: one the parser cannot read would otherwise be left out without a word.
+  nlines="$(grep -c '^[[:space:]]*herdr plugin install ' "$BOOTSTRAP" || true)"
+  if [[ -z "$pinned" ]]; then echo "herdr-plugins: no pinned herdr plugin install line in $BOOTSTRAP" >&2; return 1; fi
+  if (( $(wc -l <<<"$pinned") != nlines )); then
+    echo "herdr-plugins: $BOOTSTRAP has $nlines herdr plugin install lines but $(wc -l <<<"$pinned" | tr -d ' ') with a --ref pin; nothing installed" >&2
+    return 1
+  fi
+  # The list is on fd 3, so a herdr that reads stdin cannot swallow the rest of it.
+  while read -r repo pin <&3; do
+    tool="$(needs_tool "$repo")"
+    if [[ -n "$tool" ]] && ! have "$tool"; then echo "$repo: not installed: bootstrap.sh needs $tool for it and $tool is not on PATH"; failed+=" $repo"; continue; fi
+    got="$(lookup "$(installed || true)" "$repo" 3)"
+    if [[ -n "$got" && "$got" == "$pin"* ]]; then echo "$repo: already at its pin ${pin:0:7}"; continue; fi
+    # herdr can exit 0 without installing (herdr-plugins' reinstall notes it), so the list must show the pin after.
+    if herdr plugin install "$repo" --ref "$pin" --yes && got="$(lookup "$(installed || true)" "$repo" 3)" && [[ -n "$got" && "$got" == "$pin"* ]]; then
+      echo "$repo: installed at its pin ${pin:0:7}"
+    else echo "$repo: install at ${pin:0:7} FAILED (herdr plugin install failed, or herdr does not list it at the pin)"; failed+=" $repo"; fi
+  done 3<<<"$pinned"
+  [[ -z "$failed" ]] || { echo "herdr-plugins: sync failed for:$failed" >&2; return 1; }
+}
+
 # ── main ─────────────────────────────────────────────────────────────────────
 case "${1:-help}" in
   status) shift; cmd_status "$@" ;;
   check) shift; cmd_check "$@" ;;
   review) shift; cmd_review "$@" ;;
   update) shift; cmd_update "$@" ;;
+  sync) shift; cmd_sync "$@" ;;
   help|-h|--help) usage ;;
   *) usage >&2; exit 2 ;;
 esac
