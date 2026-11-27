@@ -441,8 +441,14 @@ disagree, this section describes what exists.
 - **Section 7, how the checks run:** each build-sandbox check runs under `bwrap` inside the Nix
   build sandbox, which adds `/usr/bin/env` and a `/tmp`. TPM and the tmux plugins start with
   `#!/usr/bin/env bash` and zsh writes here-documents to `/tmp`; the build sandbox has neither.
-  This needs a nested user namespace, which works on homepc. If a CI runner forbids it, the
-  alternative is to rewrite those interpreter lines in the `tmux-plugins` package.
+  This needs a nested user namespace. NixOS allows one; Ubuntu's AppArmor default does not, so
+  the CI job lifts that restriction on its runner, and `nix flake check` on an Ubuntu machine
+  would need the same. The way to drop the requirement is to rewrite those interpreter lines in
+  the `tmux-plugins` package.
+- **Section 8, the first CI run** failed in three places, all specific to a fresh machine: a
+  string interpolation of `pkgs.path` in the VM tests (it copies nixpkgs into the store, which an
+  evaluation-only run cannot do), the namespace restriction above, and a KVM permission test that
+  ran before udev had applied its rule. The second run passed every job.
 - **Section 7, `vm-lifeline`:** `lifeline.nix` has no option to turn off its connectivity
   watchdog, so the test host disables that timer; a guest with no Tailscale login would otherwise
   be rebooted about 19 minutes after boot.
