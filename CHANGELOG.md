@@ -14,12 +14,12 @@ Queued work lives in `docs/proposals/`.
 - `/build-proposals` runs that suite in all three environments before it touches the live machine, and stops if an environment cannot be started
 - `validate.sh`: an interactive zsh starts with nothing on stderr and with zsh-vi-mode loaded; the Nerd Font is installed; tmux's copy-mode `y` pipes to a command that exists; on Linux, a running Ghostty older than its config
 - A GitHub Actions job runs the suite on hosted x86-64 and arm64 Linux runners for pull requests that touch bootstrap, validate, the packages or `test/`
-- Every third-party herdr plugin is pinned in `bootstrap.sh`: vim-herdr-navigation at `7873100` and herdr-plus at `f38df35` join the two new pins. herdr-plus installs only when Go is present, because without Go its build step downloads the latest release binary rather than building the pin. `herdr-plugins` (stowed to `~/.local/bin`) handles updates:
+- Every third-party herdr plugin is pinned in `bootstrap.sh`: vim-herdr-navigation at `7873100` and herdr-plus at `f38df35` join the new fingers pin. herdr-plus installs only when Go is present, because without Go its build step downloads the latest release binary rather than building the pin. `herdr-plugins` (stowed to `~/.local/bin`) handles updates:
   - `status` shows each plugin's pinned, installed and upstream commits
   - `review <plugin>` shows what changed and leaves the judgement to the user: the new commits, diffs of the manifest, of the scripts its build runs and of any changed build-tool file (`build.rs`, `Cargo.toml`, `Makefile`, `go.mod`, ...), the release tag when the build downloads a release, lock-file package changes and every other changed file by name; it exits 1 for a target that is not upstream's own commit and 2 when that cannot be checked (built show-only; an earlier install-script scanner was dropped before merge, see `docs/plans/herdr-plugin-pins.md`)
   - `update` is the user's: it needs a terminal and reads its confirmations from it. It steps through each plugin that is behind; on yes it reinstalls that plugin without `--yes`, then moves its pin. A plugin installed off its pin is reinstalled at the pin first. `update <plugin> <sha>` moves one plugin to that commit (a tagged release, on upstream's default branch or a tag's commit; a fork-only commit is refused) instead of upstream HEAD, and `update` refuses to run from a linked worktree
   - `update` moves the pin only after the new commit installs, and puts the old pin back if it does not
-- `validate.sh`: installed plugins match their pins (through `herdr-plugins check`), `herdr-plugins` on PATH is this checkout's, and the copied herdr-plus and reviewr config rules are checked against the commit they were read at
+- `validate.sh`: installed plugins match their pins (through `herdr-plugins check`), `herdr-plugins` on PATH is this checkout's, and the copied herdr-plus config rules are checked against the commit they were read at
 
 ### Fixed
 - `zsh/.zshrc` no longer needs Homebrew: zsh-vi-mode comes from brew when brew has it, else from the Oh My Zsh custom plugin; the `launchctl` alias is macOS-only; `~/.local/bin` is put on `PATH` when missing
@@ -33,14 +33,16 @@ Queued work lives in `docs/proposals/`.
 
 ### Added
 - herdr-plus is wired up. Its config is stowed from the herdr package into `~/.config/herdr/plugins/config/cloudmanic.herdr-plus/`: four project templates (dotfiles, claude-materia, Vault, aios), worktree auto-layouts for the two git repos, and three quick actions (validate dotfiles, reload herdr, summarizer pass). `prefix+t` opens projects and `prefix+space` opens quick actions, both as popups
-- herdr-reviewr, pinned at `bb71050` (v0.52.2): `prefix+alt+r` toggles a pane with the agent's diff, where line comments are collected and sent to the agent. Its stowed config turns `auto_open` off, so it does not open in every new worktree
+- tuicr (diff review for git and jj, including jj repos with no `.git`): `prefix+alt+r` opens `tuicr -w` in a popup on the focused pane's uncommitted diff (jj: `@`). The agent reads the comments with `tuicr review comments`, through tuicr's agent skill, which the user installs once with `npx skills add agavra/tuicr` (bootstrap does not). macOS gets it from brew; Linux gets the pinned v0.30.0 static release binary, checked by sha256
+- herdr-reviewr was built (pinned at `bb71050`), tried live and replaced by tuicr before merge: it needs git, so it cannot review the jj-only repos, and native jj support was declined upstream (persiyanov/herdr-reviewr#106). Its record is `docs/plans/herdr-reviewr.md`
 - herdr-fingers (trial), pinned at `2d9fc99`: `prefix+f` puts hints over paths, URLs, SHAs and numbers in the focused pane, and typing a hint copies the match through OSC 52. Bootstrap builds it only when cargo is present. To remove the trial, remove the targets listed in `docs/plans/herdr-fingers-trial.md`
 - `$jj_status` in the spaces sidebar row: a space whose first pane is in a jj repo shows its bookmark (else the parent's bookmark, else the short change id), with `*` when `@` has changes. herdr-summarize reads it without snapshotting (`jj --ignore-working-copy`) during the passes it already runs. It is empty in other repos. `herdr-summarize jj-status DIR` prints it
 - `validate.sh`:
   - every `plugin_action` key binding must name an action herdr lists, for all plugins
   - herdr-plus templates and quick actions load
-  - reviewr's config is valid and `auto_open` is off
-  - reviewr's and fingers' binaries run
+  - tuicr runs, and reads a throwaway git repo and a throwaway jj repo with no `.git` (under a throwaway `HOME`, so its session store is untouched); its agent skill is installed (a warning when not)
+  - every popup and pane key binding runs a command that is on `PATH`
+  - fingers' binary runs
   - `$jj_status` is computed correctly on a throwaway repo and shown on open jj spaces
 
 ## [2026-11-14]

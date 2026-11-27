@@ -11,7 +11,7 @@
 #   herdr-plugins update [<plugin>... | <plugin> <sha>]  the user's: review, ask, reinstall, bump the pin (no <plugin>: all, at HEAD)
 #   herdr-plugins help
 #
-# <plugin> is a repo (herdr-reviewr), owner/repo, or a plugin id (persiyanov.reviewr).
+# <plugin> is a repo (herdr-plus), owner/repo, or a plugin id (cloudmanic.herdr-plus).
 # For update, <sha> is 7 to 40 lowercase hex characters, the last argument, after exactly one <plugin>; a tag name is not accepted
 # (give the commit it points at).
 # review takes any ref GitHub resolves (a branch, a tag, a sha), and the commit it resolves to must be upstream's own: on the
@@ -711,9 +711,6 @@ cmd_update() {
     echo "Commit bootstrap.sh in $REPO."
     if [[ " $moved " == *" cloudmanic/herdr-plus "* ]]; then
       echo "herdr-plus moved: re-read its config rules at the new pin, then update them and HERDR_PLUS_RULES_AT in validate.sh (check_herdr_plus_config)."
-    fi
-    if [[ " $moved " == *" persiyanov/herdr-reviewr "* ]]; then
-      echo "reviewr moved: re-check validate.sh's reviewr config allowlist (check_reviewr_config) against its src/config.rs and src/theme.rs at the new pin, then update REVIEWR_RULES_AT in validate.sh."
     fi
   fi
   [[ -z "$failed" ]] || return 1

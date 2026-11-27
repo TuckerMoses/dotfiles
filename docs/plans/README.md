@@ -1,6 +1,7 @@
 # Dotfiles Plans
 
-The record of what was built. Each file here is the implementation plan for a change that is on `master`.
+The record of what was built. Each file here is the implementation plan for a change that is on `master`, except a
+`superseded` one: built, then replaced before it merged; it names its replacement and is kept as the record.
 
 A plan's Goal, Steps and Validation record what was planned and are not maintained; what exists is its "As built" and the code. Newer plans have an "As built" section (those written by `/build-proposals`, and `herdr-plugin-pins`, which the user requested); the older ones do not, so check them against the code. Everything outside "As built" is as planned, and "As built" wins on any conflict, Removal sections included. Step lines known to be superseded are marked "(superseded, see As built)" or name what replaced them.
 
@@ -18,10 +19,11 @@ writes a plan for each one at the moment it executes it, then deletes the propos
 | [claude-context-management](claude-context-management.md) | `done` | Global CLAUDE.md via Stow so every Claude Code session has context |
 | [linux-target](linux-target.md) | `done` | Linux on x86-64 and arm64 as a tested target; one test suite run in three environments before live validation |
 | [herdr-plus-wire-up](herdr-plus-wire-up.md) | `done` | herdr-plus project templates, worktree layouts and quick actions; `prefix+t`, `prefix+space` |
-| [herdr-reviewr](herdr-reviewr.md) | `done` | Review an agent's diff and send line comments back (`prefix+alt+r`), pinned |
+| [herdr-reviewr](herdr-reviewr.md) | `superseded` | Review an agent's diff and send line comments back (`prefix+alt+r`), pinned; replaced by tuicr before merge |
 | [herdr-fingers-trial](herdr-fingers-trial.md) | `done` | Trial: hint-copy paths, SHAs and URLs from a pane (`prefix+f`), pinned |
 | [herdr-jj-status-token](herdr-jj-status-token.md) | `done` | `$jj_status` in the spaces sidebar row for jj repos |
 | [herdr-plugin-pins](herdr-plugin-pins.md) | `done` | Every herdr plugin pinned in `bootstrap.sh`; `herdr-plugins status/review/update` moves the pins |
+| [tuicr](tuicr.md) | `done` | tuicr replaces herdr-reviewr: diff review for git and jj (`prefix+alt+r`), comments read by the agent skill |
 
 ## Running the queue
 

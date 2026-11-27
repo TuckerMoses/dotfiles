@@ -280,7 +280,7 @@ env_local() {
     pairs="$(sed -n 's/^  for pair in \(.*\); do$/\1/p' "$REPO/bootstrap.sh" | sed -n 2p)"
     [[ "$pairs" == *stow* ]] || { rm -rf "$home"; die3 "no Linux 'for pair in' loop found in bootstrap.sh (reformatted?)"; }
     for pair in $pairs; do
-      case "${pair#*:}" in jj|lazyjj) continue ;; esac   # release binaries, installed into HOME (same list as bootstrap.sh's Linux loop)
+      case "${pair#*:}" in jj|lazyjj|tuicr) continue ;; esac   # release binaries, installed into HOME (same list as bootstrap.sh's Linux loop)
       PATH="$path" command -v "${pair#*:}" >/dev/null 2>&1 || missing+=("${pair%%:*}")
     done
   fi

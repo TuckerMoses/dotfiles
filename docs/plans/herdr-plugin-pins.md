@@ -56,7 +56,7 @@ that runs at install.
      new ref without `--yes` (`herdr plugin uninstall <id>` then `herdr plugin install <owner/repo> --ref <sha>`;
      herdr prompts the user). On a failed install, say so and leave the edited pin in place with the command to
      retry (superseded, see As built: the pin moves after the install). End by printing `git -C <repo> diff bootstrap.sh` and a reminder to commit and to update
-     `validate.sh`'s reviewr config allowlist if reviewr moved (see its plan).
+     `validate.sh`'s reviewr config allowlist if reviewr moved (see its plan; reviewr was since replaced by tuicr).
    - `herdr-plugins help`.
    - Plugin id ↔ owner/repo: from `herdr plugin list --json` when installed; for not-installed plugins, from the
      manifest `id` at the pinned sha (gh api contents).
@@ -201,10 +201,10 @@ Automatic scheduled checks; updating herdr itself; the local herdr-summarizer pl
 - After an install, `update` checks that the plugin's stowed config folder (when this repo has one) is still linked
   in place, and says to run `stow --no-folding herdr` from the main checkout when it is not, and to move the file stow names in a
   conflict (under `~/.config/herdr/plugins/config/<plugin id>/`) aside (a reinstall may have written defaults where a link was; untested). Only
-  herdr-plus and reviewr have stowed config, so only they get the hint. Whether `herdr plugin uninstall` removes that
+  herdr-plus has stowed config, so only it gets the hint (reviewr's went with reviewr, replaced by tuicr: `tuicr.md`). Whether `herdr plugin uninstall` removes that
   folder was not tested (the plugins' READMEs say it keeps it).
-- When `update` moves herdr-plus or reviewr it reminds the user to re-read that plugin's config rules at the new pin and
-  update the matching `HERDR_PLUS_RULES_AT` or `REVIEWR_RULES_AT` in `validate.sh`.
+- When `update` moves herdr-plus it reminds the user to re-read its config rules at the new pin and update
+  `HERDR_PLUS_RULES_AT` in `validate.sh` (reviewr had the same reminder until it was replaced by tuicr).
 - `update` edits the `bootstrap.sh` of the checkout the script is linked from while reinstalling plugins on the live
   machine, so the user runs it through the stowed `~/.local/bin/herdr-plugins` in the main checkout, on a branch created
   there, and commits the pin bump: the user runs it in the main checkout (`CLAUDE.md`'s pin rule), not in a worktree.
@@ -225,8 +225,8 @@ Automatic scheduled checks; updating herdr itself; the local herdr-summarizer pl
   that the build also reads `releases/latest` and that the build file at the target shows which one it downloads), 30 added `go.sum` packages and 123
   other files listed; `review herdr-reviewr 7b020de...` (a fork-only pull request commit) exits 1 from the upstream
   check; `review herdr-fingers 590d48b` (the pin's short sha) says nothing to review.
-- `validate.sh` records the commit each copied upstream rule set matches (`HERDR_PLUS_RULES_AT`, `REVIEWR_RULES_AT`)
-  and warns when `bootstrap.sh` pins a different one. Plugin drift stays a warning because the plugin still works.
+- `validate.sh` records the commit each copied upstream rule set matches (`HERDR_PLUS_RULES_AT`; `REVIEWR_RULES_AT`
+  went with reviewr) and warns when `bootstrap.sh` pins a different one. Plugin drift stays a warning because the plugin still works.
 - Merged with master's Linux target (2026-11-26):
   - `bootstrap.sh` reads `herdr plugin list` once into `$herdr_plugins` and tests each plugin with
     `if ! grep -q <name> <<<"$herdr_plugins"; then`, which fixes a SIGPIPE under `pipefail` that reinstalled plugins. The

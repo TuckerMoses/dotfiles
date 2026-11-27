@@ -32,7 +32,7 @@ if [[ "$(uname)" == "Darwin" ]]; then
 
   echo "==> Checking brew packages..."
   # formula:cmd pairs (cmd=formula when they match)
-  for pair in stow tmux neovim:nvim starship fzf zoxide atuin jq lazygit lazyjj; do
+  for pair in stow tmux neovim:nvim starship fzf zoxide atuin jq lazygit lazyjj tuicr; do
     formula="${pair%%:*}"
     cmd="${pair#*:}"
     command -v "$cmd" &>/dev/null || { echo "==> Installing $formula..."; brew install "$formula"; }
@@ -54,14 +54,14 @@ if [[ "$(uname)" == "Linux" ]]; then
   arch="$(uname -m)"   # x86_64 | aarch64
   case "$arch" in x86_64|aarch64) ;; *) echo "Unsupported architecture: $arch" >&2; exit 1 ;; esac
 
-  # pkg:cmd pairs (cmd=pkg when they match). jj and lazyjj are release binaries
+  # pkg:cmd pairs (cmd=pkg when they match). jj, lazyjj and tuicr are release binaries
   # (below), not packages; they are listed so validate.sh checks them too.
   # Ubuntu 26.04's neovim (0.11), fzf (0.67, has --zsh) and lazygit are new enough.
   missing=()
-  for pair in stow tmux zsh git curl unzip fontconfig:fc-list wl-clipboard:wl-copy neovim:nvim fzf zoxide jq lazygit jj lazyjj; do
+  for pair in stow tmux zsh git curl unzip fontconfig:fc-list wl-clipboard:wl-copy neovim:nvim fzf zoxide jq lazygit jj lazyjj tuicr; do
     cmd="${pair#*:}"
     command -v "$cmd" &>/dev/null && continue
-    case "$cmd" in jj|lazyjj) ;; *) missing+=("${pair%%:*}") ;; esac   # same list as test/suite.sh env_local
+    case "$cmd" in jj|lazyjj|tuicr) ;; *) missing+=("${pair%%:*}") ;; esac   # same list as test/suite.sh env_local
   done
 
   if [[ ${#missing[@]} -gt 0 ]]; then
@@ -97,16 +97,20 @@ if [[ "$(uname)" == "Linux" ]]; then
 
   # jj, and lazyjj for it. lazyjj 0.6 publishes no binaries; 0.5.0 is the newest
   # prebuilt one (cargo-quickinstall, static musl), pinned by checksum. It works
-  # with current jj.
+  # with current jj. tuicr (diff review for git and jj, prefix+alt+r): its static musl
+  # release; the release publishes no checksum file, and the sums match GitHub's asset digests.
   if [[ "$arch" == x86_64 ]]; then
     jj_sum=d4b657f622ee50929c8916466dfa3d6a6c17a0a32b50e7b2c793707ec9ebcad7
     lazyjj_sum=19cb8ae9a416708cb69ebfb6e513a4f49378a303bf8c4d32427e099fe15121ea
+    tuicr_sum=bbd7a358c8450613177359bfbcc4bdbba68c98835311c5e424053a005610c9d2
   else
     jj_sum=0f300e1576de8dabe0a9dedf0b87ae44f8accea5cf54d9a342a51061c1fb1bcd
     lazyjj_sum=56efa62b2a925d3127479d264443b152914badba707f3c694d4ef57be4c2369d
+    tuicr_sum=01ad73bfbfe957709c4e8d834d988f903159b94e0597cd14758110a0e3e89127
   fi
   release_bin jj "https://github.com/jj-vcs/jj/releases/download/v0.47.1/jj-v0.47.1-$arch-unknown-linux-musl.tar.gz" "$jj_sum" ./jj
   release_bin lazyjj "https://github.com/cargo-bins/cargo-quickinstall/releases/download/lazyjj-0.5.0/lazyjj-0.5.0-$arch-unknown-linux-musl.tar.gz" "$lazyjj_sum" lazyjj
+  release_bin tuicr "https://github.com/agavra/tuicr/releases/download/v0.30.0/tuicr-0.30.0-$arch-unknown-linux-musl.tar.gz" "$tuicr_sum" tuicr
 
   # Atuin (shell history): the release binary. Its setup script would edit ~/.zshrc,
   # which is the stowed repo file.
@@ -223,15 +227,6 @@ if command -v herdr >/dev/null 2>&1; then
       echo "==> Installing herdr plugin herdr-plus (go build)"
       herdr plugin install cloudmanic/herdr-plus --ref f38df3570bea8f7ca71dc1ba11bce3b123d14402 --yes || echo "    (install failed: herdr server not running, or a build, toolchain or network error above; re-run ./bootstrap.sh)"
     else echo "    (skipping herdr-plus: needs Go to build the pinned source, https://go.dev/dl)"; fi
-  fi
-  # herdr-reviewr: review an agent's diff, send line comments back (prefix+alt+r). Pinned to the
-  # v0.52.2 tag commit (read at wire-up, docs/plans/herdr-reviewr.md). Its build step downloads that
-  # release's binary (checked only against the release's own .sha256): a later update's review diffs
-  # the install script and lists the source by name (read on the compare page), and the binary is
-  # trusted to the release, not verified. The user bumps it with `herdr-plugins update`.
-  if ! grep -q persiyanov.reviewr <<<"$herdr_plugins"; then
-    echo "==> Installing herdr plugin herdr-reviewr"
-    herdr plugin install persiyanov/herdr-reviewr --ref bb71050caa5d3a0b1a414527783eb7a772447f9f --yes || echo "    (install failed: herdr server not running, or a build, toolchain or network error above; re-run ./bootstrap.sh)"
   fi
   # herdr-fingers (trial): hint-copy paths, SHAs, URLs from the focused pane (prefix+f). Pinned to a
   # chosen commit; builds with cargo (Rust >= 1.85). Remove the trial: the targets listed in docs/plans/herdr-fingers-trial.md.

@@ -302,7 +302,6 @@ plugin_config_dir() {
 # at. When bootstrap.sh pins another commit, the copies may be stale (false failures, or a new rule
 # missed): re-read the upstream source at the new pin, update the rules and this commit.
 HERDR_PLUS_RULES_AT=f38df3570bea8f7ca71dc1ba11bce3b123d14402
-REVIEWR_RULES_AT=bb71050caa5d3a0b1a414527783eb7a772447f9f
 check_rules_pin() {  # <owner/repo> <commit the copied rules match> <label>
   local pin
   pin="$(sed -n "s#^[[:space:]]*herdr plugin install $1 --ref \([0-9a-f]\{7,40\}\).*#\1#p" "$BOOTSTRAP" | head -1)"
@@ -543,18 +542,6 @@ check_herdr_plugins_cmd() {
   else fail "herdr-plugins help: $(echo "${out:-no output}" | tail -1)"; fi
 }
 
-# reviewr: its build step downloads a release binary, so a failed download leaves the key dead.
-# `--action <unknown>` makes the binary answer without reading config, herdr or the repo.
-# The probe action must stay one reviewr does not know: an unknown action returns before reviewr
-# reads config or moves symlinks (verified at bb71050), so the probe writes nothing.
-check_reviewr_binary() {  # <plugin root>
-  local bin="$1/bin/herdr-reviewr" out
-  if [[ ! -x "$bin" ]]; then fail "reviewr: $bin missing (its build step's download failed; reinstall the plugin)"; return; fi
-  out="$(env -u HERDR_REVIEW_LOG "$bin" --action validate-probe 2>&1)"
-  if [[ "$out" == *"unknown action"* ]]; then pass "reviewr: binary runs"
-  else fail "reviewr: $bin does not run as reviewr: $(echo "${out:-no output}" | head -1)"; fi
-}
-
 # herdr-fingers (trial) builds with cargo at install; without the binary prefix+f does nothing.
 # `scan` reads a screen dump on stdin and prints the hints; with HERDR_PLUGIN_CONFIG_DIR unset it
 # uses built-in defaults and writes nothing.
@@ -568,46 +555,44 @@ check_fingers_binary() {  # <plugin root>
   else fail "herdr-fingers: scan found no hint in a line holding a SHA: $(echo "${out:-no output}" | head -1)"; fi
 }
 
-# reviewr rejects the whole config.toml (and blocks its pane) on an unknown key or a bad value.
-# Keys and values are reviewr's own (src/config.rs, src/theme.rs at the pin in bootstrap.sh).
-check_reviewr_config() {  # <config.toml>
+# popup and pane key bindings run a command line, which `herdr config check` does not look at: a
+# command missing from PATH is a key that opens an error. Checks each one's first word (after `exec`),
+# with $VAR and ~ expanded, against this shell's PATH.
+check_bound_commands() {  # <config.toml>
   local out
-  check_rules_pin persiyanov/herdr-reviewr "$REVIEWR_RULES_AT" reviewr
   out="$("$tomlpy" - "$1" 2>&1 <<'PY'
-import os, sys, tomllib
-path = sys.argv[1]
-if not os.path.exists(path):
-    print(f"FAIL reviewr: {path} missing (stow the herdr package)"); sys.exit()
-try:
-    with open(path, "rb") as f:
-        cfg = tomllib.load(f)
-except Exception as e:
-    print(f"FAIL reviewr: config.toml does not parse: {e}"); sys.exit()
-keys = {"theme", "default_scope", "markdown_view", "diff_view", "navigator_position", "toggle_placement",
-        "toggle_direction", "auto_open", "follow_file_across_tabs", "scrolloff", "github_host", "gitlab_host",
-        "azure_devops_host", "editor", "url_opener", "review_prefix", "keybindings"}
-themes = {"catppuccin", "catppuccin-frappe", "catppuccin-macchiato", "catppuccin-latte", "tokyo-night",
-          "tokyo-night-day", "dracula", "nord", "gruvbox", "gruvbox-light", "one-dark", "one-light", "solarized",
-          "solarized-light", "monokai", "rose-pine", "rose-pine-dawn", "ayu", "everforest", "github-light"}
-values = {"theme": themes, "default_scope": {"uncommitted", "branch", "last-turn"},
-          "toggle_placement": {"split", "overlay", "zoomed", "tab"}, "toggle_direction": {"right", "down"}}
-bad = [f"unknown key {k}" for k in cfg if k not in keys]
-bad += [f"{k} = {cfg[k]!r} (one of {', '.join(sorted(v))})" for k, v in values.items() if k in cfg and cfg[k] not in v]
-if cfg.get("auto_open", True) is not False:
-    bad.append("auto_open must be false (a reviewr pane would open in every new worktree)")
-for b in bad:
-    print(f"FAIL reviewr: config.toml: {b}")
-if not bad:
-    print("PASS reviewr: config.toml valid, auto_open off")
+import os, shlex, shutil, sys, tomllib
+with open(sys.argv[1], "rb") as f:
+    cfg = tomllib.load(f)
+binds = [k for k in cfg.get("keys", {}).get("command", []) if k.get("type") in ("popup", "pane")]
+fails = checked = 0
+for k in binds:
+    try:
+        words = shlex.split(str(k.get("command", "")))
+    except ValueError:
+        words = []
+    if words[:1] == ["exec"]:
+        words = words[1:]
+    word = os.path.expanduser(os.path.expandvars(words[0])) if words else ""
+    if "$" in word:
+        print(f"INFO key {k.get('key')} runs {words[0]}, which names an unset variable here; not checked")
+        continue
+    checked += 1
+    if not word or not shutil.which(word):
+        fails += 1
+        print(f"FAIL key {k.get('key')} ({k.get('type')}) runs {word or 'nothing'}, which is not on PATH")
+if not fails:
+    print(f"PASS {checked} popup and pane key bindings run commands on PATH")
 PY
 )"
-  emit "reviewr config" <<<"$out"
+  emit "bound commands" <<<"$out"
 }
 
 check_herdr_plugins_cmd
 if have herdr; then
   out="$(herdr config check 2>&1)"
   if echo "$out" | grep -q 'config: ok'; then pass "config.toml valid"; else fail "config.toml: $(echo "$out" | tail -2 | tr '\n' ' ')"; fi
+  [[ -n "$tomlpy" ]] && check_bound_commands "$HOME/.config/herdr/config.toml"
   if herdr workspace list >/dev/null 2>&1; then
     pass "server running"
     plugins="$(herdr plugin list 2>/dev/null)"
@@ -627,13 +612,11 @@ if have herdr; then
     done
     pjson="$(herdr plugin list --json 2>/dev/null)"
     check_plugin_pins
-    check_plugin_binary "$pjson" persiyanov.reviewr check_reviewr_binary
     check_plugin_binary "$pjson" nathan-poncet.herdr-fingers check_fingers_binary
     if [[ -z "$tomlpy" ]]; then warn "no Python with tomllib (3.11+); key binding and plugin config checks skipped"
     else
       check_bound_plugin_actions "$HOME/.config/herdr/config.toml" "$(herdr plugin action list 2>/dev/null)"
       if echo "$plugins" | grep -q '^- cloudmanic.herdr-plus '; then check_herdr_plus_config "$(plugin_config_dir cloudmanic.herdr-plus)"; fi
-      check_reviewr_config "$(plugin_config_dir persiyanov.reviewr)/config.toml"
     fi
     out="$(herdr integration status 2>&1 | grep -i claude || true)"
     if [[ ! -d "$HOME/.claude" ]]; then info "Claude Code not set up (no ~/.claude); integration not checked"
@@ -642,6 +625,61 @@ if have herdr; then
     else pass "Claude integration current"; fi
   else warn "server not running; plugins and integration not checked"; fi
 else info "herdr not installed"; fi
+
+# ── tuicr ────────────────────────────────────────────────────────────────────
+# prefix+alt+r opens `tuicr -w`, the uncommitted diff (jj: @), in git and jj repos. tuicr keeps review
+# sessions in its data dir (macOS ~/Library/Application Support/tuicr, Linux $XDG_DATA_HOME/tuicr or
+# ~/.local/share/tuicr), and even `review list` takes a lock file there, so each run below gets a
+# throwaway HOME and XDG dirs inside one mktemp dir, removed afterwards. The repos are throwaway too.
+section "tuicr"
+# Runs tuicr in <dir> under the throwaway HOME: `review list` (what the agent skill reads), then
+# `tuicr -w` with no terminal (a new session, stdin /dev/null). tuicr finds the repo and its diff,
+# prints `tuicr-session: <repo dir name>@...` on stderr, then exits when it cannot open /dev/tty; a
+# directory it does not see as a repo gets "Make sure you're in a git, jujutsu, or mercurial repository".
+check_tuicr_repo() {  # <label> <repo dir with an uncommitted change> <throwaway HOME>
+  local out h="$3"
+  local tenv=(env HOME="$h" XDG_DATA_HOME="$h/.local/share" XDG_CONFIG_HOME="$h/.config"
+              XDG_STATE_HOME="$h/.local/state" XDG_CACHE_HOME="$h/.cache")
+  out="$(cd "$2" && "${tenv[@]}" tuicr review list --repo . 2>&1)"
+  if [[ "$out" != \[* ]]; then fail "tuicr review list in a throwaway $1 repo: $(head -1 <<<"${out:-no output}")"; return; fi
+  out="$(cd "$2" && "${tenv[@]}" /usr/bin/python3 -c 'import subprocess, sys
+try:
+    r = subprocess.run(sys.argv[1:], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+                       text=True, timeout=20, start_new_session=True)
+    sys.stdout.write(r.stderr)
+except subprocess.TimeoutExpired:
+    print("timed out after 20s")
+except OSError as e:
+    print(e)' tuicr -w --no-update-check 2>&1)"
+  if grep -q "^tuicr-session: $(basename "$2")@" <<<"$out"; then pass "tuicr reviews a throwaway $1 repo ($(sed -n 's/^tuicr-session: //p' <<<"$out" | head -1))"
+  elif grep -q "Make sure you're in a" <<<"$out"; then fail "tuicr -w does not see a throwaway $1 repo as a repository"
+  else fail "tuicr -w in a throwaway $1 repo announced no review session: $(head -1 <<<"${out:-no output}")"; fi
+}
+if ! have tuicr; then fail "tuicr not on PATH, so prefix+alt+r opens an error (brew install tuicr, or ./bootstrap.sh on Linux)"
+elif ! v="$(tuicr --version 2>&1)" || [[ "$v" != tuicr* ]]; then fail "tuicr --version failed: $(head -1 <<<"${v:-no output}")"
+else
+  pass "tuicr runs ($v)"
+  tt="$(mktemp -d "${TMPDIR:-/tmp}/dotfiles-validate-tuicr.XXXXXX")"
+  mkdir -p "$tt/home" "$tt/git-repo"
+  # git with no global or system config: no hooks, templates or signing from the user's setup.
+  if ( cd "$tt/git-repo" && export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 &&
+       git init -q . && echo a >f && git add f && git -c user.name=v -c user.email=v@v commit -qm init && echo b >>f ) >/dev/null 2>&1
+  then check_tuicr_repo git "$tt/git-repo" "$tt/home"
+  else fail "tuicr not checked in git: could not make a throwaway git repo"; fi
+  if have jj; then
+    mkdir -p "$tt/jj-repo"
+    # --no-colocate: a jj repo with no .git, like ~/aios/lib (jj git init colocates by default)
+    ( cd "$tt/jj-repo" && jj git init --no-colocate . && echo a >f ) >/dev/null 2>&1
+    if [[ ! -d "$tt/jj-repo/.jj" ]]; then fail "tuicr not checked in jj: could not make a throwaway jj repo"
+    elif [[ -e "$tt/jj-repo/.git" ]]; then fail "tuicr not checked in jj: the throwaway jj repo has a .git, so it would not test a jj-only repo"
+    else check_tuicr_repo "jj (no .git)" "$tt/jj-repo" "$tt/home"; fi
+  else info "jj not installed; tuicr in jj repos not checked"; fi
+  [[ -d "$tt" ]] && rm -rf "$tt"
+fi
+# The agent skill (upstream skills/tuicr) is how an agent reads the review: `tuicr review comments`.
+# A one-time hand step, so missing it warns.
+if [[ -f "$HOME/.claude/skills/tuicr/SKILL.md" ]]; then pass "tuicr agent skill installed (~/.claude/skills/tuicr)"
+else warn "tuicr agent skill not installed, so agents do not know to read review comments: run npx skills add agavra/tuicr"; fi
 
 # ── herdr-summarizer (opt-in) ────────────────────────────────────────────────
 section "herdr-summarizer (opt-in)"

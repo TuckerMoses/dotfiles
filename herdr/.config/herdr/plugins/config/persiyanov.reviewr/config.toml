@@ -1,8 +1,0 @@
-# herdr-reviewr settings — stowed from ~/dotfiles/herdr. Applied on save; an invalid file
-# blocks the pane until it is fixed (validate.sh checks it).
-
-theme = "catppuccin"              # reviewr's name for Catppuccin Mocha
-default_scope = "uncommitted"
-toggle_placement = "split"        # prefix+alt+r
-toggle_direction = "right"
-auto_open = false                 # worktree events open no pane; toggle it by key

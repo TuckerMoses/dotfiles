@@ -1,11 +1,13 @@
 ---
-status: done
+status: superseded
 created: 2026-11-17
-updated: 2026-11-17
+updated: 2026-11-27
 proposal: "session 2026-11-17 (herdr plugin research)"
 ---
 
 # Plan: herdr-reviewr
+
+> Replaced before merge by tuicr (docs/plans/tuicr.md): reviewr needs git, and the jj-only repos were the main use.
 
 ## Goal
 Install `persiyanov/herdr-reviewr` pinned to a reviewed commit and bind a key to toggle it: a split pane with the
