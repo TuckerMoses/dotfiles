@@ -32,7 +32,7 @@ if [[ "$(uname)" == "Darwin" ]]; then
 
   echo "==> Checking brew packages..."
   # formula:cmd pairs (cmd=formula when they match)
-  for pair in stow tmux neovim:nvim starship fzf zoxide atuin jq lazygit lazyjj; do
+  for pair in stow tmux neovim:nvim starship fzf zoxide atuin jq lazygit lazyjj tuicr; do
     formula="${pair%%:*}"
     cmd="${pair#*:}"
     command -v "$cmd" &>/dev/null || { echo "==> Installing $formula..."; brew install "$formula"; }
@@ -54,14 +54,14 @@ if [[ "$(uname)" == "Linux" ]]; then
   arch="$(uname -m)"   # x86_64 | aarch64
   case "$arch" in x86_64|aarch64) ;; *) echo "Unsupported architecture: $arch" >&2; exit 1 ;; esac
 
-  # pkg:cmd pairs (cmd=pkg when they match). jj and lazyjj are release binaries
+  # pkg:cmd pairs (cmd=pkg when they match). jj, lazyjj and tuicr are release binaries
   # (below), not packages; they are listed so validate.sh checks them too.
   # Ubuntu 26.04's neovim (0.11), fzf (0.67, has --zsh) and lazygit are new enough.
   missing=()
-  for pair in stow tmux zsh git curl unzip fontconfig:fc-list wl-clipboard:wl-copy neovim:nvim fzf zoxide jq lazygit jj lazyjj; do
+  for pair in stow tmux zsh git curl unzip fontconfig:fc-list wl-clipboard:wl-copy neovim:nvim fzf zoxide jq lazygit jj lazyjj tuicr; do
     cmd="${pair#*:}"
     command -v "$cmd" &>/dev/null && continue
-    case "$cmd" in jj|lazyjj) ;; *) missing+=("${pair%%:*}") ;; esac   # same list as test/suite.sh env_local
+    case "$cmd" in jj|lazyjj|tuicr) ;; *) missing+=("${pair%%:*}") ;; esac   # same list as test/suite.sh env_local
   done
 
   if [[ ${#missing[@]} -gt 0 ]]; then
@@ -97,16 +97,20 @@ if [[ "$(uname)" == "Linux" ]]; then
 
   # jj, and lazyjj for it. lazyjj 0.6 publishes no binaries; 0.5.0 is the newest
   # prebuilt one (cargo-quickinstall, static musl), pinned by checksum. It works
-  # with current jj.
+  # with current jj. tuicr (diff review for git and jj, prefix+alt+r): its static musl
+  # release; the release publishes no checksum file, and the sums match GitHub's asset digests.
   if [[ "$arch" == x86_64 ]]; then
     jj_sum=d4b657f622ee50929c8916466dfa3d6a6c17a0a32b50e7b2c793707ec9ebcad7
     lazyjj_sum=19cb8ae9a416708cb69ebfb6e513a4f49378a303bf8c4d32427e099fe15121ea
+    tuicr_sum=bbd7a358c8450613177359bfbcc4bdbba68c98835311c5e424053a005610c9d2
   else
     jj_sum=0f300e1576de8dabe0a9dedf0b87ae44f8accea5cf54d9a342a51061c1fb1bcd
     lazyjj_sum=56efa62b2a925d3127479d264443b152914badba707f3c694d4ef57be4c2369d
+    tuicr_sum=01ad73bfbfe957709c4e8d834d988f903159b94e0597cd14758110a0e3e89127
   fi
   release_bin jj "https://github.com/jj-vcs/jj/releases/download/v0.47.1/jj-v0.47.1-$arch-unknown-linux-musl.tar.gz" "$jj_sum" ./jj
   release_bin lazyjj "https://github.com/cargo-bins/cargo-quickinstall/releases/download/lazyjj-0.5.0/lazyjj-0.5.0-$arch-unknown-linux-musl.tar.gz" "$lazyjj_sum" lazyjj
+  release_bin tuicr "https://github.com/agavra/tuicr/releases/download/v0.30.0/tuicr-0.30.0-$arch-unknown-linux-musl.tar.gz" "$tuicr_sum" tuicr
 
   # Atuin (shell history): the release binary. Its setup script would edit ~/.zshrc,
   # which is the stowed repo file.
@@ -182,7 +186,7 @@ for pkg in tmux zsh ghostty starship nvim atuin; do
 done
 
 # herdr: --no-folding because ~/.config/herdr also holds sockets, logs and session state
-# that must stay real files, so only config.toml is linked.
+# that must stay real files, so only the package's own files (config.toml, plugin configs) are linked.
 if [[ -d "$DOTFILES_DIR/herdr" ]]; then
   echo "    stowing herdr (--no-folding)"
   mkdir -p "$HOME/.config/herdr"
@@ -190,6 +194,21 @@ if [[ -d "$DOTFILES_DIR/herdr" ]]; then
 fi
 
 # ── Herdr plugins ────────────────────────────────────────────────────────────
+# Every third-party plugin is pinned with --ref to a chosen commit; these --ref lines are the
+# only record of the pins. The user moves them with `herdr-plugins update` (herdr/.local/bin/herdr-plugins;
+# CLAUDE.md has the rule for agents); it shows what changed in the install-time code first, which
+# `herdr plugin update` skips.
+# --yes is deliberate: herdr's install prompt guards against unreviewed code, and --ref installs
+# only a commit that was read before it was pinned. A moved pin was read in `herdr-plugins review`
+# (it diffs the install-time code and lists the rest, the plugin's own code, with the compare URL,
+# where that code is read). The first pins were set at wire-up, read by the agents that set them
+# (recorded in docs/plans/) and approved by merging that PR; review diffs from a pin, so it never
+# shows a first pin's code (read it at github.com/<owner>/<repo>/tree/<sha>). --yes trusts what was
+# read (a binary its build downloads is trusted to the release), so bootstrap stays unattended
+# (fresh machines, containers).
+# Moving a pin is where the prompts are:
+# `herdr-plugins update` asks before it edits a --ref and reinstalls without --yes. Never add
+# --yes to an install without --ref.
 # vim-herdr-navigation: ctrl+h/j/k/l across panes, vim-split-aware (needs jq)
 # The list is read once into a variable: piping it straight into grep -q fails the
 # check under pipefail whenever grep exits before herdr finishes writing (SIGPIPE),
@@ -198,12 +217,24 @@ if command -v herdr >/dev/null 2>&1; then
   herdr_plugins="$(herdr plugin list 2>/dev/null || true)"
   if ! grep -q vim-herdr-navigation <<<"$herdr_plugins"; then
     echo "==> Installing herdr plugin vim-herdr-navigation"
-    herdr plugin install paulbkim-dev/vim-herdr-navigation --yes || echo "    (herdr server not running; install later)"
+    herdr plugin install paulbkim-dev/vim-herdr-navigation --ref 7873100eb47212269005c693effb2a844986b30f --yes || echo "    (install failed: herdr server not running, or a build, toolchain or network error above; re-run ./bootstrap.sh)"
   fi
-  # herdr-plus: per-worktree layouts and quick actions
+  # herdr-plus: project templates, worktree layouts and quick actions (prefix+t, prefix+space);
+  # its config is stowed by the herdr package into ~/.config/herdr/plugins/config/cloudmanic.herdr-plus/
+  # Needs Go: without it, its build step downloads the latest release binary instead of building the pin.
   if ! grep -q herdr-plus <<<"$herdr_plugins"; then
-    echo "==> Installing herdr plugin herdr-plus"
-    herdr plugin install cloudmanic/herdr-plus --yes || echo "    (herdr server not running; install later)"
+    if command -v go >/dev/null 2>&1; then
+      echo "==> Installing herdr plugin herdr-plus (go build)"
+      herdr plugin install cloudmanic/herdr-plus --ref f38df3570bea8f7ca71dc1ba11bce3b123d14402 --yes || echo "    (install failed: herdr server not running, or a build, toolchain or network error above; re-run ./bootstrap.sh)"
+    else echo "    (skipping herdr-plus: needs Go to build the pinned source, https://go.dev/dl)"; fi
+  fi
+  # herdr-fingers (trial): hint-copy paths, SHAs, URLs from the focused pane (prefix+f). Pinned to a
+  # chosen commit; builds with cargo (Rust >= 1.85). Remove the trial: the targets listed in docs/plans/herdr-fingers-trial.md.
+  if ! grep -q herdr-fingers <<<"$herdr_plugins"; then
+    if command -v cargo >/dev/null 2>&1; then
+      echo "==> Installing herdr plugin herdr-fingers (cargo build, a minute or two)"
+      herdr plugin install nathan-poncet/herdr-fingers --ref 2d9fc997ce1a95976b975da758dccc7b6e011336 --yes || echo "    (install failed: herdr server not running, or a build, toolchain or network error above; re-run ./bootstrap.sh)"
+    else echo "    (skipping herdr-fingers: needs Rust/cargo, https://rustup.rs)"; fi
   fi
   # Claude Code integration: agent state + session refs via hook (re-run after herdr upgrades).
   # It installs into ~/.claude, so it waits until Claude Code has been set up.

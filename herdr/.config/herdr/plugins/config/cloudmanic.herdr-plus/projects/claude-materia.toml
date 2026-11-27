@@ -1,0 +1,15 @@
+# herdr-plus project (prefix+t) — stowed from ~/dotfiles/herdr
+name = "claude-materia"
+description = "Claude Code plugins and skills"
+working_dir = "~/claude-materia"
+
+[[tabs]]
+name = "claude"
+command = "claude"
+
+[[tabs]]
+name = "lazygit"
+command = "lazygit"
+
+[[tabs]]
+name = "shell"

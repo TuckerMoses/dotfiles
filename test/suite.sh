@@ -143,8 +143,14 @@ else: print("pass %d hook runs succeeded (%s)" % (len(logs), ",".join(sorted(set
     [[ "$verdict" != wait ]] && break
     sleep 1
   done
+  # The hook only marks the session dirty and starts a detached worker; the worker writes the
+  # state after the hook run is logged. Wait for it within the same timeout (slow on an
+  # emulated guest), instead of checking once.
+  if [[ "$verdict" == pass* ]]; then
+    for i in $(seq 1 "$HOOK_TIMEOUT"); do [[ -s "$HERDR_SUMMARIZER_STATE/state.json" ]] && break; sleep 1; done
+  fi
   if [[ "$verdict" == pass* && ! -s "$HERDR_SUMMARIZER_STATE/state.json" ]]; then
-    verdict="fail hook ran but herdr-summarize wrote no state"
+    verdict="fail hook ran but herdr-summarize wrote no state within ${HOOK_TIMEOUT}s"
   fi
   case "$verdict" in
     pass*) record 6 pass "${verdict#pass }" ;;
@@ -280,7 +286,7 @@ env_local() {
     pairs="$(sed -n 's/^  for pair in \(.*\); do$/\1/p' "$REPO/bootstrap.sh" | sed -n 2p)"
     [[ "$pairs" == *stow* ]] || { rm -rf "$home"; die3 "no Linux 'for pair in' loop found in bootstrap.sh (reformatted?)"; }
     for pair in $pairs; do
-      case "${pair#*:}" in jj|lazyjj) continue ;; esac   # release binaries, installed into HOME (same list as bootstrap.sh's Linux loop)
+      case "${pair#*:}" in jj|lazyjj|tuicr) continue ;; esac   # release binaries, installed into HOME (same list as bootstrap.sh's Linux loop)
       PATH="$path" command -v "${pair#*:}" >/dev/null 2>&1 || missing+=("${pair%%:*}")
     done
   fi

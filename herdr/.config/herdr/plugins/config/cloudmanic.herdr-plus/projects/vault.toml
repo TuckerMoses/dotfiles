@@ -1,0 +1,15 @@
+# herdr-plus project (prefix+t) — stowed from ~/dotfiles/herdr
+name = "vault"
+description = "Knowledge vault (jj)"
+working_dir = "~/Vault"
+
+[[tabs]]
+name = "claude"
+command = "claude"
+
+[[tabs]]
+name = "lazyjj"
+command = "lazyjj"
+
+[[tabs]]
+name = "shell"

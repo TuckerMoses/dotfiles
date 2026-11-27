@@ -72,7 +72,7 @@ clear_pane = "prefix+ctrl+l"
 edit_scrollback = ["prefix+e", "prefix+/"]
 
 # ── vim-herdr-navigation: ctrl+h/j/k/l across panes, vim-split-aware (port of vim-tmux-navigator) ──
-# Install: herdr plugin install paulbkim-dev/vim-herdr-navigation --yes   (needs jq)
+# Installed by bootstrap.sh, pinned there with --ref   (needs jq)
 # Same trade-off as the tmux setup: ctrl+l (clear) and ctrl+k (kill-line) no longer reach non-vim shells.
 [[keys.command]]
 key = "ctrl+h"
@@ -124,14 +124,50 @@ description = "lazyjj"
 width = "85%"
 height = "85%"
 
+# ── tuicr: review the agent's uncommitted diff (git, or jj's @) ─────────────
+# Runs in the focused pane's directory, like the popups above. The agent reads the comments
+# back with `tuicr review comments` (the tuicr skill: npx skills add agavra/tuicr).
+[[keys.command]]
+key = "prefix+alt+r"
+type = "popup"
+command = "tuicr -w"
+description = "review diff"
+width = "90%"
+height = "90%"
+
+# ── herdr-plus: project templates and quick actions ─────────────────────────
+# Templates, worktree layouts and actions live in plugins/config/cloudmanic.herdr-plus/ in this
+# package; herdr-plus reads them fresh each time a picker opens (no reload needed).
+[[keys.command]]
+key = "prefix+t"
+type = "plugin_action"
+command = "cloudmanic.herdr-plus.projects"
+description = "projects"
+
+[[keys.command]]
+key = "prefix+space"
+type = "plugin_action"
+command = "cloudmanic.herdr-plus.quick-actions"
+description = "quick actions"
+
+# ── herdr-fingers (trial): hint-copy from the focused pane ─────────────────────
+# Type a hint to copy it (Shift pastes, Ctrl opens). Copies via OSC 52, which Ghostty accepts.
+[[keys.command]]
+key = "prefix+f"
+type = "plugin_action"
+command = "nathan-poncet.herdr-fingers.start"
+description = "hint copy"
+
 # ── herdr-summarizer tokens ─────────────────────────────────────────────────
 # $summary (pane or space label), $summary_you (the same label, used instead when the session
 # needs you and has an unseen turn, so it renders orange), $stale (untouched a week longer than
-# your newest session), $heat (now / <1h / today / Nd). Written by herdr-summarize; empty
-# tokens render nothing. Status detail lives in the prefix+a picker (? for the guide).
+# your newest session), $heat (now / <1h / today / Nd), $jj_status (spaces whose first pane is
+# in a jj repo: bookmark, else @-'s bookmark, else change id, then * if @ has changes). Written
+# by herdr-summarize; empty tokens render nothing. Status detail lives in the prefix+a picker
+# (? for the guide).
 [ui.sidebar.agents]
 rows = [["state_icon", "$summary", { token = "$summary_you", fg = "#fab387" }], [{ token = "$stale", fg = "#f38ba8", bold = true }, { token = "$heat", dim = true }, { token = "tab", dim = true }]]
 
 [ui.sidebar.spaces]
-rows = [["state_icon", "workspace", { token = "branch", dim = true }, { token = "git_status", dim = true }], [{ token = "$summary", dim = true }]]
+rows = [["state_icon", "workspace", { token = "branch", dim = true }, { token = "git_status", dim = true }, { token = "$jj_status", dim = true }], [{ token = "$summary", dim = true }]]
 
