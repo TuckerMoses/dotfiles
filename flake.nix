@@ -107,13 +107,18 @@
             "x86_64-linux"
             "aarch64-linux"
           ]
-          (system: {
-            link-modes = import ./nix/checks/link-modes.nix {
-              pkgs = pkgsFor system;
-              inherit (inputs) home-manager nixpkgs;
-              homeModule = self.homeManagerModules.default;
-            };
-          });
+          (
+            system:
+            let
+              args = {
+                inherit self inputs system;
+                pkgs = pkgsFor system;
+              };
+            in
+            import ./nix/checks args
+            # The NixOS VM tests (names start with vm-) need KVM; CI has it on x86-64 only.
+            // lib.optionalAttrs (system == "x86_64-linux") (import ./nix/tests args)
+          );
 
       # ── NixOS hosts ──────────────────────────────────────────────────────────
       nixosConfigurations = {
