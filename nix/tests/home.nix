@@ -11,7 +11,7 @@
   pkgs,
 }:
 let
-  keys = import "${pkgs.path}/nixos/tests/ssh-keys.nix" pkgs;
+  keys = import (pkgs.path + "/nixos/tests/ssh-keys.nix") pkgs;
 
   # Test users, not the owner's: fixed names and homes are fine here.
   checkoutHome = "/home/bob";

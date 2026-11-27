@@ -3,7 +3,7 @@
 # The ports are checked from a second machine, so the firewall is really in the way.
 { pkgs }:
 let
-  keys = import "${pkgs.path}/nixos/tests/ssh-keys.nix" pkgs;
+  keys = import (pkgs.path + "/nixos/tests/ssh-keys.nix") pkgs;
   # A port something listens on that the firewall must still refuse.
   closedPort = 8080;
 in

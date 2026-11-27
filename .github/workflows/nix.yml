@@ -129,6 +129,13 @@ jobs:
             experimental-features = nix-command flakes
             accept-flake-config = false
 
+      # The checks run under bwrap inside the Nix build sandbox (nix/checks/lib.nix), which
+      # needs a nested user namespace. Ubuntu's AppArmor default refuses one to an
+      # unprivileged process ("bwrap: setting up uid map: Permission denied"); NixOS has
+      # no such restriction. The runner is thrown away after the job.
+      - name: Allow nested user namespaces
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+
       # One at a time, so the log and the summary show which check failed; a failure
       # does not stop the rest.
       - name: Build the build-sandbox checks
@@ -170,9 +177,12 @@ jobs:
 
       - name: Enable KVM
         run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666"' | sudo tee /etc/udev/rules.d/99-kvm.rules
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
+          # udev applies the rule in the background: wait for it before testing the result.
+          sudo udevadm settle --timeout=30
+          ls -l /dev/kvm || true
           if [[ ! -w /dev/kvm ]]; then
             echo "::error::/dev/kvm is not writable after the udev rule"
             exit 1
