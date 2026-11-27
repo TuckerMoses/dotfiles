@@ -174,15 +174,27 @@ Design and reasons: `docs/design/nix-dotfiles.md`. `nix` commands run on a machi
 Mac has no Nix.
 
 - **Outputs:** `overlays.default` (adds `pkgs.dotfiles.*`, `nix/overlay.nix`); `packages.<system>`: `home-tree`,
-  `scripts`, `summarizer-plugin`, `oh-my-zsh-bundle`, `tools`, `sandbox`, `herdr-sandbox`
-  (`nix/packages/`); `apps` for the two sandboxes; `homeManagerModules.default` (`nix/home-manager/`); `checks`
-  (Linux only). x86_64-linux and aarch64-linux are built; aarch64-darwin is only evaluated.
+  `scripts`, `summarizer-plugin`, `oh-my-zsh-bundle`, `tools`, `sandbox`, `herdr-sandbox`, `dotfiles-switch`
+  (`nix/packages/`); `apps` for the two sandboxes and `dotfiles-switch`; `homeManagerModules.default`
+  (`nix/home-manager/`); `homeConfigurations."<user>@<host>"` (`tucker@homepc`, `test@vm`; one `mkHome` line
+  each, `nix/lib/home-configuration.nix`); `checks` (Linux only). x86_64-linux and aarch64-linux are built;
+  aarch64-darwin is only evaluated.
 - **Link modes** (`dotfiles.linkMode`): `store` links each config from the build, so an edit needs a rebuild;
   `checkout` links each config into `dotfiles.checkout`, so edits there are live at once, as with Stow. In both,
-  the four herdr scripts and nvim's two lock files come from the build. A NixOS host enables the module per user
-  with `dotfiles.users.<name>` (`nixos/modules/dotfiles-user.nix`); no host names a user yet.
+  the four herdr scripts and nvim's two lock files come from the build.
+- **Profiles:** `base` (default) is everything portable; `dotfiles.profiles.personal.enable` adds what names the
+  owner's directories (herdr-plus `projects/` and `worktrees/`, the validate-dotfiles quick action; the list is
+  in `nix/packages/home-tree.nix`, and `link-modes` fails on a base config that names them). Stow places both.
+  `dotfiles.interactiveShell` (store mode) makes herdr panes and Ghostty windows start that shell, by appending
+  one setting to the placed copies of their configs, so the login shell can stay bash.
+- **Switching a user:** `dotfiles-switch` builds the caller's `homeConfigurations."<user>@<host>"` from
+  `~/dotfiles` and activates it, as the user, with no root and no `safe-switch`; `--dry-run` lists what would
+  change, `--rollback` goes back one generation. herdr reloads its `config.toml` by itself (an `onChange` hook,
+  only when its server runs); new zsh shells read the new files; running nvim and Ghostty need a restart. The
+  NixOS option `dotfiles.users.<name>` (`nixos/modules/dotfiles-user.nix`) is the other way in; only `vm-home` uses it.
 - **Checks:** `nix flake check`, or one with `nix build .#checks.x86_64-linux.<name>`. Build-sandbox checks
-  (`nix/checks/`: no network, no real `$HOME`) and NixOS VM tests (`nix/tests/`, named `vm-*`, x86_64-linux, KVM).
+  (`nix/checks/`: no network, no real `$HOME`) and NixOS VM tests (`nix/tests/`, named `vm-*`, x86_64-linux, KVM;
+  `vm-switch` drives `dotfiles-switch` through a switch, a herdr reload, a reboot and a rollback).
 - **Sandboxes:** `nix run .#sandbox -- [--keep] [--summarizer] [--] [<command...>]` runs `zsh -i`, or the command,
   in a throwaway `HOME` under `/tmp` filled from the build, under `env -i` with only the build's tools on `PATH`.
   `nix run .#herdr-sandbox -- [--keep] [--with-plugins] [--summarizer] [--no-attach] [--] [<command...>]` also starts

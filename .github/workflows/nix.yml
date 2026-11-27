@@ -128,13 +128,6 @@ jobs:
             experimental-features = nix-command flakes
             accept-flake-config = false
 
-      # The checks run under bwrap inside the Nix build sandbox (nix/checks/lib.nix), which
-      # needs a nested user namespace. Ubuntu's AppArmor default refuses one to an
-      # unprivileged process ("bwrap: setting up uid map: Permission denied"); NixOS has
-      # no such restriction. The runner is thrown away after the job.
-      - name: Allow nested user namespaces
-        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
-
       # One at a time, so the log and the summary show which check failed; a failure
       # does not stop the rest.
       - name: Build the build-sandbox checks

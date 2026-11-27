@@ -11,8 +11,8 @@ checkLib.mkCheck "scripts" { } ''
 
   # ── Interpreters ─────────────────────────────────────────────────────────
   # NixOS has no /usr/bin/python3: no interpreter line or python call may name it. A
-  # `/usr/bin/env python3` call is decided by the wrapper's PATH, a store python; the runs below
-  # prove it, as this namespace has /usr/bin/env and no /usr/bin/python3.
+  # `/usr/bin/env python3` call is rewritten to the store python; the runs below prove it, as the
+  # build sandbox has neither /usr/bin/env nor /usr/bin/python3.
   [ ! -e /usr/bin/python3 ] || fail "the check namespace has /usr/bin/python3, so it cannot tell"
   for f in ${d.scripts}/bin/* ${d.scripts}/bin/.*-wrapped; do
     line=$(head -1 "$f")

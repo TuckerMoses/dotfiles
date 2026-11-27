@@ -438,13 +438,12 @@ disagree, this section describes what exists.
 - **Section 6, the sandbox's variables:** the list also has `__NIXOS_SET_ENVIRONMENT_DONE=1`. The
   zsh in nixpkgs has a built-in startup file that, on NixOS, replaces `PATH` with the system one
   unless that variable is set. The passwd home is read with Python's `pwd` module.
-- **Section 7, how the checks run:** each build-sandbox check runs under `bwrap` inside the Nix
-  build sandbox, which adds `/usr/bin/env` and a `/tmp`. TPM and the tmux plugins start with
-  `#!/usr/bin/env bash` and zsh writes here-documents to `/tmp`; the build sandbox has neither.
-  This needs a nested user namespace. NixOS allows one; Ubuntu's AppArmor default does not, so
-  the CI job lifts that restriction on its runner, and `nix flake check` on an Ubuntu machine
-  would need the same. The way to drop the requirement is to rewrite those interpreter lines in
-  the `tmux-plugins` package.
+- **Section 7, how the checks run:** the build-sandbox checks ran under `bwrap` for a while, to add
+  `/usr/bin/env` (TPM and the tmux plugins, and one call in `herdr-login-warning`) and a `/tmp`.
+  With tmux retired and `scripts.nix` rewriting `/usr/bin/env python3` in script bodies, all seven
+  pass in the plain build sandbox (on homepc, Nix 2.34.9, whose sandbox has `/tmp` but no
+  `/usr/bin/env`), so `bwrap` and the CI step that allowed nested user namespaces are gone.
+  `TMPPREFIX` keeps zsh's here-document files in the throwaway HOME.
 - **Section 8, the first CI run** failed in three places, all specific to a fresh machine: a
   string interpolation of `pkgs.path` in the VM tests (it copies nixpkgs into the store, which an
   evaluation-only run cannot do), the namespace restriction above, and a KVM permission test that
@@ -479,5 +478,16 @@ disagree, this section describes what exists.
   `.tmux.conf`; the `tmux-plugins` and `tpm` packages; the module's and the sandboxes'
   `~/.tmux/plugins` links; the tmux clause of `configs` and the `.tmux/plugins/` exclusion of
   `link-modes`. tmux stays in `tools`: `zsh-interactive` and `test/suite.sh` use a throwaway tmux
-  server as their pty. `bwrap` in `nix/checks/lib.nix` is kept until the checks are shown to pass
-  without it (see the comment there for what still needs `/usr/bin/env` and `/tmp`).
+  server as their pty. (`bwrap` was later dropped; see "how the checks run" above.)
+- **Sections 5 and 9, the user environment** (2026-11-27): a user's dotfiles are a standalone Home
+  Manager configuration, `homeConfigurations."<user>@<host>"` (`nix/lib/home-configuration.nix`), which
+  the user activates with `dotfiles-switch` (no root; `--dry-run`, `--rollback` through Home Manager's
+  own profile). A user-only activation through `dotfiles.users` would be undone at the next boot, when
+  the system re-activates its embedded copy, so that option stays for machines that switch both
+  together. herdr reloads through an `onChange` hook on its `config.toml`; nvim and Ghostty need a
+  restart. `tucker@homepc` is store mode with the login shell left bash: herdr has `[terminal]
+  default_shell` and Ghostty `command`, and `dotfiles.interactiveShell` appends them to the placed copies,
+  so the repo files Stow links stay as they are. `vm-switch` tests switch, reload, reboot and rollback.
+- **Section 7, `link-modes`:** `home-tree` marks each file `base` or `personal` (files that name the
+  owner's directories); the check compares the placed set with the Stow set with the personal profile
+  on, and with the Stow set minus those files with it off, and fails on a base config naming them.

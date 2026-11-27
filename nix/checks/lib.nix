@@ -34,17 +34,16 @@ rec {
       export SHELL="${pkgs.zsh}/bin/zsh"
       export TERM=xterm-256color LANG=C.UTF-8 COLORTERM=truecolor DOTFILES_SANDBOX=1
       export TMUX_TMPDIR="$HOME/.tmp" TMPDIR="$HOME/.tmp" XDG_RUNTIME_DIR="$HOME/.run"
+      # zsh's here-document files (TMPPREFIX, /tmp/zsh by default) stay in the throwaway HOME too.
+      export TMPPREFIX="$HOME/.tmp/zsh"
       export __NIXOS_SET_ENVIRONMENT_DONE=1
       cd "$HOME"
     '';
 
   # A check: `script` runs in a throwaway HOME, calls `fail <message>` on a broken assertion,
-  # and $out exists only when it got to the end.
-  #
-  # The build sandbox has /bin/sh but no /usr/bin/env, which every NixOS machine has, and no
-  # /tmp. herdr-login-warning calls `/usr/bin/env python3` in its body (scripts.nix rewrites only
-  # /usr/bin/python3) and zsh writes here-documents to /tmp. So the script runs in a bubblewrap
-  # namespace that is the build sandbox plus /usr/bin/env and a /tmp, and nothing else from outside.
+  # and $out exists only when it got to the end. It runs in the plain build sandbox, which has
+  # no /usr/bin/env: the packaged scripts call nothing through it (scripts.nix rewrites the one
+  # `/usr/bin/env python3` in a script body).
   mkCheck =
     name:
     {
@@ -62,12 +61,7 @@ rec {
       '';
     in
     pkgs.runCommand "check-${name}" env ''
-      ${pkgs.bubblewrap}/bin/bwrap --unshare-user --die-with-parent \
-        --bind /nix /nix --bind "$NIX_BUILD_TOP" "$NIX_BUILD_TOP" \
-        --dev-bind /dev /dev --proc /proc --tmpfs /tmp --ro-bind /bin /bin --ro-bind /etc /etc \
-        --ro-bind ${pkgs.coreutils}/bin/env /usr/bin/env \
-        --chdir "$NIX_BUILD_TOP" \
-        -- ${pkgs.bash}/bin/bash ${body}
+      ${pkgs.bash}/bin/bash ${body}
       touch "$out"
     '';
 }

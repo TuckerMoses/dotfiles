@@ -15,8 +15,11 @@ Queued work lives in `docs/proposals/`.
 - `herdr-plugins sync`, which installs every pinned plugin at its pin and refuses outside a sandbox; `herdr-plugins` reads `bootstrap.sh` from `DOTFILES_DIR` when that is set
 - `validate.sh`: files placed from the Nix store pass when their bytes equal the checkout's; no owner home directory path under `nix/` or `nixos/`; every Python call uses `-I` with one fallback; `herdr-plugins` honours `DOTFILES_DIR` and `sync` refuses outside a sandbox; `herdr-summarize` finds commands on `PATH`
 - Three proposals for what comes next: switching `tucker` on homepc to the module, switching the Mac, and building the herdr plugins with Nix
+- Standalone Home Manager configurations, `homeConfigurations."<user>@<host>"` (`tucker@homepc`: store mode, personal profile, zsh in herdr and Ghostty with bash as the login shell; `test@vm`), and `dotfiles-switch`, which builds the caller's configuration and activates it as that user, without root or `safe-switch` (`--dry-run` lists what would change and what is in the way, `--rollback` goes back one generation). herdr reloads its config by itself when its server is running; nvim and Ghostty need a restart
+- The module's `dotfiles.profiles.personal.enable` (files that name the owner's directories: herdr-plus projects and worktree layouts, the validate-dotfiles action) and `dotfiles.interactiveShell`. The `vm-switch` test switches a bash-login user to one generation and then another with herdr running, reboots, and rolls back
 
 ### Changed
+- The build-sandbox checks run in the plain Nix build sandbox, without `bwrap`: the `scripts` package rewrites `/usr/bin/env python3` in script bodies, and CI no longer lifts Ubuntu's user-namespace restriction
 - `herdr-summarize` also searches `PATH` for herdr, claude and jj, after its fixed directories
 - `validate.sh`, `herdr-plugins` and `test/suite.sh` use `python3` from `PATH` where `/usr/bin/python3` does not exist, and every Python call runs with `-I`
 

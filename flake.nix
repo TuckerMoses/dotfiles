@@ -55,6 +55,8 @@
             { lifeline.flakeAttr = name; }
           ];
         };
+
+      mkHome = import ./nix/lib/home-configuration.nix { inherit self inputs; };
     in
     {
       # ── Package set ──────────────────────────────────────────────────────────
@@ -74,6 +76,7 @@
             tools
             sandbox
             herdr-sandbox
+            dotfiles-switch
             ;
         }
       );
@@ -81,6 +84,29 @@
       # ── Home Manager module ──────────────────────────────────────────────────
       # Closed over self, so it takes its packages from self.packages (see the module).
       homeManagerModules.default = import ./nix/home-manager self;
+
+      # ── Standalone Home Manager configurations ──────────────────────────────
+      # One per user and machine, activated by that user with dotfiles-switch (no root, no
+      # safe-switch). The NixOS option dotfiles.users is the other way in, for a machine that
+      # switches system and user together; homepc uses this one.
+      homeConfigurations = {
+        "tucker@homepc" = mkHome "tucker" "x86_64-linux" (
+          { pkgs, ... }:
+          {
+            dotfiles.linkMode = "store";
+            dotfiles.profiles.personal.enable = true;
+            # The login shell stays bash, so SSH never depends on .zshrc.
+            dotfiles.interactiveShell = pkgs.zsh;
+          }
+        );
+        # The vm-switch test's user: base profile only.
+        "test@vm" = mkHome "test" "x86_64-linux" (
+          { pkgs, ... }:
+          {
+            dotfiles.interactiveShell = pkgs.zsh;
+          }
+        );
+      };
 
       # ── Apps ─────────────────────────────────────────────────────────────────
       apps = forAllSystems (
@@ -95,6 +121,8 @@
         {
           sandbox = app self.packages.${system}.sandbox;
           herdr-sandbox = app self.packages.${system}.herdr-sandbox;
+          # The first switch on a machine, before dotfiles-switch is on PATH.
+          dotfiles-switch = app self.packages.${system}.dotfiles-switch;
         }
       );
 

@@ -9,4 +9,5 @@
 {
   vm-home = import ./home.nix { inherit self inputs pkgs; };
   vm-lifeline = import ./lifeline.nix { inherit pkgs; };
+  vm-switch = import ./switch.nix { inherit self inputs pkgs; };
 }

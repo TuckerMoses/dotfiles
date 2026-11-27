@@ -28,5 +28,6 @@ in
     tools = self.callPackage ./packages/tools.nix { };
     sandbox = self.callPackage ./packages/sandbox.nix { };
     herdr-sandbox = self.callPackage ./packages/sandbox.nix { withHerdr = true; };
+    dotfiles-switch = self.callPackage ./packages/dotfiles-switch.nix { };
   });
 }

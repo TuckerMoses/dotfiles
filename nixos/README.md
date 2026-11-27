@@ -17,23 +17,30 @@
 
 ## The dotfiles for a user
 
-The other modules set up the system. `modules/dotfiles-user.nix` works one level down: it hands named
-users to the dotfiles' Home Manager module (`nix/home-manager/`; Home Manager is a Nix tool that places
-files and packages in a user's home), which links that user's configs and installs the tools the configs
-call. A host names users like this:
+A machine has two layers, changed by two commands:
 
-```nix
-dotfiles.users.alice = { linkMode = "store"; };   # configs linked from the build: an edit needs a rebuild
-dotfiles.users.bob = {
-  linkMode = "checkout";                           # configs linked into a checkout: edits are live, as with Stow
-  checkout = "/srv/dotfiles";                      # absolute path of a git checkout of this repo
-};
-```
+| Layer | Defined in | Changed with | Needs root | Undone by |
+|---|---|---|---|---|
+| The system (boot, SSH, Tailscale, firewall, services) | `nixosConfigurations.<host>` | `safe-switch` / `trial-boot` | yes | the timer, unless `safe-confirm` keeps it |
+| One user's dotfiles (configs, tools, font) | `homeConfigurations."<user>@<host>"` | `dotfiles-switch` | no | `dotfiles-switch --rollback` |
 
-Every host imports the file, and it is empty by default. No host names a user yet, so `homepc`'s system is
-unchanged by it and `tucker`'s home is still set up by Stow. The module never changes a login shell. The VM
-test `vm-home` (`nix/tests/`) is the one place users are named. How the module works and how to test it:
-the "Nix" section of the top-level `README.md`, and `test/README.md`.
+The user layer is a standalone Home Manager configuration (Home Manager is a Nix tool that places files
+and packages in a user's home) built from the dotfiles' module (`nix/home-manager/`). `dotfiles-switch`
+builds the caller's `"<user>@<host>"` from `~/dotfiles` (or `--flake DIR`) and activates it as that user,
+so a config change never goes near sshd, Tailscale or the firewall, and nothing re-activates it at boot.
+`--dry-run` builds and lists the files that would change, and any path in the way; `--rollback` goes back
+one Home Manager generation. `nix run ~/dotfiles#dotfiles-switch` works before it is on `PATH`.
+
+`homepc` defines `tucker@homepc`: store mode, the personal profile, and zsh in herdr panes and Ghostty
+windows while the login shell stays bash, so an SSH login never depends on `.zshrc`. A new machine is one
+`mkHome` line in `flake.nix`.
+
+`modules/dotfiles-user.nix` is the other way in, for a machine whose system and users should switch
+together: `dotfiles.users.<name> = { linkMode; checkout; }` runs the same module inside the system's
+Home Manager. A user who changed only their part would be put back to the system's copy at the next boot,
+so the two are not mixed for one user. Every host imports it, empty by default; only the VM test
+`vm-home` names users. `vm-switch` tests the standalone route (switch, reload, reboot, rollback, logins in
+bash). How the module works: the "Nix" section of the top-level `README.md`, and `test/README.md`.
 
 ## Changing a machine over SSH
 

@@ -69,8 +69,11 @@ stdenvNoCC.mkDerivation {
     mkdir -p $out/bin
     for s in ${lib.escapeShellArgs scripts}; do
       install -m755 "$s" "$out/bin/$s"
-      # NixOS has no /usr/bin/python3; every use of it, shebang or not, becomes the store one.
-      substituteInPlace "$out/bin/$s" --replace-quiet /usr/bin/python3 ${python3}/bin/python3
+      # NixOS has no /usr/bin/python3; every use of it, shebang or not, becomes the store one,
+      # and so does `/usr/bin/env python3` in a script's body.
+      substituteInPlace "$out/bin/$s" \
+        --replace-quiet "/usr/bin/env python3" ${python3}/bin/python3 \
+        --replace-quiet /usr/bin/python3 ${python3}/bin/python3
     done
     runHook postInstall
   '';
@@ -85,8 +88,8 @@ stdenvNoCC.mkDerivation {
       --prefix PATH : ${runtimePath} \
       --set DOTFILES_DIR ${lib.escapeShellArg "${dotfilesDir}"} --add-flags sync
 
-    if grep -rl /usr/bin/python3 $out; then
-      echo "a packaged script still calls /usr/bin/python3" >&2
+    if grep -rlE '/usr/bin/(env )?python3' $out; then
+      echo "a packaged script still calls /usr/bin/python3 or /usr/bin/env python3" >&2
       exit 1
     fi
   '';
