@@ -33,6 +33,12 @@ source: session (nixos-host), agreed with the user after the homepc install
   - Tailscale access rules live in the Tailscale admin console, not in this repo. Keep a copy of
     the policy in the repo and say in the plan who applies it. Port 22 on the tailnet is Tailscale
     SSH in `check` mode; port 2222 is OpenSSH and is the path `safe-confirm` needs.
+  - The user asked (2026-11-27) whether sandboxes on homepc can isolate agents. A separate user
+    is the floor, not the ceiling: consider running each agent session in a declarative NixOS
+    container or a microVM defined in the flake, with one project directory mounted in, network
+    egress limited to the model API and the git remote, and only repo-scoped credentials inside.
+    homepc has KVM and 32 GB of memory. The Nix build sandbox is not the tool for this: it has
+    no network.
   - Leave disk encryption out; it is its own proposal (`homepc-disk-encryption.md`).
 
 ## Needs decision
