@@ -152,32 +152,6 @@ if have zsh; then
   else fail "zsh: zsh-vi-mode not loaded (brew install zsh-vi-mode, or re-run ./bootstrap.sh)"; fi
 fi
 
-if have tmux; then
-  # Source the config into a throwaway server: source-file reports each bad line
-  # ("~/.tmux.conf:12: unknown command") on stderr. Errors from loading it with -f
-  # are only shown to the first attached client, so they would be missed.
-  sock="dotfiles-validate-$$"
-  errs="$(tmux -L "$sock" -f /dev/null new-session -d 'sleep 5' \; source-file "$HOME/.tmux.conf" 2>&1)"
-  ybind="$(tmux -L "$sock" list-keys -T copy-mode-vi 2>/dev/null | grep -E '^bind-key +-T copy-mode-vi +y ' || true)"
-  tmux -L "$sock" kill-server 2>/dev/null
-  if [[ -z "$errs" ]]; then pass "tmux: ~/.tmux.conf loads cleanly (throwaway server)"
-  else fail "tmux: $(echo "$errs" | head -3 | tr '\n' ' ')"; fi
-  # copy-mode y: pbcopy on macOS; on Linux a pipe that picks wl-copy or xclip at each copy.
-  if [[ -z "$ybind" ]]; then fail "tmux: copy-mode y is not bound"
-  elif [[ "$OS" == "Darwin" ]]; then
-    if [[ "$ybind" != *"copy-pipe-and-cancel pbcopy"* ]]; then fail "tmux: copy-mode y does not pipe to pbcopy"
-    elif ! have pbcopy; then fail "tmux: copy-mode y pipes to pbcopy, which is not installed"
-    else pass "tmux: copy-mode y copies with pbcopy"; fi
-  elif [[ "$ybind" != *copy-pipe-and-cancel*WAYLAND_DISPLAY*wl-copy*DISPLAY*xclip* ]]; then
-    fail "tmux: copy-mode y does not pipe to the wl-copy/xclip selector"
-  elif ! have wl-copy && ! have xclip; then fail "tmux: copy-mode y has neither wl-copy nor xclip to pipe to (re-run ./bootstrap.sh)"
-  elif { have wl-copy && [[ -n "${WAYLAND_DISPLAY:-}" ]]; } || { have xclip && [[ -n "${DISPLAY:-}" ]]; }; then
-    pass "tmux: copy-mode y copies to this session's clipboard"
-  elif [[ -n "${WAYLAND_DISPLAY:-}" ]]; then warn "tmux: Wayland session but wl-copy is not installed, so copy-mode y fills tmux's buffer only"
-  elif [[ -n "${DISPLAY:-}" ]]; then warn "tmux: X11 session but xclip is not installed, so copy-mode y fills tmux's buffer only"
-  else warn "tmux: this session has no Wayland or X11 display, so copy-mode y fills tmux's buffer only"; fi
-fi
-
 ghostty=""
 if have ghostty; then ghostty="$(command -v ghostty)"
 elif [[ -x /Applications/Ghostty.app/Contents/MacOS/ghostty ]]; then ghostty=/Applications/Ghostty.app/Contents/MacOS/ghostty; fi
@@ -235,35 +209,6 @@ for var in ZDOTDIR XDG_CONFIG_HOME STARSHIP_CONFIG ATUIN_CONFIG_DIR NVIM_APPNAME
   esac
   fail "$var=$val redirects a program away from the dotfiles config"
 done
-
-# tmux: it loads every file in its built-in search list, so any other existing
-# file adds to (and can override) the dotfiles one. The list comes from the binary.
-if have tmux; then
-  tmux_conf="$(real "$DOTFILES_DIR/tmux/.tmux.conf")"
-  search="$(strings "$(command -v tmux)" 2>/dev/null | grep -m1 -E '^[^ ]*tmux\.conf(:[^ ]*tmux\.conf)+$' || echo "/etc/tmux.conf:~/.tmux.conf:\$XDG_CONFIG_HOME/tmux/tmux.conf:~/.config/tmux/tmux.conf")"
-  shadow=0; seen=" "
-  IFS=':' read -r -a candidates <<<"$search"
-  for c in "${candidates[@]}"; do
-    c="${c/#\~/$HOME}"; c="${c/\$XDG_CONFIG_HOME/${XDG_CONFIG_HOME:-$HOME/.config}}"
-    [[ -e "$c" ]] || continue
-    r="$(real "$c")"; [[ "$seen" == *" $r "* ]] && continue; seen="$seen$r "
-    [[ "$r" == "$tmux_conf" ]] && continue
-    fail "tmux also loads $c, which is not the dotfiles config"; shadow=1
-  done
-  (( shadow )) || pass "tmux: no other config file on its search path"
-  # Running servers keep the config they loaded until it is re-sourced.
-  conf_t="$(mtime "$HOME/.tmux.conf")"; servers=0
-  sockdir="$(real "${TMUX_TMPDIR:-/tmp}/tmux-$(id -u)")"
-  for sock in "$sockdir"/*; do
-    [[ -S "$sock" ]] || continue
-    start="$(tmux -S "$sock" display -p '#{start_time}' 2>/dev/null)" || continue
-    servers=$((servers+1))
-    if (( start < conf_t )); then
-      warn "tmux server $(basename "$sock") started $(when "$start"), before ~/.tmux.conf changed $(when "$conf_t"): run tmux source-file ~/.tmux.conf"
-    else pass "tmux server $(basename "$sock") started after the last config change"; fi
-  done
-  (( servers )) || info "no tmux server running"
-fi
 
 # Ghostty on macOS also reads its Application Support config, after the XDG one,
 # so anything in it overrides the dotfiles config.

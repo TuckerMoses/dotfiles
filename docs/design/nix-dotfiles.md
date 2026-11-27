@@ -464,5 +464,20 @@ disagree, this section describes what exists.
   which has no Nix, adds none.
 - **Section 11:** builders edited in the Mac checkout and built on homepc through a one-way
   mirror of the tree; nothing was committed on homepc.
-- **The review of this document** was stopped by its own rules after six rounds, with findings
-  open, and waits for the owner. The open findings were given to the builders as an advisory.
+- **Section 7, `link-modes`:** the Stow set comes from a directory listing of the flake source,
+  not `git ls-files`, which cannot run in the build sandbox. Home Manager places seven files of
+  its own (fontconfig, a systemd target, two `.keep` files, an environment file); they are named
+  in `nix/lib/bootstrap-data.nix` and left out of the comparison.
+- **The review of this document** ran six rounds. Its stand-in for the owner deferred at the
+  sixth, when open findings rose again, and the owner then aborted it with twenty findings open,
+  two of them high. Both highs and five of the seven mediums were about things the build then hit
+  and resolved (listed above); the rest concerned build-night procedure. The open findings were
+  given to the builders as an advisory. This section was written after the review and was not
+  reviewed.
+- **The tmux configuration was retired** after this design was written (2026-11-27; herdr is the
+  multiplexer). Gone: the `tmux` Stow package, so `home-tree` and the Stow set have no
+  `.tmux.conf`; the `tmux-plugins` and `tpm` packages; the module's and the sandboxes'
+  `~/.tmux/plugins` links; the tmux clause of `configs` and the `.tmux/plugins/` exclusion of
+  `link-modes`. tmux stays in `tools`: `zsh-interactive` and `test/suite.sh` use a throwaway tmux
+  server as their pty. `bwrap` in `nix/checks/lib.nix` is kept until the checks are shown to pass
+  without it (see the comment there for what still needs `/usr/bin/env` and `/tmp`).

@@ -13,7 +13,6 @@ in
 
     # ── Tools from elsewhere ─────────────────────────────────────────────────
     tuicr = self.callPackage ./packages/tuicr.nix { };
-    tpm = self.callPackage ./packages/tpm.nix { };
 
     # bootstrap.sh alone, as the repo herdr-plugins reads its pins from when no checkout is given.
     bootstrap-dir = prev.lib.fileset.toSource {
@@ -26,7 +25,6 @@ in
     scripts = self.callPackage ./packages/scripts.nix { };
     summarizer-plugin = self.callPackage ./packages/summarizer-plugin.nix { };
     oh-my-zsh-bundle = self.callPackage ./packages/oh-my-zsh-bundle.nix { };
-    tmux-plugins = self.callPackage ./packages/tmux-plugins.nix { };
     tools = self.callPackage ./packages/tools.nix { };
     sandbox = self.callPackage ./packages/sandbox.nix { };
     herdr-sandbox = self.callPackage ./packages/sandbox.nix { withHerdr = true; };

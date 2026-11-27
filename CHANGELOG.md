@@ -20,6 +20,9 @@ Queued work lives in `docs/proposals/`.
 - `herdr-summarize` also searches `PATH` for herdr, claude and jj, after its fixed directories
 - `validate.sh`, `herdr-plugins` and `test/suite.sh` use `python3` from `PATH` where `/usr/bin/python3` does not exist, and every Python call runs with `-I`
 
+### Removed
+- The tmux configuration: herdr is the multiplexer. The `tmux` Stow package (`.tmux.conf`), TPM and its three plugins, `bootstrap.sh`'s TPM sync and tmux reload, `validate.sh`'s tmux config checks (config loads, copy-mode `y`, other files on tmux's search path, servers older than the config), and on the Nix route the `tmux-plugins` and `tpm` packages, the `~/.tmux/plugins` links and the tmux assertions of the `configs` check. The tmux binary stays installed by both routes: the test suite and the `zsh-interactive` check use a throwaway tmux server as their pty, and it runs with no config
+
 ## [2026-11-18]
 
 ### Added

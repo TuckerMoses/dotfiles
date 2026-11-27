@@ -65,7 +65,6 @@ let
   excluded =
     t:
     t == ".oh-my-zsh"
-    || lib.hasPrefix ".tmux/plugins/" t
     || lib.hasPrefix ".local/share/dotfiles/" t
     || lib.elem t data.homeManagerTargets;
   placed =

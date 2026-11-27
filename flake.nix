@@ -71,7 +71,6 @@
             scripts
             summarizer-plugin
             oh-my-zsh-bundle
-            tmux-plugins
             tools
             sandbox
             herdr-sandbox

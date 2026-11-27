@@ -49,7 +49,7 @@ requests. Build-sandbox checks (`nix/checks/`) run inside Nix's build sandbox, w
 `$HOME`; a check that runs programs copies the configs into a temporary `HOME`. NixOS VM tests (`nix/tests/`,
 x86_64-linux only) boot whole machines under QEMU and need KVM.
 
-- `configs`: every config parses or loads (zsh, tmux and its plugins, starship, atuin, herdr, Ghostty, nvim's Lua, TOML files).
+- `configs`: every config parses or loads (zsh, starship, atuin, herdr, Ghostty, nvim's Lua, TOML files).
 - `zsh-interactive`: an interactive zsh in a pty prints nothing on stderr and has zsh-vi-mode, the prompt, fzf, atuin and zoxide.
 - `scripts`: the herdr scripts run, and none calls `/usr/bin/python3`.
 - `herdr-headless`: a herdr server starts in the temporary `HOME` and the summarizer's hook runs succeed (dry: no model calls).

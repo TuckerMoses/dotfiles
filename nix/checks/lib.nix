@@ -19,12 +19,9 @@ rec {
       mkdir -p "$HOME"
       cp -R ${d.home-tree}/. "$HOME/"
       chmod -R u+w "$HOME"
-      mkdir -p "$HOME/.tmux/plugins" "$HOME/.local/bin" "$HOME/.local/share/dotfiles" "$HOME/.tmp" "$HOME/.run"
+      mkdir -p "$HOME/.local/bin" "$HOME/.local/share/dotfiles" "$HOME/.tmp" "$HOME/.run"
       chmod 700 "$HOME/.tmp" "$HOME/.run"
       ln -s ${d.oh-my-zsh-bundle} "$HOME/.oh-my-zsh"
-      for p in tpm tmux-sensible tmux-resurrect tmux-continuum; do
-        ln -s "${d.tmux-plugins}/$p" "$HOME/.tmux/plugins/$p"
-      done
       for s in herdr-summarize herdr-recent herdr-login-warning herdr-plugins; do
         ln -s "${d.scripts}/bin/$s" "$HOME/.local/bin/$s"
       done
@@ -44,10 +41,10 @@ rec {
   # A check: `script` runs in a throwaway HOME, calls `fail <message>` on a broken assertion,
   # and $out exists only when it got to the end.
   #
-  # The build sandbox has /bin/sh but no /usr/bin/env, which every NixOS machine has and which
-  # upstream scripts the configs run name in their #! lines (TPM, the tmux plugins). So the
-  # script runs in a bubblewrap namespace that is the build sandbox plus /usr/bin/env, and
-  # nothing else from outside.
+  # The build sandbox has /bin/sh but no /usr/bin/env, which every NixOS machine has, and no
+  # /tmp. herdr-login-warning calls `/usr/bin/env python3` in its body (scripts.nix rewrites only
+  # /usr/bin/python3) and zsh writes here-documents to /tmp. So the script runs in a bubblewrap
+  # namespace that is the build sandbox plus /usr/bin/env and a /tmp, and nothing else from outside.
   mkCheck =
     name:
     {

@@ -56,7 +56,7 @@ buildEnv {
     # herdr builds two of its plugins.
     go
     cargo
-    # The base commands Oh My Zsh, its wd plugin, TPM and the tmux plugins run, so the set
+    # The base commands Oh My Zsh and its wd plugin run, so the set
     # works with nothing else on PATH (as in the sandbox).
     bashInteractive
     coreutils
@@ -67,7 +67,7 @@ buildEnv {
     getopt
     less
   ]
-  # vim-tmux-navigator's pane check in .tmux.conf runs ps; macOS has its own.
+  # validate.sh's running-process checks run ps and pgrep; macOS has its own.
   ++ lib.optional stdenv.hostPlatform.isLinux procps
   # The release binary is Linux-only; the Darwin set waits for nixpkgs to carry 0.30.0.
   ++ lib.optional stdenv.hostPlatform.isLinux tuicr

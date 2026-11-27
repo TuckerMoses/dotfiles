@@ -11,22 +11,6 @@ checkLib.mkCheck "configs" { } ''
   err=$(zsh -n "$HOME/.zshrc" 2>&1) || fail "zsh -n ~/.zshrc: $err"
   echo "zsh: ~/.zshrc parses"
 
-  # ── tmux ─────────────────────────────────────────────────────────────────
-  # source-file reports each bad line on stderr; errors from -f only reach an attached client.
-  # The config ends by running TPM, which sources each plugin before source-file returns.
-  errs=$(tmux -L cfg -f /dev/null new-session -d 'sleep 60' \; source-file "$HOME/.tmux.conf" 2>&1) \
-    || fail "tmux: the throwaway server did not start or source-file failed: $errs"
-  [ -z "$errs" ] || fail "tmux: ~/.tmux.conf printed errors: $errs"
-  keys=$(tmux -L cfg list-keys -T prefix)
-  status_right=$(tmux -L cfg show -gv status-right)
-  tmux -L cfg kill-server
-  # One mark per plugin, each set only by that plugin's own *.tmux file.
-  grep -q 'tpm/bindings/install_plugins' <<<"$keys" || fail "tmux: TPM not sourced (prefix I is not its install binding)"
-  grep -qE '^bind-key +-T prefix +R +run-shell .*Sourced' <<<"$keys" || fail "tmux: tmux-sensible not sourced (no prefix R reload binding)"
-  grep -q 'resurrect/scripts/save.sh' <<<"$keys" || fail "tmux: tmux-resurrect not sourced (prefix C-s is not its save binding)"
-  grep -q 'continuum_save.sh' <<<"$status_right" || fail "tmux: tmux-continuum not sourced (status-right lacks its save interpolation): $status_right"
-  echo "tmux: ~/.tmux.conf loads cleanly; tpm, tmux-sensible, tmux-resurrect and tmux-continuum sourced"
-
   # ── starship ─────────────────────────────────────────────────────────────
   # A TOML error is a warning on stderr with exit 0, so stderr must be empty.
   err=$(starship print-config 2>&1 >/dev/null) || fail "starship print-config exited non-zero: $err"

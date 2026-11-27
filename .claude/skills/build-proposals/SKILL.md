@@ -149,9 +149,7 @@ and the blocked and done proposals with their reasons. With `--dry-run`, stop he
    - the rules: no `stow`, no `bootstrap.sh`, no installs, nothing outside the worktree, no push;
    - **the validation requirement** (below);
    - the static checks it can run from a worktree: `bash -n`, `zsh -n`, a Python compile,
-     `HERDR_CONFIG_PATH=<file> herdr config check`, `ghostty +validate-config --config-file=<file>`,
-     and sourcing a tmux config into a throwaway server
-     (`tmux -L <name> -f /dev/null new-session -d 'sleep 5' \; source-file <file>`);
+     `HERDR_CONFIG_PATH=<file> herdr config check`, `ghostty +validate-config --config-file=<file>`;
    - that herdr behaviour is tried in `herdr-sandbox` on a machine with Nix (`CLAUDE.md`, "Nix package set"), never on
      the live herdr server;
    - that it may run `test/suite.sh local` (not the VM environments; Phase 6 runs those) to check its own work: the suite
@@ -254,7 +252,7 @@ This follows "Worktree testing" in `CLAUDE.md`.
    message, say that the main checkout will be switched to `feat/build-proposals-<date>` (so the
    stowed config becomes the branch's), which files in `$HOME` will be moved aside, that
    `./bootstrap.sh` will then run (it restows, and installs whatever its `command -v`, directory or status
-   checks find missing: name each, from its tool list, Oh My Zsh and its plugins, TPM and the tmux plugins, and
+   checks find missing: name each, from its tool list, Oh My Zsh and its plugins, and
    herdr's Claude integration) and may be re-run after the fixes of step 5 and Phase 8, which herdr
    plugins it will install at their pins with `--yes` (every pinned plugin `herdr plugin list` does not
    show, guarded or not; one behind an `if command -v` guard only when that tool is present; one
@@ -284,7 +282,7 @@ This follows "Worktree testing" in `CLAUDE.md`.
 5. Fix failures on the branch: small ones yourself, larger ones through a fix agent. Re-run, within the fix-agent rule's bound, until no failure remains that was not in the baseline.
 6. If the fix-agent rule says to stop, say so, skip Phase 8 and go to Phase 9, with the remaining
    failures under item 6 and "not run (Phase 7 stopped)" under item 7. Before that, if a failure not in the baseline breaks the
-   login shell, stow links, or tmux or herdr startup, roll back first: say why and what the rollback does, and run it
+   login shell, stow links, or herdr startup, roll back first: say why and what the rollback does, and run it
    only after the user's explicit yes (the step 0 yes does not cover it). Without one, leave the machine as it is
    and report its state in the PR. The rollback, in the main checkout:
    1. Still on the branch, `stow -d . -t "$HOME" -D --no-folding <pkg>` for each package the branch adds or

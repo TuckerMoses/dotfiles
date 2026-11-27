@@ -306,7 +306,7 @@ env_local() {
   log "local: HOME=$home  run=$RUN"
   # git: no system config and no credential helper. On macOS, Xcode's gitconfig sets
   # credential.helper=osxkeychain; the throwaway HOME has no keychain, so every https
-  # clone (Oh My Zsh, TPM plugins, lazy.nvim) would raise a "Keychain Not Found" dialog
+  # clone (Oh My Zsh and its plugins, lazy.nvim) would raise a "Keychain Not Found" dialog
   # on the user's screen. A fresh machine has no such helper either.
   env -i HOME="$home" USER="$(id -un)" LOGNAME="$(id -un)" PATH="$path" SHELL=/bin/bash \
     TERM=xterm-256color LANG="${LANG:-en_US.UTF-8}" TMPDIR="${TMPDIR:-/tmp}" TMUX_TMPDIR="$home/t" \

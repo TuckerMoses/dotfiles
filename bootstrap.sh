@@ -5,7 +5,7 @@ set -euo pipefail
 # Clone this repo to ~/dotfiles, then run: ./bootstrap.sh
 # Idempotent — safe to re-run on updates.
 # Contract: "==> Installing" is printed before every install attempt, so a run that prints none installed nothing
-# (test/suite.sh's third run relies on it); TPM's plugin sync is not covered.
+# (test/suite.sh's third run relies on it).
 #
 DOTFILES_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$DOTFILES_DIR"
@@ -178,7 +178,7 @@ command -v brew &>/dev/null && zvm_brew="$(brew --prefix)/opt/zsh-vi-mode/share/
 echo "==> Stowing dotfiles..."
 mkdir -p "$HOME/.config"
 
-for pkg in tmux zsh ghostty starship nvim atuin; do
+for pkg in zsh ghostty starship nvim atuin; do
   if [[ -d "$DOTFILES_DIR/$pkg" ]]; then
     echo "    stowing $pkg"
     stow -d "$DOTFILES_DIR" -t "$HOME" --restow "$pkg"
@@ -244,25 +244,6 @@ if command -v herdr >/dev/null 2>&1; then
     echo "==> Installing herdr Claude integration"
     herdr integration install claude || echo "    (install later: herdr integration install claude)"
   fi
-fi
-
-# ── TPM (Tmux Plugin Manager) ───────────────────────────────────────────────
-TPM_DIR="$HOME/.tmux/plugins/tpm"
-if [[ ! -d "$TPM_DIR" ]]; then
-  echo "==> Installing TPM..."
-  git clone https://github.com/tmux-plugins/tpm "$TPM_DIR"
-fi
-
-# Install/update TPM plugins (non-interactive equivalent of prefix + I)
-if [[ -x "$TPM_DIR/bin/install_plugins" ]]; then
-  echo "==> Syncing tmux plugins (TPM)..."
-  "$TPM_DIR/bin/install_plugins"
-fi
-
-# ── Reload tmux config (if server is running) ───────────────────────────────
-if command -v tmux &>/dev/null && tmux list-sessions &>/dev/null 2>&1; then
-  echo "==> Reloading tmux config..."
-  tmux source-file ~/.tmux.conf || true
 fi
 
 if command -v atuin &>/dev/null; then

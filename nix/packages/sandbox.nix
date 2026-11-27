@@ -12,7 +12,6 @@
   scripts,
   home-tree,
   oh-my-zsh-bundle,
-  tmux-plugins,
   summarizer-plugin,
   withHerdr ? false,
 }:
@@ -103,12 +102,9 @@ writeShellApplication {
     # ── The throwaway HOME ───────────────────────────────────────────────────
     cp -R ${home-tree}/. "$home/"
     chmod -R u+w "$home"
-    mkdir -p "$home/.tmux/plugins" "$home/.local/bin" "$home/.local/share/dotfiles" "$tmux_tmpdir" "$home/.run"
+    mkdir -p "$home/.local/bin" "$home/.local/share/dotfiles" "$tmux_tmpdir" "$home/.run"
     chmod 700 "$tmux_tmpdir" "$home/.run"
     ln -s ${oh-my-zsh-bundle} "$home/.oh-my-zsh"
-    for p in tpm tmux-sensible tmux-resurrect tmux-continuum; do
-      ln -s "${tmux-plugins}/$p" "$home/.tmux/plugins/$p"
-    done
     for s in herdr-summarize herdr-recent herdr-login-warning herdr-plugins; do
       ln -s "${scripts}/bin/$s" "$home/.local/bin/$s"
     done

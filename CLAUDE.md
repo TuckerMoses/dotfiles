@@ -22,7 +22,6 @@ dotfiles/
 ├── herdr-summarizer/                # Opt-in herdr plugin (not stowed)
 ├── nvim/.config/nvim/               # Neovim config with Claude Code sync
 ├── starship/.config/starship.toml   # Prompt engine config
-├── tmux/.tmux.conf                  # Terminal multiplexer config
 ├── zsh/.zshrc                       # Shell configuration
 ├── docs/herdr.html                  # Guide to the herdr setup
 ├── docs/proposals/                  # Approved work queue
@@ -52,7 +51,6 @@ To add a new tool's config:
 | **ghostty** | `.config/ghostty/config` | Ghostty terminal emulator (Catppuccin Mocha theme, JetBrains Mono NF) |
 | **nvim** | `.config/nvim/` | Neovim with Claude Code sync (auto-reload, diffview.nvim, claudecode.nvim) |
 | **starship** | `.config/starship.toml` | Starship cross-shell prompt (minimal single-line, language detection) |
-| **tmux** | `.tmux.conf` | Tmux multiplexer (vim-tmux-navigator, Catppuccin status bar, TPM plugins) |
 | **herdr** | `.config/herdr/config.toml`, `.config/herdr/plugins/config/cloudmanic.herdr-plus/`, `.local/bin/herdr-{summarize,recent,plugins,login-warning}` | Herdr terminal workspace manager (tmux-style keys, vim-herdr-navigation, sounds, pane descriptions + `prefix+a` recent-sessions picker, tab-bar ZOOM pill and Claude login-expiry warning, tuicr diff review popup `prefix+alt+r`; plugins herdr-plus and herdr-fingers (trial)). Every plugin is pinned with `--ref` in `bootstrap.sh`; the user moves pins with `herdr-plugins update` (agents never do: see Rules for AI Assistants; reading `review` output: `herdr-plugins help`) — stowed with `--no-folding` |
 | **herdr-summarizer** | *(not stowed)* `install.sh`, `plugin/` | Opt-in herdr plugin: on agent turn-end, agent-detected, pane-moved and pane-focused events it runs `herdr-summarize` (labels, status, stale reviews, descriptions). No timer. `install.sh` links it; never run by `bootstrap.sh` |
 | **zsh** | `.zshrc` | Zsh shell via Oh My Zsh (plugins: git, wd, fzf-tab, autosuggestions, syntax-highlighting) |
@@ -69,16 +67,16 @@ pack on 2026-11-12.
 - **Homebrew** (macOS) / **apt**/**dnf** (Linux) for system packages
 - **GNU Stow** for symlink management
 - **Oh My Zsh** with custom plugins (zsh-autosuggestions, zsh-syntax-highlighting)
-- **Neovim**, **fzf**, **zoxide**, **Starship**, **Atuin**
+- **Neovim**, **fzf**, **zoxide**, **Starship**, **Atuin**, and **tmux** with no config (the test harness's pty)
 - **Linux only**: zsh, a clipboard tool (`wl-clipboard`), `jj` and `lazyjj` (pinned release binaries, checked by
   sha256), herdr (its installer), zsh-vi-mode (as an Oh My Zsh custom plugin) and the Nerd Font
   (`~/.local/share/fonts`). User-level binaries go to `~/.local/bin`; every download is picked by `uname -m`
 
 ## Design Conventions
 
-- **Theme**: Catppuccin Mocha everywhere (ghostty, tmux status bar, starship accents)
+- **Theme**: Catppuccin Mocha everywhere (ghostty, starship accents)
 - **Font**: JetBrains Mono Nerd Font
-- **Navigation**: Vim-style keybindings throughout (tmux, neovim, fzf)
+- **Navigation**: Vim-style keybindings throughout (herdr, neovim, fzf)
 - **Section headers**: Use `# ── Section ──────────` style comments in all config files
 - **Idempotent bootstrap**: `bootstrap.sh` is safe to re-run; it checks before installing
 - **Cross-platform**: Support both macOS and Linux in bootstrap logic
@@ -87,11 +85,9 @@ pack on 2026-11-12.
 
 ## Key Bindings Reference
 
-- **Tmux prefix**: `Ctrl+b`
-- **Pane navigation**: `Ctrl+h/j/k/l` (shared with Neovim via vim-tmux-navigator)
-- **Splits**: `prefix + |` (horizontal), `prefix + -` (vertical)
+- **Pane navigation**: `Ctrl+h/j/k/l` across herdr panes and Neovim splits (vim-herdr-navigation)
+- **Splits**: `prefix + |` (side by side), `prefix + -` (stacked)
 - **Resize**: `prefix + Shift+H/J/K/L`
-- **Reload tmux config**: `prefix + r`
 - **atuin**: `Ctrl+R` (shell history search), Up arrow (per-directory history)
 - **fzf**: `Ctrl+T` (files)
 - **zoxide**: `cd` is aliased to zoxide's smart directory jumper
@@ -161,13 +157,12 @@ behaviour a reader would see.
 
 ### Validating
 `./validate.sh` (or `-q` for warnings and failures only) checks that every stowed file links back
-to this checkout, bootstrap's tools are installed, each config parses (tmux, ghostty, starship, atuin,
+to this checkout, bootstrap's tools are installed, each config parses (ghostty, starship, atuin,
 nvim and zsh, using throwaway instances where needed), herdr's plugins and Claude integration are healthy,
 and the opt-in herdr-summarizer has no failed hook runs. It also checks what programs *actually* load, since
-a correctly stowed file can still not be live: another file on a program's search path (tmux reads every
-file in the list built into its binary; Ghostty also reads its Application Support config), an environment
-variable pointing elsewhere (`ZDOTDIR`, `STARSHIP_CONFIG`, `NVIM_APPNAME`, ...), config-like files in nvim's
-`site` dir, zsh startup files outside the repo, or a running tmux server, nvim, Ghostty or herdr that loaded
+a correctly stowed file can still not be live: another file a program also reads (Ghostty's
+Application Support config), an environment variable pointing elsewhere (`ZDOTDIR`, `STARSHIP_CONFIG`, `NVIM_APPNAME`, ...), config-like files in nvim's
+`site` dir, zsh startup files outside the repo, or a running nvim, Ghostty or herdr that loaded
 its config before the last change (with the command to fix it). It reads package, tool and plugin lists from
 `bootstrap.sh`, so new packages are covered automatically. Run it after any change; it exits 1 on failure.
 
@@ -179,7 +174,7 @@ Design and reasons: `docs/design/nix-dotfiles.md`. `nix` commands run on a machi
 Mac has no Nix.
 
 - **Outputs:** `overlays.default` (adds `pkgs.dotfiles.*`, `nix/overlay.nix`); `packages.<system>`: `home-tree`,
-  `scripts`, `summarizer-plugin`, `oh-my-zsh-bundle`, `tmux-plugins`, `tools`, `sandbox`, `herdr-sandbox`
+  `scripts`, `summarizer-plugin`, `oh-my-zsh-bundle`, `tools`, `sandbox`, `herdr-sandbox`
   (`nix/packages/`); `apps` for the two sandboxes; `homeManagerModules.default` (`nix/home-manager/`); `checks`
   (Linux only). x86_64-linux and aarch64-linux are built; aarch64-darwin is only evaluated.
 - **Link modes** (`dotfiles.linkMode`): `store` links each config from the build, so an edit needs a rebuild;
@@ -235,7 +230,7 @@ built in CI), builds each build-sandbox check on x86-64 and arm64, and the `vm-*
 Each Claude session should follow this workflow at the start:
 
 1. **Check for unstaged/uncommitted changes.** If the tree is dirty, flag it before doing anything — it likely means a previous session or manual edit left things in a bad state.
-2. **Check the current branch.** If it clearly matches the task (e.g., you're on `feat/tmux-keybinds` and the user asks to tweak tmux keybinds), stay on it. Otherwise, switch to `master`.
+2. **Check the current branch.** If it clearly matches the task (e.g., you're on `feat/herdr-keybinds` and the user asks to tweak herdr keybinds), stay on it. Otherwise, switch to `master`.
 3. **Determine if the task modifies files.** If read-only (explaining code, answering questions), no further setup needed. If changes are required, propose a branch name and use `EnterWorktree` to isolate the work. **Exception:** light Claude config changes (skill edits, CLAUDE.md tweaks, agent updates, settings changes) can bypass the worktree process and commit/push directly to master. These are small, low-risk config updates that don't warrant branch isolation.
 4. **Assume a clean git tree.** Each task should start from a clean state on its branch or on `master`. If it's not clean, ask — the user may have made a mistake.
 

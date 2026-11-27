@@ -11,7 +11,6 @@ let
     "herdr"
     "nvim"
     "starship"
-    "tmux"
     "zsh"
   ];
   fileset = fs.difference (fs.unions (map (p: root + "/${p}") stowPackages)) (

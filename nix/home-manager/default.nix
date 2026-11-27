@@ -36,13 +36,6 @@ let
       config.lib.file.mkOutOfStoreSymlink "${cfg.checkout}/${f.pkg}/${f.rel}"
     else
       "${d.home-tree}/${f.rel}";
-
-  tmuxPlugins = [
-    "tpm"
-    "tmux-sensible"
-    "tmux-resurrect"
-    "tmux-continuum"
-  ];
 in
 {
   options.dotfiles = {
@@ -82,16 +75,13 @@ in
     ];
     fonts.fontconfig.enable = true;
 
-    # One link per file, so ~/.config/herdr, ~/.config/nvim and ~/.tmux/plugins stay real,
+    # One link per file, so ~/.config/herdr and ~/.config/nvim stay real,
     # writable directories; only the store bundles are linked as directories.
     home.file =
       lib.listToAttrs (map (f: lib.nameValuePair f.rel { source = configSource f; }) configFiles)
       # herdr/config.toml calls the scripts by this path.
       // lib.listToAttrs (
         map (s: lib.nameValuePair ".local/bin/${s}" { source = "${scripts}/bin/${s}"; }) scriptNames
-      )
-      // lib.listToAttrs (
-        map (p: lib.nameValuePair ".tmux/plugins/${p}" { source = "${d.tmux-plugins}/${p}"; }) tmuxPlugins
       )
       // {
         ".oh-my-zsh".source = d.oh-my-zsh-bundle;

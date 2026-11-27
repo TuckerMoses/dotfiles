@@ -31,7 +31,6 @@ dotfiles/
 ├── herdr-summarizer/                 — opt-in herdr plugin (not stowed; herdr-summarizer/install.sh)
 ├── nvim/.config/nvim/                → ~/.config/nvim/
 ├── starship/.config/starship.toml    → ~/.config/starship.toml
-├── tmux/.tmux.conf                   → ~/.tmux.conf
 ├── zsh/.zshrc                        → ~/.zshrc
 ├── bootstrap.sh                      — one-command setup
 ├── validate.sh                       — read-only check that everything here is live and working
@@ -54,7 +53,6 @@ dotfiles/
 | **herdr** | Herdr terminal workspace manager (tmux-style keys, sounds, pane descriptions, `prefix+a` recent-sessions picker, `$jj_status` for jj repos, tuicr diff review popup `prefix+alt+r` for git and jj repos; plugins herdr-plus `prefix+t`/`prefix+space`, herdr-fingers trial `prefix+f`); stowed with `--no-folding` |
 | **nvim** | Neovim with Claude Code sync plugins (auto-reload, diffview.nvim, claudecode.nvim) |
 | **starship** | Cross-shell prompt (minimal single-line, language detection) |
-| **tmux** | Terminal multiplexer (vim-tmux-navigator, Catppuccin status bar, session persistence) |
 | **zsh** | Zsh shell via Oh My Zsh (fzf-tab, autosuggestions, syntax-highlighting) |
 
 Claude Code notifications and sounds are handled by Herdr (toasts, `prefix+o` jump-to-agent, and its built-in sounds via `[ui.sound]`). The opt-in `herdr-summarizer/` plugin is not stowed; `herdr-summarizer/install.sh` links it.
