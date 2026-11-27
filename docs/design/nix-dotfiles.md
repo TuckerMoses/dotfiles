@@ -68,7 +68,7 @@ flake.nix
             packages.<system>.*         the same set, per system
             apps.<system>.*             sandbox, herdr-sandbox
             homeManagerModules.default  places configs and tools for one user
-            checks.<system>.*           build-sandbox checks and NixOS VM tests
+            checks.<system>.*           build-sandbox checks and NixOS VM tests (Linux only)
             nixosConfigurations.*       as today
 nix/
   overlay.nix
@@ -79,11 +79,18 @@ nix/
 nixos/modules/dotfiles-user.nix   turns the module on for named users of a host
 ```
 
-Systems: `x86_64-linux`, `aarch64-linux`, `aarch64-darwin`. The Darwin outputs are evaluated in
-this change and not built, because no machine with Nix on macOS exists yet.
+Systems: `x86_64-linux`, `aarch64-linux`, `aarch64-darwin`. The Darwin outputs (packages and module,
+no `checks`) are evaluated in this change and not built, because no machine with Nix on macOS exists
+yet.
 
 `home-manager` follows the flake's `nixpkgs`. `nixpkgs-unstable` is used for two packages only
-(section 4), so one fast-moving tool does not move the kernel or Tailscale.
+(section 4), so one fast-moving tool does not move the kernel or Tailscale. `overlay.nix` takes the
+flake inputs and reads `nixpkgs-unstable.legacyPackages.${prev.stdenv.hostPlatform.system}` for
+those two.
+
+The new inputs are locked with plain `nix flake lock`, never `nix flake update` or `--update-input`
+on an existing input; `git diff flake.lock` must show additions only (`nixpkgs-unstable` is locked at
+the current `nixos-unstable`).
 
 No file added under `nix/` or `nixos/` may contain a literal home directory. `validate.sh` fails
 on one, and the existing modules already build the path from the user name.
@@ -95,9 +102,9 @@ Everything lives under `pkgs.dotfiles` and is exported as `packages.<system>`.
 | Package | What it is |
 |---|---|
 | `home-tree` | A store directory laid out like `$HOME`: the union of the Stow packages `atuin`, `ghostty`, `herdr`, `nvim`, `starship`, `tmux`, `zsh`, minus the four scripts under `herdr/.local/bin`. Built with `lib.fileset` from those directories only, so a docs edit does not rebuild it. |
-| `scripts` | `herdr-summarize`, `herdr-recent`, `herdr-login-warning`, `herdr-plugins`, with interpreters rewritten to store paths and their runtime commands (python 3.11 or later, fzf, git, gh, jq, coreutils, awk, sed) on a wrapped `PATH`. |
+| `scripts` | `herdr-summarize`, `herdr-recent`, `herdr-login-warning`, `herdr-plugins`, with interpreters rewritten to store paths and their runtime commands (python 3.11 or later, fzf, git, gh, jq, coreutils, awk, sed) on a wrapped `PATH`. Takes a `dotfilesDir` argument (default: the store directory holding `bootstrap.sh`); the `herdr-plugins` and `dotfiles-herdr-plugins-sync` wrappers set `DOTFILES_DIR` to it with `makeWrapper --set`. `dotfiles-herdr-plugins-sync`, a wrapper running `herdr-plugins sync`, is on `PATH` through the package only and is not one of the four linked scripts. |
 | `summarizer-plugin` | `herdr-summarizer/plugin` with `hook` rewritten to call the packaged `herdr-summarize`. |
-| `oh-my-zsh-bundle` | nixpkgs `oh-my-zsh` with `custom/plugins/` holding `zsh-autosuggestions`, `fzf-tab`, `zsh-syntax-highlighting` and `zsh-vi-mode` from nixpkgs. Linked as `~/.oh-my-zsh`, it satisfies `zsh/.zshrc` unchanged. |
+| `oh-my-zsh-bundle` | nixpkgs `oh-my-zsh` with `custom/plugins/` holding `zsh-autosuggestions`, `fzf-tab`, `zsh-syntax-highlighting` and `zsh-vi-mode` from nixpkgs. Linked as `~/.oh-my-zsh`. Its `oh-my-zsh.sh` is patched so that when `$ZSH` is not writable it sets `ZSH_CACHE_DIR=${XDG_CACHE_HOME:-$HOME/.cache}/oh-my-zsh` and disables the update check; `zsh/.zshrc` stays unchanged. |
 | `tmux-plugins` | `tpm`, `tmux-sensible`, `tmux-resurrect`, `tmux-continuum`, under the directory names TPM expects in `~/.tmux/plugins`. |
 | `tools` | One environment with every program the configs call: zsh, tmux, neovim, starship, fzf, zoxide, atuin, jq, lazygit, lazyjj, jujutsu, tuicr, herdr, git, gh, python, a C compiler (nvim-treesitter builds parsers), go and cargo (herdr builds two of its plugins), and on Linux wl-clipboard. |
 | `sandbox`, `herdr-sandbox` | The throwaway-HOME programs in section 6. |
@@ -122,10 +129,10 @@ The JetBrains Mono Nerd Font comes from nixpkgs through Home Manager's fontconfi
 
 - **herdr's third-party plugins** (vim-herdr-navigation, herdr-plus, herdr-fingers). herdr
   installs and builds them into `~/.config/herdr/plugins` from the pins in `bootstrap.sh`. That
-  stays. On a Nix machine the command `dotfiles-herdr-plugins-sync` (part of `scripts`) reads the
-  same `herdr plugin install ... --ref` lines out of `bootstrap.sh` and runs them. It needs the
-  network. The existing rule holds: on a live machine only the owner runs it; an agent may run it
-  inside a sandbox.
+  stays. On a Nix machine `dotfiles-herdr-plugins-sync` runs the same `herdr plugin install ... --ref`
+  lines, read by `herdr-plugins`' existing `bootstrap.sh` parser. It needs the network, exits
+  non-zero on a missing pin line or a failed install, and refuses unless `DOTFILES_SANDBOX=1`
+  (set by `herdr-sandbox`). On a live machine only the owner runs it; agents: section 10.
 - **lazy.nvim's plugins.** lazy.nvim fetches them on first start from `lazy-lock.json`.
 - **Claude Code.** It stays the native install in `~/.local/bin`. herdr issue #803 (a
   Nix-wrapped Claude Code shown as `unknown`) therefore does not apply yet.
@@ -142,14 +149,19 @@ All are backward compatible and change nothing on the Mac.
 1. `herdr-summarize`: its command lookup also searches `$PATH`, after the fixed list. On NixOS
    the fixed list finds nothing but `~/.local/bin`.
 2. `herdr-plugins`: the repo location can be given by an environment variable
-   (`DOTFILES_DIR`); without it the symlink walk is used as today.
+   (`DOTFILES_DIR`); without it the symlink walk is used as today. It gains a `sync` subcommand
+   (the sync behaviour in "Not packaged" above).
 3. `validate.sh`, `herdr-plugins`, `test/suite.sh`: where `/usr/bin/python3` does not exist, use
    `python3` from `PATH`. Every call gets `-I`, which also closes the finding that these calls
    could import a module from the working directory.
 4. `validate.sh`, "Stowed files": a file that resolves into `/nix/store` passes when its bytes
    equal the checkout's file, and fails with "rebuild" advice when they differ. The four
    `herdr/.local/bin` scripts are exempt from the byte comparison (their interpreters are
-   rewritten): a store path passes for them.
+   rewritten): a store path passes for them. `lazy-lock.json` and `lazyvim.json` pass when they are
+   regular files and `~/.local/share/dotfiles` exists (the module's signal).
+5. Checks: source changes 1-4 each get a `validate.sh` check (run against a throwaway copy and shown
+   to fail); the packages, module and sandbox get flake checks only, as they exist only on Nix
+   machines.
 
 `validate.sh` passing in full on a Nix-managed home is **not** a goal of this change. It reads
 tool lists that assume brew or apt, and it requires herdr's plugins. The pull request records
@@ -174,10 +186,11 @@ What it does in both modes:
 - Links `summarizer-plugin` at `~/.local/share/dotfiles/herdr-summarizer-plugin`, a path that
   stays the same across rebuilds. Linking it into herdr stays opt-in and manual, as today.
 - Installs the font.
-- Sets `DOTFILES_DIR` for `herdr-plugins` and `dotfiles-herdr-plugins-sync`: always a
-  directory with `bootstrap.sh` at its top: the checkout in `checkout` mode, and in `store` mode a
-  store directory holding only a copy of the repo's `bootstrap.sh` (where `update` refuses, as it
-  already does in a worktree).
+- Uses `scripts.override { dotfilesDir = ...; }`, so the `herdr-plugins` and sync wrappers carry
+  `DOTFILES_DIR`; no shell-level environment is relied on. The directory has `bootstrap.sh` at its top:
+  the checkout in `checkout` mode, and in `store` mode a store directory holding only a copy of the
+  repo's `bootstrap.sh` (where `update` refuses, as it already does in a worktree).
+- Asserts that in `checkout` mode `dotfiles.checkout` is non-null and absolute.
 
 It links config files one by one, so `~/.config/herdr`, `~/.config/nvim` and `~/.tmux/plugins`
 stay real, writable directories; only the store bundles named above are linked as directories.
@@ -191,7 +204,7 @@ rebuilding. This is the mode for test users, CI and any machine that only consum
 out-of-store symlink. This is Stow's behaviour with Home Manager doing the linking: editing a
 file in the checkout, or checking out another branch there, changes the live config at once.
 `validate.sh`'s Stow check passes, because each link still resolves to the checkout, except that
-the four scripts come from the store in this mode (the raw files name `/usr/bin/python3`) and
+the four scripts come from the store in this mode and
 pass under the exemption in source change 4.
 Changing a script on a Nix machine means rebuilding.
 
@@ -206,19 +219,21 @@ mode for each. It is empty by default. Only the VM test host and the VM tests se
 This is the answer to D. Three levels, cheapest first. None of them reaches the running herdr unless deliberately pointed at it.
 
 **1. Build-sandbox checks** (`nix flake check`). No network, no `$HOME`, no access to the user's
-sockets. Each check copies `home-tree` into a temporary `HOME` and runs programs against it.
+sockets. The checks that run programs copy `home-tree` into a temporary `HOME` and run them against it.
 Section 7 lists them.
 
 **2. A sandbox shell** (`nix run .#sandbox`, `nix run .#herdr-sandbox`). For looking at a change
 by hand, and for anything that needs the network (herdr plugin installs, `Lazy restore`).
 
-- Creates a throwaway `HOME` under the temp directory, short enough for unix socket paths, and
-  fills it from the `home-tree`, `scripts`, `oh-my-zsh-bundle` and `tmux-plugins` built from the
+- Creates a throwaway `HOME` with `mktemp -d` under `/tmp` (at most 40 characters, for unix socket
+  paths) and fills it from the `home-tree`, `scripts`, `oh-my-zsh-bundle` and `tmux-plugins` built from the
   working tree.
-- Starts the program with `env -i` and a short allow-list, so no `HERDR_*`, `TMUX*`, `ZDOTDIR`,
-  `XDG_*`, `STARSHIP_*`, `ATUIN_*` or `NVIM_APPNAME` value leaks in. It refuses to start if the
-  `HOME` it is about to use is the real one. These are the guards `test/suite.sh local` already
-  has.
+- Starts the program with `env -i` and exactly: `HOME`, `PATH` (store paths only), `TERM`, `LANG`,
+  `COLORTERM`, `DOTFILES_SANDBOX=1`, and `TMUX_TMPDIR`, `TMPDIR` and `XDG_RUNTIME_DIR` all inside the
+  throwaway `HOME`. Nothing else passes (no `SSH_AUTH_SOCK`, `DISPLAY`, `WAYLAND_DISPLAY`, `HERDR_*`,
+  `TMUX*`). It refuses to start if the new `HOME` equals the passwd home or the caller's `$HOME`
+  (captured before `env -i`), or if `TMUX_TMPDIR` is outside it. These are the guards
+  `test/suite.sh local` has.
 - `herdr-sandbox` starts a herdr server whose socket, config, state and plugin registry are all
   inside the throwaway `HOME`, then attaches to it. `--with-plugins` runs
   `dotfiles-herdr-plugins-sync` first. `--summarizer` links the packaged summarizer plugin with
@@ -237,26 +252,27 @@ owner's running herdr, and never runs the plugin sync outside a sandbox.
 
 ## 7. Checks
 
-Build-sandbox checks, for every Linux system (and Darwin once it can be built):
+Build-sandbox checks, for every Linux system:
 
 | Check | Asserts |
 |---|---|
 | `configs` | `zsh -n` on `.zshrc`; the tmux config loads in a throwaway server and TPM's four plugins are sourced; `starship print-config`; atuin resolves `auto_sync` to `false`; `herdr config check`; `ghostty +validate-config` (ghostty comes from nixpkgs as a check-only input on Linux, not in `tools`); every nvim Lua file compiles; every TOML file parses. |
 | `zsh-interactive` | A real interactive zsh in a pty prints nothing on stderr and has `zvm_init`, the starship prompt hook, `^T` bound to fzf, `^R` bound to atuin and zoxide's `cd`. This is step 7 of `test/suite.sh`. |
-| `scripts` | `herdr-summarize` compiles, prints help and passes its `jj-status` cases against throwaway repos; `herdr-login-warning` gives the right output for a fake `claude` near and far from expiry; `herdr-recent` and `herdr-plugins help` run; no packaged script still names `/usr/bin/python3`. |
+| `scripts` | `herdr-summarize` compiles, prints help and passes its `jj-status` cases against throwaway repos; `herdr-login-warning` gives the right output for a fake `claude` near and far from expiry; `herdr-recent` and `herdr-plugins help` run; no packaged script's interpreter line or python invocation resolves to `/usr/bin/python3`. |
 | `herdr-headless` | A herdr server starts in the temporary `HOME`; the summarizer plugin links; creating a workspace produces hook runs that all succeed and a non-empty state file, in dry mode. Steps 2 and 6 of `test/suite.sh`. |
-| `tool-versions` | The floors in section 4. |
+| `tool-versions` | The floors in section 4; the tuicr version and both sha256 values in the `fetchurl` equal those parsed from `bootstrap.sh`. |
 | `lifeline-guard` | Pure evaluation, no VM: each of the nine config changes that `nixos/test/drills.sh` expects the lockout guard to refuse does fail an assertion, and the unmodified host passes. |
-| `link-modes` | Home Manager's activation package builds for a test user in each mode, and in `store` mode the files Home Manager places under the test user's HOME (the `home-tree` links, the four script links in `~/.local/bin` and the two copied nvim files) together equal the file list of the seven Stow packages. |
+| `link-modes` | Home Manager's activation package builds for a test user in each mode. In `store` mode the files Home Manager places under the test user's HOME (the `home-tree` links, the four script links in `~/.local/bin` and the two copied nvim files) together equal the file list of the seven Stow packages. In `checkout` mode `dotfiles.checkout` is `/test/checkout` and each config link targets `<checkout>/<package>/<relative path>`, with the scripts and nvim files as in `store` mode; with it unset, `builtins.tryEval` of the activation package fails. In both modes the `herdr-plugins` wrapper carries the expected `DOTFILES_DIR`. |
 
-Each check must be shown to fail: the builder breaks its input once and records that the check
-went red.
+Each check must be shown to fail: the builder breaks its input in the working tree, runs that one
+check, reverts, and never commits the break. The PR description gets a table of check, break and
+failing line.
 
-NixOS VM tests (`x86_64-linux`; `aarch64-linux` where the runner has KVM):
+NixOS VM tests (`x86_64-linux` only in this change; attribute names start with `vm-`):
 
 | Test | Asserts |
 |---|---|
-| `vm-home` | A machine with a user in `store` mode and one in `checkout` mode boots; both Home Manager units succeed; each user logs in over SSH with a key into zsh; the interactive shell is clean; in `checkout` mode an edit to a config in the checkout is live without a rebuild; `ssh user@host true` still works after the user's `.zshrc` is deliberately broken. |
+| `vm-home` | A machine with a user in `store` mode and one in `checkout` mode boots; both Home Manager units succeed; each user logs in over SSH with a key into zsh; the interactive shell is clean; in `checkout` mode an edit to a config in the checkout is live without a rebuild; an interactive login (`ssh -tt user@host`, `exit 0` on stdin) still connects and returns 0 after the user's `.zshrc` is deliberately broken. The test host sets `programs.zsh.enable`, each user's shell to zsh, and the global prompt and `compinit` off (`dotfiles-user.nix` does not enable zsh), and copies the flake source to a fixed path in the checkout user's HOME, owned by that user, in a oneshot unit ordered before that user's Home Manager unit. |
 | `vm-lifeline` | A machine with the `lifeline` module boots with sshd answering on ports 22 and 2222, the firewall up with both ports open, and sleep targets masked. |
 
 **What is not ported.** The remaining drills in `nixos/test/drills.sh` (`safe-switch` confirmed
@@ -290,10 +306,13 @@ A new workflow, `.github/workflows/nix.yml`.
 - **Permissions:** `contents: read`. No secrets.
 - **Actions** are pinned by commit SHA.
 - **Jobs:**
-  1. `eval`: `nix flake check --no-build`, plus evaluating the derivation of every host,
+  1. `eval`: `nix flake check --all-systems --no-build`, plus evaluating the derivation of every host,
      including homepc, without building it.
-  2. `checks`: the build-sandbox checks, on `ubuntu-latest` and `ubuntu-24.04-arm`.
-  3. `vm`: the NixOS VM tests on `ubuntu-latest`, with `/dev/kvm` opened to the runner user.
+  2. `checks`: the seven build-sandbox checks, built by attribute name, on `ubuntu-latest` and `ubuntu-24.04-arm`.
+  3. `vm`: the `vm-*` checks on `ubuntu-latest` only, after a KVM udev rule step
+     (`KERNEL=="kvm", GROUP="kvm", MODE="0666"`, reload, trigger).
+- **Nix** is installed with `cachix/install-nix-action` (pinned by SHA, Nix 2.34.9, no third-party
+  cache), with `experimental-features = nix-command flakes` and, in `vm`, `system-features = kvm`.
 - **homepc's system is not built in CI.** The NVIDIA driver is unfree, so the public cache does
   not carry it and every run would compile kernel modules. Evaluation catches option and
   assertion errors; the build is done on homepc.
@@ -304,9 +323,11 @@ A new workflow, `.github/workflows/nix.yml`.
 
 ## 9. homepc in this change
 
-- homepc's configuration imports nothing new that changes its output. The acceptance test: after
-  the change, building `nixosConfigurations.homepc` on homepc gives the same store path as
-  `/run/current-system`. If importing the Home Manager NixOS module changes the path even with no
+- homepc's configuration imports nothing new that changes its output. The acceptance test: the
+  baseline is the path printed by `nix build .#nixosConfigurations.homepc.config.system.build.toplevel --no-link --print-out-paths`
+  on `feat/nixos-host` HEAD in the separate clone, recorded before stage a. Every later build of that
+  command prints the same path; `/run/current-system` is informational only. A differing path is a
+  failure: remove the newest import first to bisect. If importing the Home Manager NixOS module changes the path even with no
   users named, the import moves to the hosts that name users.
 - Nothing is activated on homepc. No `safe-switch`, no `trial-boot`.
 - homepc is used as a build and test machine: `nix build`, `nix flake check`, the VM tests, and
@@ -319,7 +340,9 @@ A new workflow, `.github/workflows/nix.yml`.
 - `CLAUDE.md`: a "Nix package set" section (the outputs, the two link modes, how to run the
   checks and the sandbox), the herdr testing rule from section 6, the structure tree, and a line
   in "Rules for AI Assistants" that new behaviour which can be tested without a network also gets
-  a flake check. The `validate.sh` rule stays as it is.
+  a flake check. The `validate.sh` rule stays as it is (source change 5). The "Agents never ...
+  `herdr plugin install`" bullet gains one exception: agents may run `dotfiles-herdr-plugins-sync`
+  only through `herdr-sandbox --with-plugins`, install only, no pin edits, never against a real HOME.
 - `.claude/skills/build-proposals/SKILL.md`: the smallest edit that is true. Its phases run on the
   Mac, which has no Nix, so the skill cannot run `nix flake check` there. It gains: units add a
   flake check under the rule above; CI runs the checks on the pull request; herdr behaviour is
@@ -329,17 +352,21 @@ A new workflow, `.github/workflows/nix.yml`.
 
 ## 11. Build order and acceptance
 
-Each stage is built by a delegated agent and then checked by the session on homepc before the
-next starts.
+Each stage is built by a delegated agent and then checked by the orchestrating session, which
+re-runs that stage's Done-when items itself, before the next starts. Builder agents run on homepc in
+the separate clone from section 9. They may run `nix build`, `nix flake check`, `nix run .#sandbox`,
+`nix run .#herdr-sandbox` and the VM tests. They never run `home-manager switch`, `nix profile`,
+`nix-env`, `nixos-rebuild`, `safe-switch`, `trial-boot`, `nix flake update`, `stow` or `bootstrap.sh`,
+and never write under tucker's real HOME outside the clone.
 
 | Stage | Done when |
 |---|---|
-| a. Inputs, overlay, packages, source changes | Every package except `sandbox` and `herdr-sandbox` (stage b) builds on homepc for `x86_64-linux`; Darwin and aarch64 evaluate; `test/suite.sh`'s own files still pass `bash -n`; homepc's system path is unchanged. |
-| b. Home Manager module, `dotfiles-user.nix`, sandbox apps, the `link-modes` check | `link-modes` (built in this stage) passes; `nix run .#sandbox` gives a clean interactive zsh on homepc; `herdr-sandbox` starts and stops without touching anything outside its directory; homepc's system path is still unchanged. |
-| c. The other build-sandbox checks | All pass on homepc, with `link-modes`, and each was seen to fail on a broken input. |
+| a. Inputs, overlay, packages, source changes | Every package except `sandbox` and `herdr-sandbox` (stage b) builds on homepc for `x86_64-linux`; `nix flake check --all-systems --no-build` passes (Darwin and aarch64 evaluate); `git diff flake.lock` shows additions only; `test/suite.sh`'s own files still pass `bash -n`; homepc's system path equals the section 9 baseline. |
+| b. Home Manager module, `dotfiles-user.nix`, sandbox apps, the `link-modes` check | `link-modes` passes; `nix run .#sandbox` gives a clean interactive zsh on homepc; `herdr-sandbox` starts and stops without touching anything outside its directory; with the owner's tmux and herdr running, `tmux ls` and `herdr status` inside the sandbox see none of the owner's sessions; homepc's system path still equals the baseline. |
+| c. The other build-sandbox checks | The seven build-sandbox checks, built by attribute name, pass on homepc, and each was seen to fail on a broken input. |
 | d. VM tests | `vm-home` and `vm-lifeline` pass on homepc. |
 | e. CI | The workflow runs green on the pull request, or the pull request says which job is red and why. |
-| f. Docs, skill, proposals | Section 10 is done and the follow-ups in section 12 exist as proposals. |
+| f. Docs, skill, proposals | Section 10 is done and the three proposals listed in section 12 exist in `docs/proposals/`. |
 
 ## 12. Follow-ups
 
