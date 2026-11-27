@@ -43,7 +43,9 @@ Checked on homepc on 2026-11-27 unless a file is named.
 - nixpkgs 26.05 has atuin 18.15.2, starship 1.25.1, zoxide 0.9.9, fzf 0.72.0, neovim 0.12.4, tmux
   3.7b, lazygit 0.66.3, lazyjj 0.6.1, ghostty 1.3.1, oh-my-zsh, zsh-vi-mode, zsh-fzf-tab.
 - nixpkgs 26.05 has **no herdr** and **no tuicr**, and its jujutsu is 0.41.0, older than the
-  0.47.1 that `bootstrap.sh` pins. nixpkgs unstable has herdr 0.9.5.
+  0.47.1 that `bootstrap.sh` pins. nixpkgs unstable has herdr 0.9.5, jujutsu 0.47.1 and tuicr
+  0.29.0 (`bootstrap.sh` pins 0.30.0).
+- nixpkgs 26.05 has `tmuxPlugins.sensible`, `.resurrect` and `.continuum`, and no `tpm`.
 - `bootstrap.sh` is read as data by other tools. `validate.sh` and `herdr-plugins` take the Stow
   package list, the tool lists and the three herdr plugin pins out of it with sed and awk, and
   `herdr-plugins update` rewrites a pin in it.
@@ -104,9 +106,13 @@ Rules for where a tool comes from:
 
 - From nixpkgs 26.05 unless that version is older than what `bootstrap.sh` requires or the
   package is missing there.
-- From `nixpkgs-unstable`: **herdr**, **jujutsu**, and **tuicr** if unstable has it.
-- tuicr, if unstable lacks it: the release binary `bootstrap.sh` already pins (0.30.0, with the
-  two sha256 values it lists), fetched with `fetchurl`. Linux only.
+- From `nixpkgs-unstable`: **herdr** (0.9.5) and **jujutsu** (0.47.1).
+- **tuicr**: unstable has 0.29.0, below the floor. On Linux it is the release binary
+  `bootstrap.sh` already pins (0.30.0, a static musl build, with the two sha256 values listed
+  there), fetched with `fetchurl`. The Darwin `tools` leaves tuicr out until nixpkgs carries
+  0.30.0 or later.
+- **tpm** is not in nixpkgs: `fetchFromGitHub` at a fixed commit. The other three tmux plugins
+  come from nixpkgs `tmuxPlugins`.
 - A check (`tool-versions`, section 7) fails when a tool is below the floor the repo depends on:
   herdr 0.9.0, jujutsu 0.47.1, tuicr 0.30.0, neovim 0.11, fzf 0.67.
 
