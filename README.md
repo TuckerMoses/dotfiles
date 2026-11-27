@@ -11,16 +11,21 @@ cd ~/dotfiles
 ./validate.sh    # checks everything is linked, installed and loading cleanly
 ```
 
+Works on macOS and on Linux (x86-64 and arm64; tested on Ubuntu 26.04, `dnf` distros are best-effort).
+On Linux, bootstrap installs system packages with `sudo apt-get` and everything else into `~/.local/bin`,
+and prints the `chsh` command for making zsh your login shell without running it.
+
 ## Structure
 
 Each top-level directory is a Stow package that mirrors `$HOME`:
 
 ```
 dotfiles/
-├── .github/workflows/                — CI (Claude Code Action for PR reviews)
+├── .github/workflows/                — CI (Claude Code Action for PR reviews, Linux test on x86-64 and arm64)
 ├── atuin/.config/atuin/config.toml   → ~/.config/atuin/config.toml
 ├── ghostty/.config/ghostty/config    → ~/.config/ghostty/config
-├── herdr/.config/herdr/config.toml   → ~/.config/herdr/config.toml (plus herdr-summarize, herdr-recent → ~/.local/bin)
+├── herdr/.config/herdr/config.toml   → ~/.config/herdr/config.toml (plus herdr-summarize, herdr-recent, herdr-plugins, herdr-login-warning → ~/.local/bin)
+│   └── .config/herdr/plugins/config/ → herdr-plus templates and quick actions
 ├── herdr-summarizer/                 — opt-in herdr plugin (not stowed; herdr-summarizer/install.sh)
 ├── nvim/.config/nvim/                → ~/.config/nvim/
 ├── starship/.config/starship.toml    → ~/.config/starship.toml
@@ -28,6 +33,7 @@ dotfiles/
 ├── zsh/.zshrc                        → ~/.zshrc
 ├── bootstrap.sh                      — one-command setup
 ├── validate.sh                       — read-only check that everything here is live and working
+├── test/                             — one test suite for three environments: isolated local, Linux VM, emulated Linux VM (see test/README.md)
 ├── docs/herdr.html                   — guide to the herdr setup: sidebar, picker, summarizer, keys (open in a browser)
 ├── docs/proposals/                   — the approved queue (see docs/proposals/README.md)
 ├── docs/plans/                       — record of what was built
@@ -43,7 +49,7 @@ dotfiles/
 |---------|---------|
 | **atuin** | Shell history with fuzzy search and per-directory filtering |
 | **ghostty** | Ghostty terminal emulator (Catppuccin Mocha theme, JetBrains Mono NF) |
-| **herdr** | Herdr terminal workspace manager (tmux-style keys, sounds, pane descriptions, `prefix+a` recent-sessions picker); stowed with `--no-folding` |
+| **herdr** | Herdr terminal workspace manager (tmux-style keys, sounds, pane descriptions, `prefix+a` recent-sessions picker, `$jj_status` for jj repos, tuicr diff review popup `prefix+alt+r` for git and jj repos; plugins herdr-plus `prefix+t`/`prefix+space`, herdr-fingers trial `prefix+f`); stowed with `--no-folding` |
 | **nvim** | Neovim with Claude Code sync plugins (auto-reload, diffview.nvim, claudecode.nvim) |
 | **starship** | Cross-shell prompt (minimal single-line, language detection) |
 | **tmux** | Terminal multiplexer (vim-tmux-navigator, Catppuccin status bar, session persistence) |

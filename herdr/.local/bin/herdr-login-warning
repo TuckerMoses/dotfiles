@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# herdr tab-bar entry: warn while the Claude Code login is under a day from expiry, expired,
+# or signed out. Prints nothing otherwise, and herdr hides an empty entry, so the warning
+# stays up exactly until `claude auth login` is run. Called from tab_bar_right in
+# ~/.config/herdr/config.toml every few minutes.
+#
+# Testing: HERDR_LOGIN_WARN_SECONDS changes the threshold (default 86400);
+# HERDR_LOGIN_STATUS_FILE reads `claude auth status` JSON from a file instead.
+set -euo pipefail
+
+# ── Status ──────────────────────────────────────────────────────────────────
+if [[ -n "${HERDR_LOGIN_STATUS_FILE:-}" ]]; then
+  status="$(cat "$HERDR_LOGIN_STATUS_FILE")"
+else
+  # herdr runs this under `/bin/sh -lc`, whose PATH may lack ~/.local/bin (the native installer's home).
+  claude_bin="$(command -v claude 2>/dev/null || true)"
+  for c in "$HOME/.local/bin/claude" /opt/homebrew/bin/claude /usr/local/bin/claude; do
+    [[ -n "$claude_bin" ]] && break
+    [[ -x "$c" ]] && claude_bin="$c"
+  done
+  [[ -n "$claude_bin" ]] || exit 0   # no Claude Code on this machine: nothing to warn about
+  status="$("$claude_bin" auth status 2>/dev/null)" || status=""
+fi
+
+# ── Verdict ─────────────────────────────────────────────────────────────────
+# Unreadable status is reported too: a silent entry would look like a healthy login.
+# -I: herdr runs this in the active pane's directory; never import modules from there.
+printf '%s' "$status" | /usr/bin/env python3 -I -c '
+import json, sys, datetime
+warn = float(sys.argv[1])
+try:
+    s = json.load(sys.stdin)
+except ValueError:
+    print("⚠ claude auth status unreadable"); sys.exit(0)
+if not s.get("loggedIn"):
+    print("⚠ claude signed out: claude auth login"); sys.exit(0)
+exp = s.get("loginExpiresAt")
+if not exp:
+    sys.exit(0)  # API key or token login: no expiry to watch
+end = datetime.datetime.fromisoformat(exp.replace("Z", "+00:00"))
+left = (end - datetime.datetime.now(datetime.timezone.utc)).total_seconds()
+if left <= 0:
+    print("⚠ claude login EXPIRED: claude auth login")
+elif left < warn:
+    h, m = int(left // 3600), int(left % 3600 // 60)
+    print("⚠ claude login expires in %s: claude auth login" % ("%dh%02dm" % (h, m) if h else "%dm" % m))
+' "${HERDR_LOGIN_WARN_SECONDS:-86400}"

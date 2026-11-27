@@ -1,0 +1,12 @@
+# herdr-plus project (prefix+t) — stowed from ~/dotfiles/herdr
+# No VCS tab: ~/aios itself is not a repository (lib/ inside it is jj).
+name = "aios"
+description = "aios: kernel, containers, lib"
+working_dir = "~/aios"
+
+[[tabs]]
+name = "claude"
+command = "claude"
+
+[[tabs]]
+name = "shell"

@@ -33,6 +33,7 @@ Usage:
   herdr-summarize list       TSV for the picker: stale, needs-you, working, idle, finished
   herdr-summarize show ID    full description for a pane
   herdr-summarize help       guide shown by ? in the picker
+  herdr-summarize jj-status DIR  print the $jj_status token for DIR (exit 1 if jj failed)
 
 Environment (for testing against a sandbox session):
   HERDR_SUMMARIZER_HERDR       herdr command to use (default: herdr on PATH)
@@ -446,6 +447,73 @@ def harvest_names(state, pairs):
             state["names"][name] = {"session": sess, "seen": 0, "from": "transcript"}
 
 
+# ── jj ───────────────────────────────────────────────────────────────────────
+
+JJ = which("jj")
+JJ_TIMEOUT = 2   # seconds; a slow or cold repo shows nothing for that pass
+JJ_MAX = 20      # characters of bookmark names before the dirty mark
+# Four tab-separated fields: @'s local bookmarks, @-'s local bookmarks, @'s short change
+# id, and "*" when @ has changes. jj_reader() picks the first non-empty name.
+JJ_TEMPLATE = ('local_bookmarks.map(|b| b.name()).join(",") ++ "\\t" ++ '
+               'parents.map(|c| c.local_bookmarks().map(|b| b.name()).join(",")).join(",") ++ "\\t" ++ '
+               'change_id.shortest(8) ++ "\\t" ++ if(empty, "", "*")')
+
+
+def jj_root(path):
+    """The nearest directory at or above `path` holding a .jj directory, or None.
+    Plain filesystem checks, so a non-jj directory never costs a subprocess."""
+    p = os.path.abspath(path)
+    while True:
+        if os.path.isdir(os.path.join(p, ".jj")):
+            return p
+        parent = os.path.dirname(p)
+        if parent == p:
+            return None
+        p = parent
+
+
+def jj_reader():
+    """One pass's jj lookups: path -> $jj_status token. One jj call per working copy,
+    errors logged once per pass. `errors` on the returned function counts failed calls.
+    jj runs with --ignore-working-copy, so it never snapshots (and never writes to the
+    repo); the dirty mark is as of jj's last snapshot."""
+    cache, logged = {}, []
+
+    def status(path):
+        root = jj_root(path) if JJ and path else None
+        if not root:
+            return ""
+        if root not in cache:
+            cache[root] = ""
+            try:
+                out = subprocess.run([JJ, "log", "-r", "@", "--no-graph", "--ignore-working-copy",
+                                      "--color", "never", "-T", JJ_TEMPLATE],
+                                     cwd=root, capture_output=True, text=True, timeout=JJ_TIMEOUT)
+                fields = out.stdout.split("\t")
+                if out.returncode != 0 or len(fields) != 4:
+                    raise RuntimeError(((out.stderr or out.stdout).strip().splitlines() or ["no output"])[0])
+                own, parent, change, dirty = fields
+                name = "".join(c for c in (own or parent or change) if c.isprintable()).strip()
+                if len(name) > JJ_MAX:
+                    name = name[:JJ_MAX - 1] + "…"
+                cache[root] = name + ("*" if dirty.strip() == "*" else "") if name else ""
+            except Exception as e:  # timeout, jj missing mid-pass, broken repo or template
+                status.errors += 1
+                if not logged:
+                    logged.append(root)
+                    log("jj %s: %s" % (root, e))
+        return cache[root]
+
+    status.errors = 0
+    return status
+
+
+def workspace_dir(panes):
+    """A workspace's home directory: the cwd of its first pane in creation order."""
+    first = min(panes or [], key=lambda p: pane_order(p.get("pane_id", "")), default=None)
+    return (first or {}).get("cwd") or ""
+
+
 # ── passes ───────────────────────────────────────────────────────────────────
 
 def fit_words(text, limit):
@@ -853,10 +921,11 @@ def rename_tabs(state, agents, ws_ids):
         del owned[tid]  # closed tabs; herdr may reuse the ID
 
 
-def publish(state, agents, ws_ids):
+def publish(state, agents, ws_ids, panes_by_ws):
     """Re-report every token. Idempotent; restores tokens after a herdr restart and
     clears tokens that no longer apply. A pane that vanishes mid-pass is skipped."""
     now, newest = time.time(), newest_active(state)
+    jj_status = jj_reader()
     targets = []
     for a in agents:
         entry = state["sessions"].get(session_of(a), {})
@@ -876,12 +945,17 @@ def publish(state, agents, ws_ids):
             "attn": "", "ball": "",  # retired tokens from earlier versions; cleared once
         }))
     for ws in ws_ids:
-        targets.append(("workspace", ws, {"summary": state["workspaces"].get(ws, {}).get("line", "")}))
+        tokens = {"summary": state["workspaces"].get(ws, {}).get("line", "")}
+        if ws in panes_by_ws:  # panes unknown this pass: leave $jj_status as it was
+            # Empty (cleared) unless the workspace's home pane is in a jj repo.
+            tokens["jj_status"] = jj_status(workspace_dir(panes_by_ws[ws]))
+        targets.append(("workspace", ws, tokens))
     for kind, target, tokens in targets:
         try:
             report(kind, target, tokens)
         except Exception as e:
-            log("%s %s: %s" % (kind, target, e))
+            if "pane_not_found" not in str(e):  # closed since the snapshot: nothing to label, not an error
+                log("%s %s: %s" % (kind, target, e))
 
 
 def snapshot():
@@ -942,7 +1016,7 @@ def do_pass():
     if not os.environ.get("HERDR_SUMMARIZER_NO_TABS"):
         rename_tabs(state, agents, ws_ids)
     save_state(state)
-    publish(state, agents, ws_ids)
+    publish(state, agents, ws_ids, panes_by_ws)
 
 
 # ── events (herdr plugin) ────────────────────────────────────────────────────
@@ -1134,6 +1208,16 @@ SIDEBAR
   red "stale"     see STATUS.
   Second line: heat (now, <1h, today, 2d) and the tab name.
 
+  A space whose first pane sits in a jj repo also shows its
+  jj state after the git branch (the space's home is the cwd
+  herdr reports for its first pane; a jj repo above it counts):
+  @'s bookmark, else its
+  parent's, else @'s short change id, then * if @ has changes.
+  It is read without snapshotting (jj --ignore-working-copy),
+  so * reflects jj's last snapshot, i.e. the last jj command
+  run there. Summarizer passes write it, on the same events
+  as the labels, so it needs the plugin and claude installed.
+
 NAMES
   Each session gets a fixed identity, worked out from its whole
   history and from names it already has (the agent name it was
@@ -1206,6 +1290,10 @@ def main(argv):
         return list_rows()
     if cmd == "show" and len(argv) > 2:
         return show(argv[2])
+    if cmd == "jj-status" and len(argv) > 2:
+        status = jj_reader()
+        print(status(argv[2]))
+        return 1 if status.errors else 0
     sys.exit(__doc__)
 
 

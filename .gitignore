@@ -6,3 +6,4 @@
 nixos/test/.vm/
 nixos/hosts/vm/test-override.nix
 result
+test/.runs/

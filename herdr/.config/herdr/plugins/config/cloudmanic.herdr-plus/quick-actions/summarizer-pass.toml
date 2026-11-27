@@ -1,0 +1,6 @@
+# herdr-plus quick action (prefix+space) — stowed from ~/dotfiles/herdr.
+# One herdr-summarize pass by hand: sidebar labels and descriptions update now, not at the next turn end.
+name = "Summarizer pass"
+description = "herdr-summarize: relabel sessions now (makes model calls; takes a while)"
+type = "command"
+command = "\"$HOME/.local/bin/herdr-summarize\" run; printf '\\n(enter closes) '; read -r _ </dev/tty"
