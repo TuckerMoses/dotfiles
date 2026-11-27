@@ -143,8 +143,14 @@ else: print("pass %d hook runs succeeded (%s)" % (len(logs), ",".join(sorted(set
     [[ "$verdict" != wait ]] && break
     sleep 1
   done
+  # The hook only marks the session dirty and starts a detached worker; the worker writes the
+  # state after the hook run is logged. Wait for it within the same timeout (slow on an
+  # emulated guest), instead of checking once.
+  if [[ "$verdict" == pass* ]]; then
+    for i in $(seq 1 "$HOOK_TIMEOUT"); do [[ -s "$HERDR_SUMMARIZER_STATE/state.json" ]] && break; sleep 1; done
+  fi
   if [[ "$verdict" == pass* && ! -s "$HERDR_SUMMARIZER_STATE/state.json" ]]; then
-    verdict="fail hook ran but herdr-summarize wrote no state"
+    verdict="fail hook ran but herdr-summarize wrote no state within ${HOOK_TIMEOUT}s"
   fi
   case "$verdict" in
     pass*) record 6 pass "${verdict#pass }" ;;
