@@ -47,8 +47,8 @@ and stow rules bind every phase here.
   in one phase is a stop. Both count yours and fix agents', across all failures and environments.
 - **Subagents change nothing outside their worktree**: nothing in `$HOME`, no installs, no pushes.
   The exceptions are `test/suite.sh local`, which may create its throwaway `$HOME` under `$TMPDIR` and nothing
-  else, and the Phase 8 review's fixers, which edit the main checkout when Phase 7 left the branch checked out
-  there (otherwise a worktree of the integration branch: see Phase 8).
+  else, and the Phase 8 review's fixers, which may edit the main checkout on the live path (Phase 8); the rest
+  of this rule still binds them.
 - **Being in `docs/proposals/` on `master` is the approval.** Do not re-argue whether a proposal
   is worth doing. Do check whether it is still correct and executable.
 - **Only `master` counts.** A proposal in an open PR, on another branch, or in the scout's
@@ -249,22 +249,22 @@ This follows "Worktree testing" in `CLAUDE.md`.
 0. **Ask first, and wait for a yes.** Phase 0's note told the user; this asks them. In one short
    message, say that the main checkout will be switched to `feat/build-proposals-<date>` (so the
    stowed config becomes the branch's), which files in `$HOME` will be moved aside, that
-   `./bootstrap.sh` will then run (it restows, and installs the tools in bootstrap's tool list that
-   `command -v` does not find: name them) and may be re-run after the fixes of step 5 and Phase 8, which herdr
-   plugins it will install at their pins with `--yes` (the pinned plugins `herdr plugin list` does not
-   show and whose `if command -v` tool is present; bootstrap skips installed ones at any commit; one
+   `./bootstrap.sh` will then run (it restows, and installs whatever its `command -v`, directory or status
+   checks find missing: name each, from its tool list, Oh My Zsh and its plugins, TPM and the tmux plugins, and
+   herdr's Claude integration) and may be re-run after the fixes of step 5 and Phase 8, which herdr
+   plugins it will install at their pins with `--yes` (every pinned plugin `herdr plugin list` does not
+   show, guarded or not; one behind an `if command -v` guard only when that tool is present; one
    line each: repo, sha7, and the `[[build]]` command of its `herdr-plugin.toml` at the pin; those builds
    already ran in Phase 6, but only in the suite's throwaway `$HOME` and guests, so this is about your real herdr), that Phase 8's review fixes will be made there too, on the live branch, and the checks
    step 4 proves (one line per new check, saying whether step 4 breaks it live (and what it breaks)
    or proves it against a stub).
    Ask whether to go ahead, and wait for the user's explicit yes in this session before step 1.
-   Anything else, or no answer, is a no: stop Phase 7, change nothing on the machine, run Phase 8 in a
-   worktree as it says there, and open the Phase 9 PR as a draft that says the branch was not validated live.
-   This yes is the approval `CLAUDE.md`
-   requires before an agent runs `bootstrap.sh` in the main checkout, and it covers the step 4
-   breakages it listed and the restows and `./bootstrap.sh` reruns of step 5 and Phase 8 while
-   `git diff <approved sha> -- bootstrap.sh` is empty (record the branch's commit at the yes); nothing else.
-   A fix that changes `bootstrap.sh` needs a new ask that shows that diff.
+   Anything else, or no answer, is a no: stop Phase 7, change nothing on the machine, and go on to Phase 8
+   (in a worktree, as it says there) and Phase 9.
+   This yes is the approval `CLAUDE.md` requires before an agent runs `bootstrap.sh` in the main checkout. It
+   covers step 3's run, the step 4 breakages it listed, and the restows and `./bootstrap.sh` reruns of step 5
+   and Phase 8 while `git diff <approved sha> -- bootstrap.sh` is empty (record the branch's commit at the yes);
+   nothing else. A fix that changes `bootstrap.sh` needs a new ask that shows that diff.
 1. In the main checkout: `git checkout feat/build-proposals-<date>`. The stowed config is now
    the branch's version.
 2. For each file in `$HOME` that a new package will replace: copy it to the scratchpad, make
@@ -278,8 +278,8 @@ This follows "Worktree testing" in `CLAUDE.md`.
    copy (a fake `herdr` reporting the broken state), and the PR says which checks were proven
    that way.
 5. Fix failures on the branch: small ones yourself, larger ones through a fix agent. Re-run, within the fix-agent rule's bound, until no failure remains that was not in the baseline.
-6. If the fix-agent rule says to stop, say so and skip Phase 8. Open the Phase 9 PR as a draft, with the remaining
-   failures under item 6 and "not run (Phase 7 stopped)" under item 7. In that case, if a failure not in the baseline breaks the
+6. If the fix-agent rule says to stop, say so, skip Phase 8 and go to Phase 9, with the remaining
+   failures under item 6 and "not run (Phase 7 stopped)" under item 7. Before that, if a failure not in the baseline breaks the
    login shell, stow links, or tmux or herdr startup, roll back first: say why and what the rollback does, and run it
    only after the user's explicit yes (the step 0 yes does not cover it). Without one, leave the machine as it is
    and report its state in the PR. The rollback, in the main checkout:
@@ -304,18 +304,19 @@ skill's own rules for the loop. Give it a manifest with:
 When Phase 7 left the integration branch checked out in the main checkout, its fixes are made there,
 so they are live as soon as they are written (the Phase 7 step 0 ask names this). Commit the fixes
 it applies, in the main checkout. Then run `./validate.sh` again: review fixes can break things too. A fix that
-needs a restow or a `./bootstrap.sh` re-run is covered by the Phase 7 step 0 yes within the limit stated there.
+needs a restow or a `./bootstrap.sh` re-run gets one only if Phase 7 step 0's yes covers it.
 
 If the user said no at Phase 7 step 0, the main checkout is on `master`: make the fixes in a new
 worktree of the integration branch (`git worktree add .worktrees/integration feat/build-proposals-<date>`),
 never by checking the branch out in the main checkout, and run nothing there that `CLAUDE.md` forbids in a
-worktree, except `test/suite.sh local`, which is allowed there: run it on the commit with the fixes before
-pushing. Push them, and say in the PR that they were not validated live. A no at Phase 7 step 0 does not skip
+worktree. Check the fixes with `test/suite.sh local` on their commit before pushing, not `validate.sh`, which
+checks the live machine (still on `master`). Push them, and say in the PR that they were not validated live. A no at Phase 7 step 0 does not skip
 Phase 8; a Phase 7 stopped at step 6 does.
 
 ## Phase 9: the pull request
 
-Run `git push -u origin feat/build-proposals-<date>`, then open one PR against `master` with `gh pr create`. The body has, in this order:
+Run `git push -u origin feat/build-proposals-<date>`, then open one PR against `master` with `gh pr create`, with `--draft` after a no at Phase 7 step 0
+(the body says the branch was not validated live) or a Phase 7 step 6 stop. The body has, in this order:
 
 1. **What to review first:** anything that needs the user's decision, and blocked proposals with
    the exact question each one is waiting on.
@@ -330,9 +331,9 @@ Run `git push -u origin feat/build-proposals-<date>`, then open one PR against `
 6. **Validation:** baseline against final, as counts, plus any remaining warning.
 7. **Adversarial review:** rounds, what was fixed, accepted risks, and the path to its summary.
 8. **Queue after merge:** which proposals this PR deletes and which remain in `docs/proposals/`.
-9. **Rollback:** the Phase 7 step 6 rollback, filled in for this branch, in its order (`stow -D` on
+9. **Rollback** (none after a no at Phase 7 step 0): the Phase 7 step 6 rollback, filled in for this branch, in its order (`stow -D` on
    the branch first): the packages to `stow -D`, the backup paths, the plugins to uninstall.
 
-Then tell the user: the PR link, where the main checkout is (on the integration branch and therefore live; on
-`master` after a no at Phase 7 step 0, or after a Phase 7 step 6 rollback, item 9 already run), and the decisions
-waiting on them.
+Then tell the user: the PR link, where the main checkout is (on `master` after a no at Phase 7 step 0 or a
+Phase 7 step 6 rollback, item 9 already run; otherwise on the integration branch and live, with any failures
+of a step 6 stop), and the decisions waiting on them.
