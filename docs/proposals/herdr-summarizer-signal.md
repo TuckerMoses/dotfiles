@@ -65,6 +65,11 @@ source: user (audit of live herdr-summarizer state, 2026-11-26)
      `claude setup-token`, which Claude Code recommends for unattended jobs.
   8. Drop the tab from row two once the tree navigator (see `herdr-agent-tree.md`) shows tabs as
      structure.
+  9. Add a key that shows the summary for the pane you are on: the same text the `prefix+a` preview
+     shows, without opening the picker and finding the row. It answers "what was I doing here?" from
+     the summary that already exists, instead of running `/recap` in the session. Show the
+     description's age and the current ask beside it, so a summary that has not been refreshed is
+     not mistaken for the present. A pane with no agent says so in one line.
 - **Effort:** medium.
 - **Touches:** `herdr/.local/bin/herdr-summarize`, `herdr/.config/herdr/config.toml` (sidebar rows),
   `validate.sh`, `docs/herdr.html`.
@@ -73,4 +78,10 @@ source: user (audit of live herdr-summarizer state, 2026-11-26)
 - **Notes for the plan:** Before building, replay the current transcripts through both the old and
   new prompts offline (`HERDR_SUMMARIZER_STATE` pointed at a scratch dir, tabs off) and show the
   two sets of labels side by side. Build `herdr-agent-auto-names.md` first: fixes 5 and 6 here
-  assume each session's `short` is its herdr agent name.
+  assume each session's `short` is its herdr agent name. For fix 9, `herdr-summarize show <pane>`
+  already prints the preview text, so the work is the binding and its target. A popup is its own
+  pane, and herdr 0.9.5 documents only `HERDR_ACTIVE_PANE_CWD` for popup commands: find out whether
+  the pane that was focused when the key was pressed can be passed to the command, and if not, use a
+  plugin action, whose context does carry the focused pane. The popup must stay open until a key is
+  pressed. `prefix+i` (tmux's pane-info key) was free on 2026-11-27; check it against herdr's
+  defaults. The new `validate.sh` check should fail when the binding's command does not resolve.
