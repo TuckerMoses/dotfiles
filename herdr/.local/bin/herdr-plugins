@@ -608,11 +608,21 @@ reinstall() {  # <owner/repo> <plugin id> <from sha> <to sha>
     echo "    herdr-plugins update ${1#*/}"
     return 1
   fi
-  herdr plugin install "$1" --ref "$4" && return 0
-  echo "$1: install at ${4:0:7} did not complete (declined at herdr's prompt, or the build or download failed); putting ${3:0:7} back"
-  if herdr plugin install "$1" --ref "$3" --yes; then echo "$1: reinstalled at ${3:0:7}"
+  # herdr exits 0 when its prompt is declined ("plugin install cancelled", herdr 0.9.5), so an install
+  # counts only when herdr then lists the plugin at that commit.
+  herdr plugin install "$1" --ref "$4"
+  if installed_at "$1" "$4"; then return 0; fi
+  echo "$1: not installed at ${4:0:7} (declined at herdr's prompt, or the build or download failed); putting ${3:0:7} back"
+  herdr plugin install "$1" --ref "$3" --yes
+  if installed_at "$1" "$3"; then echo "$1: reinstalled at ${3:0:7}"
   else echo "$1: could not reinstall ${3:0:7} either (now uninstalled). Retry: herdr plugin install $1 --ref $3"; fi
   return 1
+}
+
+installed_at() {  # <owner/repo> <full sha>: herdr lists that plugin, installed at exactly that commit
+  local got
+  got="$(lookup "$(installed || true)" "$1" 3)"
+  [[ -n "$got" && "$got" == "$2" ]]
 }
 
 cmd_update() {

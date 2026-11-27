@@ -180,10 +180,13 @@ Automatic scheduled checks; updating herdr itself; the local herdr-summarizer pl
   calls `check` and `help`, which need no terminal. Tested with a fake `herdr` on PATH and `expect` for the pty: the
   non-tty refusal, a failing plugin list, declining and accepting the reinstall at the pin, a failed install with
   rollback, a no at herdr's prompt (at the target and at the pin: one prompt, the old commit back with `--yes`, exit 1),
-  and a `bootstrap.sh` that cannot be written.
+  and a `bootstrap.sh` that cannot be written. That fake exited non-zero on a no; the real herdr 0.9.5 does not
+  (see below), which the fakes missed and the Phase 7 live test found.
 - `update` installs before it pins: `herdr plugin uninstall`, `herdr plugin install <repo> --ref <new>` (no `--yes`),
   and only on success the `bootstrap.sh` line moves (`set_pin` rewrites exactly one `--ref` line). herdr's own prompt
-  comes after the uninstall. If the install does not complete (a no at herdr's prompt, or a failed build or download),
+  comes after the uninstall. Whether an install completed is read from `herdr plugin list --json` (the plugin at that
+  exact commit, `installed_at`), not from herdr's exit code: herdr 0.9.5 prints `plugin install cancelled` and exits 0
+  on a no, which on 2026-11-26 made `update` move a pin to a commit that was never installed. If the install does not complete (a no at herdr's prompt, or a failed build or download),
   it reinstalls the old commit with `--yes` (no second prompt), leaves `bootstrap.sh` alone and counts the plugin as not
   updated (exit 1); Ctrl-C at herdr's prompt leaves the plugin uninstalled until `./bootstrap.sh`. If the pin line cannot be rewritten after a
   successful install, it says so with the full sha to set by hand and counts the plugin as failed. A plugin that is not
