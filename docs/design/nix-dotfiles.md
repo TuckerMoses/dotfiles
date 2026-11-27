@@ -82,7 +82,7 @@ nixos/modules/dotfiles-user.nix   turns the module on for named users of a host
 Systems: `x86_64-linux`, `aarch64-linux`, `aarch64-darwin`. The Darwin outputs are evaluated in
 this change and not built, because no machine with Nix on macOS exists yet.
 
-`home-manager` follows the flake's `nixpkgs`. `nixpkgs-unstable` is used for three packages only
+`home-manager` follows the flake's `nixpkgs`. `nixpkgs-unstable` is used for two packages only
 (section 4), so one fast-moving tool does not move the kernel or Tailscale.
 
 No file added under `nix/` or `nixos/` may contain a literal home directory. `validate.sh` fails
@@ -147,7 +147,9 @@ All are backward compatible and change nothing on the Mac.
    `python3` from `PATH`. Every call gets `-I`, which also closes the finding that these calls
    could import a module from the working directory.
 4. `validate.sh`, "Stowed files": a file that resolves into `/nix/store` passes when its bytes
-   equal the checkout's file, and fails with "rebuild" advice when they differ.
+   equal the checkout's file, and fails with "rebuild" advice when they differ. The four
+   `herdr/.local/bin` scripts are exempt from the byte comparison (their interpreters are
+   rewritten): a store path passes for them.
 
 `validate.sh` passing in full on a Nix-managed home is **not** a goal of this change. It reads
 tool lists that assume brew or apt, and it requires herdr's plugins. The pull request records
@@ -172,12 +174,13 @@ What it does in both modes:
 - Links `summarizer-plugin` at `~/.local/share/dotfiles/herdr-summarizer-plugin`, a path that
   stays the same across rebuilds. Linking it into herdr stays opt-in and manual, as today.
 - Installs the font.
-- Sets `DOTFILES_DIR` for `herdr-plugins` and `dotfiles-herdr-plugins-sync`: the checkout in
-  `checkout` mode, a store copy of the repo's `bootstrap.sh` in `store` mode (where `update`
-  refuses, as it already does in a worktree).
+- Sets `DOTFILES_DIR` for `herdr-plugins` and `dotfiles-herdr-plugins-sync`: always a
+  directory with `bootstrap.sh` at its top: the checkout in `checkout` mode, and in `store` mode a
+  store directory holding only a copy of the repo's `bootstrap.sh` (where `update` refuses, as it
+  already does in a worktree).
 
-It links files one by one, never a whole directory, so `~/.config/herdr`, `~/.config/nvim` and
-`~/.tmux/plugins` stay real, writable directories.
+It links config files one by one, so `~/.config/herdr`, `~/.config/nvim` and `~/.tmux/plugins`
+stay real, writable directories; only the store bundles named above are linked as directories.
 
 **`store` mode.** Each file of `home-tree` is linked from the store. Two files are the exception:
 `lazy-lock.json` and `lazyvim.json` are copied into `~/.config/nvim` as writable files on each
@@ -187,8 +190,9 @@ rebuilding. This is the mode for test users, CI and any machine that only consum
 **`checkout` mode.** Each config file is linked to the checkout through Home Manager's
 out-of-store symlink. This is Stow's behaviour with Home Manager doing the linking: editing a
 file in the checkout, or checking out another branch there, changes the live config at once.
-`validate.sh`'s Stow check passes unchanged, because each link still resolves to the checkout.
-Scripts still come from the store in this mode, since the raw files name `/usr/bin/python3`.
+`validate.sh`'s Stow check passes, because each link still resolves to the checkout, except that
+the four scripts come from the store in this mode (the raw files name `/usr/bin/python3`) and
+pass under the exemption in source change 4.
 Changing a script on a Nix machine means rebuilding.
 
 The module never sets a login shell, never writes `~/.zshrc.local`, `~/.zshenv` or `~/.zprofile`,
@@ -199,7 +203,7 @@ mode for each. It is empty by default. Only the VM test host and the VM tests se
 
 ## 6. Sandboxed testing
 
-This is the answer to D. Three levels, cheapest first. None of them can reach the running herdr.
+This is the answer to D. Three levels, cheapest first. None of them reaches the running herdr unless deliberately pointed at it.
 
 **1. Build-sandbox checks** (`nix flake check`). No network, no `$HOME`, no access to the user's
 sockets. Each check copies `home-tree` into a temporary `HOME` and runs programs against it.
@@ -237,13 +241,13 @@ Build-sandbox checks, for every Linux system (and Darwin once it can be built):
 
 | Check | Asserts |
 |---|---|
-| `configs` | `zsh -n` on `.zshrc`; the tmux config loads in a throwaway server and TPM's four plugins are sourced; `starship print-config`; atuin resolves `auto_sync` to `false`; `herdr config check`; `ghostty +validate-config`; every nvim Lua file compiles; every TOML file parses. |
+| `configs` | `zsh -n` on `.zshrc`; the tmux config loads in a throwaway server and TPM's four plugins are sourced; `starship print-config`; atuin resolves `auto_sync` to `false`; `herdr config check`; `ghostty +validate-config` (ghostty comes from nixpkgs as a check-only input on Linux, not in `tools`); every nvim Lua file compiles; every TOML file parses. |
 | `zsh-interactive` | A real interactive zsh in a pty prints nothing on stderr and has `zvm_init`, the starship prompt hook, `^T` bound to fzf, `^R` bound to atuin and zoxide's `cd`. This is step 7 of `test/suite.sh`. |
 | `scripts` | `herdr-summarize` compiles, prints help and passes its `jj-status` cases against throwaway repos; `herdr-login-warning` gives the right output for a fake `claude` near and far from expiry; `herdr-recent` and `herdr-plugins help` run; no packaged script still names `/usr/bin/python3`. |
 | `herdr-headless` | A herdr server starts in the temporary `HOME`; the summarizer plugin links; creating a workspace produces hook runs that all succeed and a non-empty state file, in dry mode. Steps 2 and 6 of `test/suite.sh`. |
 | `tool-versions` | The floors in section 4. |
 | `lifeline-guard` | Pure evaluation, no VM: each of the nine config changes that `nixos/test/drills.sh` expects the lockout guard to refuse does fail an assertion, and the unmodified host passes. |
-| `link-modes` | Home Manager's activation package builds for a test user in each mode, and in `store` mode the generated file list equals the Stow package file list. |
+| `link-modes` | Home Manager's activation package builds for a test user in each mode, and in `store` mode the files Home Manager places under the test user's HOME (the `home-tree` links, the four script links in `~/.local/bin` and the two copied nvim files) together equal the file list of the seven Stow packages. |
 
 Each check must be shown to fail: the builder breaks its input once and records that the check
 went red.
@@ -330,9 +334,9 @@ next starts.
 
 | Stage | Done when |
 |---|---|
-| a. Inputs, overlay, packages, source changes | Every package builds on homepc for `x86_64-linux`; Darwin and aarch64 evaluate; `test/suite.sh`'s own files still pass `bash -n`; homepc's system path is unchanged. |
-| b. Home Manager module, `dotfiles-user.nix`, sandbox apps | `link-modes` passes; `nix run .#sandbox` gives a clean interactive zsh on homepc; `herdr-sandbox` starts and stops without touching anything outside its directory. |
-| c. Build-sandbox checks | All pass on homepc, and each was seen to fail on a broken input. |
+| a. Inputs, overlay, packages, source changes | Every package except `sandbox` and `herdr-sandbox` (stage b) builds on homepc for `x86_64-linux`; Darwin and aarch64 evaluate; `test/suite.sh`'s own files still pass `bash -n`; homepc's system path is unchanged. |
+| b. Home Manager module, `dotfiles-user.nix`, sandbox apps, the `link-modes` check | `link-modes` (built in this stage) passes; `nix run .#sandbox` gives a clean interactive zsh on homepc; `herdr-sandbox` starts and stops without touching anything outside its directory; homepc's system path is still unchanged. |
+| c. The other build-sandbox checks | All pass on homepc, with `link-modes`, and each was seen to fail on a broken input. |
 | d. VM tests | `vm-home` and `vm-lifeline` pass on homepc. |
 | e. CI | The workflow runs green on the pull request, or the pull request says which job is red and why. |
 | f. Docs, skill, proposals | Section 10 is done and the follow-ups in section 12 exist as proposals. |
