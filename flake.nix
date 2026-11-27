@@ -73,19 +73,47 @@
             oh-my-zsh-bundle
             tmux-plugins
             tools
+            sandbox
+            herdr-sandbox
             ;
-          # sandbox and herdr-sandbox are added here with the sandbox apps.
         }
       );
 
       # ── Home Manager module ──────────────────────────────────────────────────
-      # homeManagerModules.default goes here.
+      # Closed over self, so it takes its packages from self.packages (see the module).
+      homeManagerModules.default = import ./nix/home-manager self;
 
       # ── Apps ─────────────────────────────────────────────────────────────────
-      # apps.<system>.sandbox and apps.<system>.herdr-sandbox go here.
+      apps = forAllSystems (
+        system:
+        let
+          app = pkg: {
+            type = "app";
+            program = lib.getExe pkg;
+            meta.description = pkg.meta.description;
+          };
+        in
+        {
+          sandbox = app self.packages.${system}.sandbox;
+          herdr-sandbox = app self.packages.${system}.herdr-sandbox;
+        }
+      );
 
       # ── Checks ───────────────────────────────────────────────────────────────
-      # checks.<system>.* (build-sandbox checks and vm-* tests, Linux only) go here.
+      # Build-sandbox checks, Linux only (the Darwin packages are evaluated, not built).
+      checks =
+        lib.genAttrs
+          [
+            "x86_64-linux"
+            "aarch64-linux"
+          ]
+          (system: {
+            link-modes = import ./nix/checks/link-modes.nix {
+              pkgs = pkgsFor system;
+              inherit (inputs) home-manager nixpkgs;
+              homeModule = self.homeManagerModules.default;
+            };
+          });
 
       # ── NixOS hosts ──────────────────────────────────────────────────────────
       nixosConfigurations = {

@@ -14,14 +14,21 @@ let
     "tmux"
     "zsh"
   ];
-  src = fs.toSource {
-    inherit root;
-    fileset = fs.difference (fs.unions (map (p: root + "/${p}") stowPackages)) (
-      root + "/herdr/.local/bin"
-    );
-  };
+  fileset = fs.difference (fs.unions (map (p: root + "/${p}") stowPackages)) (
+    root + "/herdr/.local/bin"
+  );
+  src = fs.toSource { inherit root fileset; };
+  # Each file as { pkg; rel; }, rel being its path under $HOME, for the Home Manager module to
+  # link one by one. passthru only, so the build itself is unchanged.
+  files = lib.concatMap (
+    p:
+    map (f: {
+      pkg = p;
+      rel = lib.removePrefix "./" (lib.path.removePrefix (root + "/${p}") f);
+    }) (fs.toList (fs.intersection fileset (root + "/${p}")))
+  ) stowPackages;
 in
-runCommand "dotfiles-home-tree" { } ''
+runCommand "dotfiles-home-tree" { passthru = { inherit stowPackages files; }; } ''
   mkdir -p $out
   for p in ${lib.escapeShellArgs stowPackages}; do
     # "dir/." copies the dotfiles too.
