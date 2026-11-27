@@ -13,6 +13,8 @@ let
   system = pkgs.stdenv.hostPlatform.system;
   root = ../..;
   data = import ../lib/bootstrap-data.nix { inherit lib; };
+  # As configs.nix: nixpkgs builds Ghostty on Linux and repackages the release app on macOS.
+  ghostty = if pkgs.stdenv.hostPlatform.isDarwin then pkgs.ghostty-bin else pkgs.ghostty;
 
   # ── Stow set ─────────────────────────────────────────────────────────────
   # The flake source holds tracked files only, so listing it equals `git ls-files -- <pkg>`
@@ -58,7 +60,7 @@ let
         homeModule
         {
           home.username = "test";
-          home.homeDirectory = "/home/test";
+          home.homeDirectory = import ../lib/home-directory.nix { inherit lib; } system "test";
           home.stateVersion = "26.05";
           dotfiles.enable = true;
         }
@@ -215,7 +217,7 @@ pkgs.runCommand "check-link-modes" { } ''
   cp "$hf/${herdrConfig}" $HOME/${herdrConfig}
   res=$(${pkgs.dotfiles.tools}/bin/herdr config check 2>&1) || fail "shell: herdr config check: $res"
   grep -q 'config: ok' <<<"$res" || fail "shell: herdr config check: $res"
-  res=$(${pkgs.ghostty}/bin/ghostty +validate-config --config-file="$hf/${ghosttyConfig}" 2>&1) \
+  res=$(${ghostty}/bin/ghostty +validate-config --config-file="$hf/${ghosttyConfig}" 2>&1) \
     || fail "shell: ghostty +validate-config: $res"
   echo "shell: herdr's and Ghostty's configs start ${zsh} and stay valid"
 

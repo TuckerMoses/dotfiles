@@ -13,7 +13,14 @@ checkLib.mkCheck "scripts" { } ''
   # NixOS has no /usr/bin/python3: no interpreter line or python call may name it. A
   # `/usr/bin/env python3` call is rewritten to the store python; the runs below prove it, as the
   # build sandbox has neither /usr/bin/env nor /usr/bin/python3.
-  [ ! -e /usr/bin/python3 ] || fail "the check namespace has /usr/bin/python3, so it cannot tell"
+  ${
+    if pkgs.stdenv.hostPlatform.isLinux then
+      ''[ ! -e /usr/bin/python3 ] || fail "the check namespace has /usr/bin/python3, so it cannot tell"''
+    else
+      # macOS builds have no sandbox and macOS has /usr/bin/python3, so there the text checks
+      # below are the proof, not the runs.
+      ":"
+  }
   for f in ${d.scripts}/bin/* ${d.scripts}/bin/.*-wrapped; do
     line=$(head -1 "$f")
     [[ "$line" =~ ^\#!\ *(/[^ ]+) ]] || fail "$f: no interpreter line (got '$line')"

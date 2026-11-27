@@ -498,3 +498,10 @@ disagree, this section describes what exists.
   `~/.local/share/dotfiles/herdr-plugins/<id>` and `herdr plugin link`s it (`dotfiles.herdrPlugins.enable`); the
   sandboxes link them too, and `--with-plugins` stays as the test of herdr's own installer.
   Record: `docs/plans/herdr-nix-plugin-builds.md`.
+- **Sections 3, 7 and 8, macOS** (2026-11-27): aarch64-darwin is now built, in CI only (a `darwin` job on GitHub's
+  macOS runner; homepc cannot build it). `homeConfigurations."johnmoses@mac"` is the Mac's standalone Home Manager
+  configuration (no nix-darwin yet), with homes built from the user name (`nix/lib/home-directory.nix`); the job
+  activates `runner@mac-ci` for the runner's own user. `checks.aarch64-darwin` has every build-sandbox check but
+  `lifeline-guard`. On macOS the module gives the user `tools` without compilers, git, python3 or the GNU base
+  commands, leaves fontconfig off (Home Manager copies the font into `~/Library/Fonts`), and tuicr stays on Homebrew.
+  The owner switches the Mac with `docs/mac-cutover.md`.

@@ -12,7 +12,7 @@ Programs that can reload do so through the activation's onChange hooks (herdr re
 config.toml when its server is running); others pick the change up when they next start.
 
   --flake DIR      The checkout to build from (default: $DOTFILES_FLAKE, else ~/dotfiles).
-  --config NAME    The configuration (default: <user>@<short hostname>).
+  --config NAME    The configuration (default: <user>@<short hostname>, or <user>@mac on macOS).
   --dry-run        Build and print what would change; activate nothing.
   --rollback       Activate the previous Home Manager generation (each run goes one further
                    back, as home-manager switch --rollback does).
@@ -47,7 +47,9 @@ done
 # Whatever the machine's nix.conf enables.
 nixFlags=(--extra-experimental-features "nix-command flakes")
 user=$(id -un)
-host=$(uname -n)
+# A Mac's network name follows its Sharing settings and the network it is on (a .local name,
+# renumbered on a clash), so the flake calls every Mac "mac".
+if [[ $(uname -s) == Darwin ]]; then host=mac; else host=$(uname -n); fi
 config=${config:-$user@${host%%.*}}
 state=${XDG_STATE_HOME:-$HOME/.local/state}
 current=$(readlink -e "$state/home-manager/gcroots/current-home" || true)

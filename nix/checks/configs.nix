@@ -3,8 +3,9 @@
 { pkgs, checkLib }:
 let
   d = pkgs.dotfiles;
-  # Check-only: Ghostty's closure is large and only its config parser is needed here.
-  ghostty = pkgs.ghostty;
+  # Check-only: Ghostty's closure is large and only its config parser is needed here. nixpkgs
+  # builds Ghostty from source on Linux only; on macOS it repackages the release app.
+  ghostty = if pkgs.stdenv.hostPlatform.isDarwin then pkgs.ghostty-bin else pkgs.ghostty;
 in
 checkLib.mkCheck "configs" { } ''
   # ── zsh ──────────────────────────────────────────────────────────────────

@@ -26,8 +26,8 @@
     let
       lib = nixpkgs.lib;
 
-      # x86_64-linux and aarch64-linux are built; aarch64-darwin is evaluated only, until a Mac
-      # with Nix exists.
+      # All three are built: the Linux pair in CI and on homepc, aarch64-darwin on CI's macOS
+      # runner (.github/workflows/nix.yml, job darwin).
       systems = [
         "x86_64-linux"
         "aarch64-linux"
@@ -111,6 +111,14 @@
             dotfiles.interactiveShell = pkgs.zsh;
           }
         );
+        # The Mac (docs/mac-cutover.md). zsh is its login shell already, so no interactiveShell.
+        # dotfiles-switch calls any Mac "mac", whatever its network name (dotfiles-switch.sh).
+        "johnmoses@mac" = mkHome "johnmoses" "aarch64-darwin" {
+          dotfiles.linkMode = "store";
+          dotfiles.profiles.personal.enable = true;
+        };
+        # CI's macOS runner activates this one (its user is runner): base profile only.
+        "runner@mac-ci" = mkHome "runner" "aarch64-darwin" { };
       };
 
       # ── Apps ─────────────────────────────────────────────────────────────────
@@ -134,25 +142,20 @@
       );
 
       # ── Checks ───────────────────────────────────────────────────────────────
-      # Build-sandbox checks, Linux only (the Darwin packages are evaluated, not built).
-      checks =
-        lib.genAttrs
-          [
-            "x86_64-linux"
-            "aarch64-linux"
-          ]
-          (
-            system:
-            let
-              args = {
-                inherit self inputs system;
-                pkgs = pkgsFor system;
-              };
-            in
-            import ./nix/checks args
-            # The NixOS VM tests (names start with vm-) need KVM; CI has it on x86-64 only.
-            // lib.optionalAttrs (system == "x86_64-linux") (import ./nix/tests args)
-          );
+      # Build-sandbox checks on every system (nix/checks/default.nix says which are left out on
+      # Darwin, and why).
+      checks = forAllSystems (
+        system:
+        let
+          args = {
+            inherit self inputs system;
+            pkgs = pkgsFor system;
+          };
+        in
+        import ./nix/checks args
+        # The NixOS VM tests (names start with vm-) need KVM; CI has it on x86-64 only.
+        // lib.optionalAttrs (system == "x86_64-linux") (import ./nix/tests args)
+      );
 
       # ── NixOS hosts ──────────────────────────────────────────────────────────
       nixosConfigurations = {

@@ -97,5 +97,7 @@ in
     ".config/fontconfig/conf.d/10-hm-fonts.conf"
     ".config/fontconfig/conf.d/10-hm-rendering.conf"
     ".config/fontconfig/conf.d/52-hm-default-fonts.conf"
+    # On Darwin, the marker of the fonts Home Manager copies into ~/Library/Fonts/HomeManager.
+    "Library/Fonts/.home-manager-fonts-version"
   ];
 }

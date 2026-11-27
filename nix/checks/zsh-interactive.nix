@@ -2,7 +2,13 @@
 # interactive zsh in a pty prints nothing on stderr and has zsh-vi-mode, the starship prompt
 # hook, ^T bound to fzf, ^R bound to atuin and zoxide's cd. A throwaway tmux server is the pty:
 # zsh-vi-mode runs zvm_after_init (fzf, atuin) at the first prompt, which `zsh -i -c` never shows.
-{ checkLib }:
+{ pkgs, checkLib }:
+let
+  # Darwin builds run outside a sandbox, where nixpkgs' zsh would read the machine's /etc/zshrc
+  # (macOS's own, plus the Nix installer's hook); the check is about the repo's files only.
+  # The darwin job's activation step starts a zsh with them.
+  zshFlags = pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isDarwin " +o GLOBAL_RCS";
+in
 checkLib.mkCheck "zsh-interactive" { } ''
   probe="$TMPDIR/zsh-probe.zsh" res="$TMPDIR/zsh-probe.out" err="$TMPDIR/zsh-stderr.txt"
   # The probes are test/suite.sh's.
@@ -14,7 +20,7 @@ checkLib.mkCheck "zsh-interactive" { } ''
   print -r -- "zoxide=''${+functions[__zoxide_z]}"
   print -r -- probe-done
   EOF
-  tmux -L zsh -f /dev/null new-session -d -x 160 -y 40 "cd '$HOME' && exec '$SHELL' -i 2>'$err'"
+  tmux -L zsh -f /dev/null new-session -d -x 160 -y 40 "cd '$HOME' && exec '$SHELL'${zshFlags} -i 2>'$err'"
   prompt=0
   for _ in $(seq 1 120); do
     if [ -n "$(tmux -L zsh capture-pane -p 2>/dev/null | tr -d '[:space:]')" ]; then prompt=1; break; fi

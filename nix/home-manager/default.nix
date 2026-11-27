@@ -13,6 +13,9 @@ let
   cfg = config.dotfiles;
   d = self.packages.${pkgs.stdenv.hostPlatform.system};
   checkoutMode = cfg.linkMode == "checkout";
+  isDarwin = pkgs.stdenv.hostPlatform.isDarwin;
+  # On macOS the user's own compilers, git, python3 and BSD commands stay first on PATH.
+  tools = if isDarwin then d.tools.override { standalone = false; } else d.tools;
 
   # herdr-plugins reads its pins from the checkout, or from bootstrap.sh alone in store mode
   # (where `update` refuses, as it does in a worktree).
@@ -72,7 +75,7 @@ let
   # Runs after the new files are linked, when herdr's config.toml changed. herdr reads the
   # other files under its config (herdr-plus's) fresh each time, so they need nothing. A
   # failure warns and never fails the activation.
-  herdr = "${d.tools}/bin/herdr";
+  herdr = "${tools}/bin/herdr";
   herdrReload = ''
     dotfilesHerdr=$(${herdr} status server 2>/dev/null || true)
     if grep -qx 'status: running' <<<"$dotfilesHerdr"; then
@@ -184,12 +187,15 @@ in
     ];
 
     home.packages = [
-      d.tools
+      tools
       scripts
       d.dotfiles-switch
       pkgs.nerd-fonts.jetbrains-mono
     ];
-    fonts.fontconfig.enable = true;
+    # Linux finds the font through fontconfig. macOS apps (Ghostty among them) use Core Text,
+    # which reads ~/Library/Fonts, where Home Manager copies the font of every package in
+    # home.packages on Darwin by itself; fontconfig there would only add unused files.
+    fonts.fontconfig.enable = !isDarwin;
 
     # One link per file, so ~/.config/herdr and ~/.config/nvim stay real,
     # writable directories; only the store bundles are linked as directories.

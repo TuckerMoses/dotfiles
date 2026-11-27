@@ -13,10 +13,11 @@ let
   floors = {
     herdr = "0.9.0";
     jj = "0.47.1";
-    tuicr = "0.30.0";
     nvim = "0.11";
     fzf = "0.67";
-  };
+  }
+  # The Darwin tools have no tuicr (nix/packages/tools.nix).
+  // lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux { tuicr = "0.30.0"; };
 
   # The tuicr package as each Linux system builds it, evaluated only: its version and the
   # sha256 its fetchurl checks, normalised so hex and SRI compare equal.

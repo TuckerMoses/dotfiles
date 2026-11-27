@@ -8,7 +8,7 @@
 #   herdr-plugins status                   pinned / installed / upstream HEAD / commits behind
 #   herdr-plugins check                    offline: exit 1 when an installed plugin is off its pin
 #   herdr-plugins review <plugin> [<ref>]  shows what changed, pin..ref (default: upstream HEAD); read-only
-#   herdr-plugins update [<plugin>... | <plugin> <sha>]  the user's: review, ask, reinstall, bump the pin (no <plugin>: all, at HEAD)
+#   herdr-plugins update [--repo DIR] [<plugin>... | <plugin> <sha>]  the user's: review, ask, reinstall, bump the pin (no <plugin>: all, at HEAD)
 #   herdr-plugins sync                     sandbox only: install every pinned plugin at its pin, as bootstrap.sh does
 #   herdr-plugins help
 #
@@ -16,9 +16,13 @@
 # For update, <sha> is 7 to 40 lowercase hex characters, the last argument, after exactly one <plugin>; a tag name is not accepted
 # (give the commit it points at).
 # DOTFILES_DIR, when set, is the directory whose bootstrap.sh is read, instead of the checkout this script is linked from
-# (a Nix build sets it). update refuses unless it is the top of a git checkout.
+# (a Nix build sets it). update refuses unless it is the top of a git checkout. update --repo DIR edits DIR's bootstrap.sh
+# instead; without it, when DOTFILES_DIR is the read-only copy a Nix build packaged, update uses the checkout dotfiles-switch
+# builds from ($DOTFILES_FLAKE, else ~/dotfiles) and says so.
 # A plugin a Nix build provides (herdr lists it as a local link with a .dotfiles-pin file) counts as installed at the
-# commit that file names, for status, check and sync; update skips it (its pin moves through nix/packages/herdr-plugins).
+# commit that file names, for status, check and sync. update reviews it and moves its pin in bootstrap.sh without
+# reinstalling (herdr's installer must not replace a Nix build), then names the two commands that rebuild it there:
+# nix run .#herdr-plugin-hashes (the hashes the new pin needs) and dotfiles-switch.
 # sync runs only with DOTFILES_SANDBOX=1 and a HOME other than the user's own (a sandbox's throwaway HOME). It installs each
 # pin with herdr plugin install --yes, needs the build tool bootstrap.sh requires for it (go, cargo), and fails on a missing
 # tool, a herdr plugin install line without a --ref pin, or an install that does not end at the pin.
@@ -37,7 +41,7 @@
 # write), or a sync that failed (a missing pin or build tool, a failed install); 2 setup or other error, or a sync refused (review: anything else, such as a failed GitHub call, so upstream's own could not be checked);
 # 130 Ctrl-C, which stops review and update.
 # update is the user's: run it in a terminal at the main checkout (not a linked worktree), on a branch made there, through
-# the stowed ~/.local/bin/herdr-plugins; commit the pin bump after. <sha> moves that one plugin to a commit other than
+# the stowed (or, on a Nix home, the placed) ~/.local/bin/herdr-plugins; commit the pin bump after. <sha> moves that one plugin to a commit other than
 # upstream HEAD (a tagged release). It reinstalls a plugin installed off its pin at the pin.
 #
 # Reading review output (agents and people)
@@ -651,6 +655,18 @@ cmd_update() {
   # update is the user's. Piped input cannot pass this check and the confirmations are read from the
   # terminal, not stdin. An agent that spawns a pty is stopped by CLAUDE.md, not by this.
   [[ -t 0 && -t 1 ]] || die "update needs a terminal; the user runs it"
+  # The checkout whose bootstrap.sh moves. A Nix build's wrapper points DOTFILES_DIR at a read-only store copy of
+  # bootstrap.sh; the pins are then moved in the checkout dotfiles-switch builds from, which is named, not guessed at.
+  if [[ "${1:-}" == --repo ]]; then
+    [[ -n "${2:-}" ]] || die "--repo needs a directory"
+    REPO="$(cd "$2" 2>/dev/null && pwd)" || die "--repo $2 is not a directory"
+    shift 2
+  elif [[ "$(cd "$REPO" && pwd -P)" == /nix/store/* ]]; then
+    local co="${DOTFILES_FLAKE:-$HOME/dotfiles}"
+    REPO="$(cd "$co" 2>/dev/null && pwd)" || die "the pins here are a read-only Nix copy, and $co (\$DOTFILES_FLAKE, else ~/dotfiles) is not a directory; give the checkout with --repo DIR"
+    echo "herdr-plugins: the pins here are a read-only Nix copy; moving them in $REPO (the checkout dotfiles-switch builds from; --repo DIR for another)"
+  fi
+  BOOTSTRAP="$REPO/bootstrap.sh"
   # In a linked worktree update would reinstall on the live machine and rewrite a bootstrap.sh that
   # goes away with the worktree. status, check and review read only, so they work from one.
   local gdir cdir
@@ -662,7 +678,7 @@ cmd_update() {
   top="$(cd "$REPO" && git rev-parse --show-toplevel 2>/dev/null)" || top=""
   [[ -n "$top" && "$(cd "$top" && pwd -P)" == "$(cd "$REPO" && pwd -P)" ]] || die "$REPO is not a git checkout of the dotfiles (DOTFILES_DIR=${DOTFILES_DIR:-unset}); update edits and commits bootstrap.sh, so the user runs it from the main checkout's stowed herdr-plugins"
   have gh || die "update needs the GitHub CLI (gh) to show what changed"
-  local inst repo pin head targets="" t id got moved="" failed="" rrc want=""
+  local inst repo pin head targets="" t id got moved="" nixmoved="" failed="" rrc want="" nix
   # An unreadable plugin list is not an empty one: update could otherwise move the pin of an installed plugin.
   inst="$(installed)" || die "herdr plugin list --json failed (is herdr installed and its server running?); update needs to know what is installed"
   # A last argument that is 7 to 40 hex characters, after exactly one plugin, is the commit to move that
@@ -685,15 +701,15 @@ cmd_update() {
   for repo in $targets; do
     pin="$(pins | awk -v r="$repo" '$1 == r { print $2; exit }')"
     id="$(lookup "$inst" "$repo" 2)"; got="$(lookup "$inst" "$repo" 3)"
-    # A Nix build placed this one: herdr's installer must not replace it, and the pin moves in a checkout
-    # without it (the Mac), then reaches this machine through hashes.nix and dotfiles-switch.
-    if [[ "$(lookup "$inst" "$repo" 4)" == nix ]]; then
-      echo "$repo: provided by the Nix build here, not installed by herdr; not updated. Move its pin with herdr-plugins update on a machine where herdr installs it (the pin is in bootstrap.sh), then update nix/packages/herdr-plugins/hashes.nix (nix run .#herdr-plugin-hashes) and run dotfiles-switch"
-      failed="$failed $repo"; continue
+    # A Nix build placed this one: herdr's installer must not replace it. Its pin moves in bootstrap.sh only, and
+    # the build follows through hashes.nix and dotfiles-switch (named at the end).
+    nix=0; [[ "$(lookup "$inst" "$repo" 4)" == nix ]] && nix=1
+    if (( nix )) && [[ "$got" != "$pin"* ]]; then
+      echo "$repo: the Nix build here is at ${got:0:7} but bootstrap.sh pins ${pin:0:7}: run dotfiles-switch to rebuild it at the pin"
     fi
     # Installed at a commit other than its pin: the pin is the reviewed state, so put the install back
     # on it (no review) before looking at anything newer.
-    if [[ -n "$id" && "$got" != "$pin"* ]]; then
+    if (( ! nix )) && [[ -n "$id" && "$got" != "$pin"* ]]; then
       echo
       confirm "$repo is installed at ${got:0:7} but bootstrap.sh pins ${pin:0:7}. Reinstall it at the pin?" || { echo "$repo: left at ${got:0:7}"; continue; }
       if reinstall "$repo" "$id" "$got" "$pin"; then
@@ -715,6 +731,13 @@ cmd_update() {
     elif (( rrc != 0 )); then echo "$repo: review failed; left at ${pin:0:7}"; failed="$failed $repo"; continue; fi
     echo
     confirm "Pin $repo at ${head:0:7}?" || { echo "$repo: left at ${pin:0:7}"; continue; }
+    if (( nix )); then
+      if set_pin "$repo" "$pin" "$head"; then
+        moved="$moved $repo"; nixmoved="$nixmoved $repo"
+        echo "$repo: bootstrap.sh now pins ${head:0:7}; the Nix build here moves at the next dotfiles-switch (below)"
+      else failed="$failed $repo"; fi
+      continue
+    fi
     if [[ -z "$id" ]]; then
       if set_pin "$repo" "$pin" "$head"; then
         moved="$moved $repo"
@@ -741,6 +764,16 @@ cmd_update() {
     echo; git -C "$REPO" --no-pager diff -- bootstrap.sh
     echo
     echo "Commit bootstrap.sh in $REPO."
+    # Nix builds the plugins from these pins too, and stops on a pin hashes.nix has no entry for.
+    if [[ -f "$REPO/nix/packages/herdr-plugins/hashes.nix" ]]; then
+      echo "Nix builds these plugins from the same pins. On a machine with Nix, in $REPO, refresh their hashes and commit"
+      echo "nix/packages/herdr-plugins/hashes.nix with bootstrap.sh:"
+      echo "    nix run .#herdr-plugin-hashes > /tmp/hashes.nix && mv /tmp/hashes.nix nix/packages/herdr-plugins/hashes.nix"
+      if [[ -n "$nixmoved" ]]; then
+        echo "Then rebuild the Nix-provided plugins here (${nixmoved# }) at their new pins:"
+        echo "    dotfiles-switch --flake $REPO"
+      fi
+    fi
     if [[ " $moved " == *" cloudmanic/herdr-plus "* ]]; then
       echo "herdr-plus moved: re-read its config rules at the new pin, then update them and HERDR_PLUS_RULES_AT in validate.sh (check_herdr_plus_config)."
     fi

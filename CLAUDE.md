@@ -9,7 +9,7 @@ Nix is a second route to the same files (see "Nix package set"). The Mac still u
 dotfiles/
 ├── .github/workflows/claude-pr-review.yml  # Claude Code Action for PR reviews
 ├── .github/workflows/linux-test.yml # Runs test/suite.sh on x86-64 and arm64 Linux runners
-├── .github/workflows/nix.yml        # Nix: evaluates the flake and hosts, builds the checks and VM tests
+├── .github/workflows/nix.yml        # Nix: evaluates the flake and hosts, builds the checks and VM tests, macOS job
 ├── flake.nix, flake.lock            # Nix entry point: package set, Home Manager module, checks, NixOS hosts
 ├── nix/                             # Overlay, packages, Home Manager module, checks, VM tests (not stowed)
 ├── nixos/                           # NixOS modules and hosts (not stowed; see nixos/README.md)
@@ -27,6 +27,7 @@ dotfiles/
 ├── docs/proposals/                  # Approved work queue
 ├── docs/plans/                      # Record of what was built
 ├── docs/design/nix-dotfiles.md      # Design of the Nix route
+├── docs/mac-cutover.md              # Runbook: the owner moves the Mac from Stow to Nix (and back)
 ├── .claude/skills/build-proposals/  # /build-proposals project skill
 ├── CHANGELOG.md                     # Project changelog
 ├── CLAUDE.md                        # This file
@@ -171,15 +172,18 @@ its config before the last change (with the command to fix it). It reads package
 `flake.nix` (the Nix project file; its inputs are pinned in `flake.lock`) also builds the dotfiles with Nix, from
 the same files Stow links. Home Manager, a Nix tool that places files and packages in a user's home, can link them.
 Design and reasons: `docs/design/nix-dotfiles.md`. `nix` commands run on a machine with Nix (homepc today); the
-Mac has no Nix.
+Mac has no Nix until its cutover.
 
 - **Outputs:** `overlays.default` (adds `pkgs.dotfiles.*`, `nix/overlay.nix`); `packages.<system>`: `home-tree`,
   `scripts`, `summarizer-plugin`, `oh-my-zsh-bundle`, `tools`, `sandbox`, `herdr-sandbox`, `dotfiles-switch`,
   `herdr-plugins` and one `herdr-plugin-<repo>` per pinned plugin, `herdr-plugin-hashes` (`nix/packages/`); `apps`
   for the two sandboxes, `dotfiles-switch` and `herdr-plugin-hashes`; `homeManagerModules.default`
-  (`nix/home-manager/`); `homeConfigurations."<user>@<host>"` (`tucker@homepc`, `test@vm`; one `mkHome` line
-  each, `nix/lib/home-configuration.nix`); `checks` (Linux only). x86_64-linux and aarch64-linux are built;
-  aarch64-darwin is only evaluated.
+  (`nix/home-manager/`); `homeConfigurations."<user>@<host>"` (`tucker@homepc`, `test@vm`, `johnmoses@mac`,
+  `runner@mac-ci`; one `mkHome` line each, `nix/lib/home-configuration.nix`); `checks` on every system. Linux
+  builds on homepc and in CI; aarch64-darwin builds only in CI's `darwin` job (macOS runner), which also
+  activates `runner@mac-ci`.
+- **The Mac** is still on Stow and Homebrew. `johnmoses@mac` is ready for it, and the owner switches it himself
+  by following `docs/mac-cutover.md`. Until then, nothing on the Mac uses Nix.
 - **Link modes** (`dotfiles.linkMode`): `store` links each config from the build, so an edit needs a rebuild;
   `checkout` links each config into `dotfiles.checkout`, so edits there are live at once, as with Stow. In both,
   the four herdr scripts and nvim's two lock files come from the build.
@@ -192,7 +196,9 @@ Mac has no Nix.
   the one place a pin is written), with their source and Go/Rust hashes in `nix/packages/herdr-plugins/hashes.nix`,
   keyed by commit. The module places them under `~/.local/share/dotfiles/herdr-plugins/` and `herdr plugin link`s
   each (`dotfiles.herdrPlugins.enable`, on in store mode). A moved pin stops the build until `hashes.nix` is
-  replaced with what `nix run .#herdr-plugin-hashes` prints.
+  replaced with what `nix run .#herdr-plugin-hashes` prints. On a Nix home, `herdr-plugins update` reviews a
+  Nix-built plugin, moves its pin in the checkout's `bootstrap.sh` (`--repo DIR`, else `$DOTFILES_FLAKE` or
+  `~/dotfiles`) without reinstalling it, and prints those two follow-up commands.
 - **Switching a user:** `dotfiles-switch` builds the caller's `homeConfigurations."<user>@<host>"` from
   `~/dotfiles` and activates it, as the user, with no root and no `safe-switch`; `--dry-run` lists what would
   change, `--rollback` goes back one generation. herdr reloads its `config.toml` by itself (an `onChange` hook,

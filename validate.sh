@@ -99,10 +99,11 @@ check_nix_placed
 hard="$(git -C "$DOTFILES_DIR" grep -nIE '(/Users|/home)/[A-Za-z0-9._-]+' -- . ':!docs' ':!CHANGELOG.md' ':!validate.sh' ':!nix' ':!nixos' || true)"
 if [[ -z "$hard" ]]; then pass "no hardcoded home directory paths in tracked files"
 else fail "hardcoded home directory path (use \$HOME, ~ or a relative path): $(echo "$hard" | cut -d: -f1,2 | tr '\n' ' ')"; fi
-# The Nix files may name test homes (/home/test), never the owner's.
+# The Nix files may name test homes (/home/test), never the owner's. A macOS home is built from the
+# user name ("/Users" + "/${user}", nix/lib/home-directory.nix); a literal name after /Users/ fails.
 check_nix_home_paths() {  # <repo>
   local hard
-  hard="$(git -C "$1" grep -nIE '/Users/|/home/tucker' -- nix nixos || true)"
+  hard="$(git -C "$1" grep -nIE '/Users/[A-Za-z0-9._-]|/home/tucker' -- nix nixos || true)"
   if [[ -z "$hard" ]]; then pass "no owner home directory paths under nix/ and nixos/"
   else fail "owner home directory path under nix/ or nixos/ (build it from the user name): $(echo "$hard" | cut -d: -f1,2 | tr '\n' ' ')"; fi
 }
