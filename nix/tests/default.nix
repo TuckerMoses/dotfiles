@@ -7,4 +7,6 @@
   pkgs,
 }:
 {
+  vm-home = import ./home.nix { inherit self inputs pkgs; };
+  vm-lifeline = import ./lifeline.nix { inherit pkgs; };
 }
