@@ -93,7 +93,7 @@ would touch, check what is already installed or configured on this machine, and 
 | Verdict | Meaning | What happens |
 |---|---|---|
 | `ready` | Clear enough to plan and build | Planned and dispatched |
-| `blocked` | Has a "Needs decision" section, needs a decision only the user can make, or needs something that is not on this machine | Not dispatched; stays in `docs/proposals/` |
+| `blocked` | Has a "Needs decision" or "Waiting on" section, needs a decision only the user can make, or needs something that is not on this machine | Not dispatched; stays in `docs/proposals/` |
 | `done` | Already true on `master` | Not dispatched; deleted in the final PR, with the evidence |
 
 For each `ready` proposal, write its plan now as `docs/plans/<same-name>.md`. Plans are written
@@ -117,7 +117,9 @@ under a heading **Differences from the proposal**.
 Plans written here are not committed yet. They travel with their implementation and are
 committed on the integration branch in Phase 5.
 
-For a `blocked` proposal, write the exact question the user must answer. In Phase 5 it goes into
+For a `blocked` proposal with a "Waiting on" section, check whether the capability it names now exists on this
+machine; if it does, say so and treat the proposal as `ready` once the user deletes the section. Otherwise report
+what it waits on and leave the file untouched. For any other `blocked` proposal, write the exact question the user must answer. In Phase 5 it goes into
 that proposal's "Needs decision" section, so the next run and the user both see it.
 
 ## Phase 3: units and the dispatch table

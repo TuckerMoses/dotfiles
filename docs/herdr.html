@@ -103,6 +103,7 @@ footer { font-size: 13px; color: var(--muted); }
         <tr><td><code>herdr/.local/bin/herdr-plugins</code></td><td><code>~/.local/bin/herdr-plugins</code></td><td>Status, review and update for the pinned third-party plugins. See <a href="#install">Install and check</a>.</td></tr>
         <tr><td><code>herdr/.config/herdr/plugins/config/</code></td><td><code>~/.config/herdr/plugins/config/</code></td><td>Settings for herdr-plus (project templates, worktree layouts, quick actions). Stowed file by file, so each plugin's folder stays a real directory.</td></tr>
         <tr><td><code>bootstrap.sh</code></td><td>(run by hand)</td><td>Installs the plugins, each at a pinned commit: the <code>--ref</code> on its <code>herdr plugin install</code> line is the only place a pin is recorded.</td></tr>
+        <tr><td><code>herdr/.local/bin/herdr-login-warning</code></td><td><code>~/.local/bin/herdr-login-warning</code></td><td>Tab-bar warning while the Claude login is under a day from expiry, expired or signed out. Checked every 5 minutes; gone once you run <code>claude auth login</code>.</td></tr>
         <tr><td><code>herdr-summarizer/plugin/</code></td><td>linked into herdr's plugin registry</td><td>The herdr plugin that runs <code>herdr-summarize</code> on herdr events. Not stowed.</td></tr>
         <tr><td><code>herdr-summarizer/install.sh</code></td><td>run by hand</td><td>Opt-in installer for that plugin. <code>bootstrap.sh</code> never runs it, because the plugin calls a model.</td></tr>
         <tr><td>(not in the repo)</td><td><code>~/.local/state/herdr-summarizer/</code></td><td>State, event log and worker log.</td></tr>
@@ -269,7 +270,7 @@ The session explored an in-memory cache for the API client. A prototype and one 
         <tr><td><kbd>prefix</kbd> <kbd>f</kbd></td><td>fingers: hint-copy from the focused pane</td><td>Added. A trial (see Plugins).</td></tr>
         <tr><td><kbd>prefix</kbd> <kbd>v</kbd> <kbd>%</kbd> <kbd>|</kbd></td><td>Split side by side</td><td>tmux's keys added to herdr's.</td></tr>
         <tr><td><kbd>prefix</kbd> <kbd>-</kbd> <kbd>"</kbd></td><td>Split stacked</td><td></td></tr>
-        <tr><td><kbd>prefix</kbd> <kbd>z</kbd>, <kbd>ctrl+z</kbd></td><td>Zoom pane</td><td><kbd>ctrl+z</kbd> no longer suspends jobs inside herdr.</td></tr>
+        <tr><td><kbd>prefix</kbd> <kbd>z</kbd>, <kbd>ctrl+z</kbd></td><td>Zoom pane</td><td><kbd>ctrl+z</kbd> no longer suspends jobs inside herdr. A <b>ZOOM</b> pill shows at the right of the tab bar while the tab is zoomed.</td></tr>
         <tr><td><kbd>prefix</kbd> <kbd>c</kbd> / <kbd>n</kbd></td><td>New tab</td><td><kbd>n</kbd> is new, not next.</td></tr>
         <tr><td><kbd>prefix</kbd> <kbd>ctrl+n</kbd> / <kbd>ctrl+p</kbd></td><td>Next / previous tab</td><td></td></tr>
         <tr><td><kbd>prefix</kbd> <kbd>,</kbd> or <kbd>shift+t</kbd></td><td>Rename tab</td><td></td></tr>
@@ -301,7 +302,7 @@ The session explored an in-memory cache for the API client. A prototype and one 
       <li><b>Pins:</b> every third-party plugin is installed at a commit that was read before it was pinned. The first pins were set at wire-up, read by the agents that set them (recorded in <code>docs/plans/</code>) and approved by merging that PR; <code>herdr-plugins review</code> diffs from a pin, so it never shows a first pin's code (read it at <code>github.com/&lt;owner&gt;/&lt;repo&gt;/tree/&lt;sha&gt;</code>). Bootstrap keeps <code>--yes</code> for that reason: it trusts what was read before pinning, and a binary its build downloads is trusted to the release. <code>validate.sh</code> warns when an installed plugin is not at its pin. <code>herdr-plugins review</code> diffs a plugin's install-time code and lists the rest (the plugin's own code) with the compare URL, where that code is read; it does not cover the release binaries a build may download.</li>
       <li><b>Sounds:</b> herdr's done and request events play herdr's built-in sounds. Toasts are shown by herdr itself.</li>
       <li><b>Restore:</b> agents resume after a server restart (<code>resume_agents_on_restore</code>), and pane scrollback is kept (<code>pane_history</code>).</li>
-      <li><b>Look:</b> solarized theme, no outer pane borders, hostname and time at the right of the tab bar.</li>
+      <li><b>Look:</b> solarized theme, no outer pane borders, a Claude login warning (only within a day of expiry), a ZOOM pill (while zoomed), hostname and time at the right of the tab bar.</li>
       <li><b>Ghostty:</b> <code>macos-non-native-fullscreen = visible-menu</code>, so revealing the menu bar does not swallow clicks on herdr's tab row.</li>
     </ul>
   </section>

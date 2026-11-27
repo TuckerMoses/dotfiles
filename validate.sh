@@ -250,11 +250,17 @@ fi
 
 # zsh: startup files it loads that the repo does not manage.
 # ~/.zshrc.local is the deliberate machine-local layer (.zshrc sources it, and it
-# can hold secrets), so it is expected to stay out of the repo.
+# can hold secrets), so it is expected to stay out of the repo. So are two more machine-local files:
+# ~/.zshenv (PATH and env for non-interactive shells such as agent hooks, which never read .zshrc)
+# and ~/.zprofile (brew shellenv, which must run before oh-my-zsh builds completions in .zshrc).
 for f in .zshenv .zprofile .zlogin .zlogout; do
   [[ -e "$HOME/$f" ]] || continue
   [[ "$(real "$HOME/$f")" == "$DOTFILES_DIR"/* ]] && continue
-  warn "zsh loads ~/$f, which is not in dotfiles"
+  case "$f" in
+    .zshenv)   info "~/.zshenv: machine-local env for non-interactive shells, untracked by design" ;;
+    .zprofile) info "~/.zprofile: machine-local login setup (brew shellenv before .zshrc), untracked by design" ;;
+    *)         warn "zsh loads ~/$f, which is not in dotfiles" ;;
+  esac
 done
 [[ -e "$HOME/.zshrc.local" ]] && info "~/.zshrc.local: machine-local layer, untracked by design (keep secrets out of the repo)"
 
@@ -593,6 +599,17 @@ if have herdr; then
   out="$(herdr config check 2>&1)"
   if echo "$out" | grep -q 'config: ok'; then pass "config.toml valid"; else fail "config.toml: $(echo "$out" | tail -2 | tr '\n' ' ')"; fi
   [[ -n "$tomlpy" ]] && check_bound_commands "$HOME/.config/herdr/config.toml"
+  # The ZOOM pill is a tab_bar_right entry; "herdr loaded its config" above says whether it is live.
+  if grep -E '^[[:space:]]*tab_bar_right[[:space:]]*=' "$HOME/.config/herdr/config.toml" 2>/dev/null | grep -q 'type = "zoom"'; then
+    pass "zoom indicator in the tab bar"
+  else fail "no zoom indicator: tab_bar_right in ~/.config/herdr/config.toml has no { type = \"zoom\" } entry"; fi
+  # Claude login warning: wired into the tab bar, runs, and (if it prints) the login needs renewing now.
+  lw="$HOME/.local/bin/herdr-login-warning"
+  if ! grep -E '^[[:space:]]*tab_bar_right[[:space:]]*=' "$HOME/.config/herdr/config.toml" 2>/dev/null | grep -q 'herdr-login-warning'; then
+    fail "no Claude login warning: tab_bar_right in ~/.config/herdr/config.toml does not run herdr-login-warning"
+  elif ! [[ -x "$lw" ]] || ! msg="$("$lw" 2>&1)"; then fail "herdr-login-warning missing or failing ($lw)"
+  elif [[ -n "$msg" ]]; then warn "tab bar shows: $msg"
+  else pass "Claude login warning wired into the tab bar (login more than a day from expiry)"; fi
   if herdr workspace list >/dev/null 2>&1; then
     pass "server running"
     plugins="$(herdr plugin list 2>/dev/null)"
@@ -739,9 +756,15 @@ print(len(bad), len(logs))' 2>/dev/null || echo "0 0")"
     else fail "$nbad of the last $nall plugin hook runs failed (herdr plugin log list --plugin herdr-summarizer)"; fi
     [[ -e "$HOME/.local/state/herdr-summarizer/only-sessions" ]] && warn "test guard present: the plugin ignores your sessions (delete ~/.local/state/herdr-summarizer/only-sessions)"
     wlog="$HOME/.local/state/herdr-summarizer/worker.log"
-    if [[ -s "$wlog" ]] && tail -50 "$wlog" | grep -q 'Traceback\|Error'; then
-      warn "worker logged errors recently: $(grep -E 'Error|error' "$wlog" | tail -1 | cut -c1-120)"
-    else pass "worker log clean"; fi
+    # Only the last day counts: the log holds nothing but errors, so any old line would warn forever.
+    # Lines start "YYYY-MM-DD HH:MM:SS", which compares correctly as text; untimestamped lines (a
+    # traceback) belong to the timestamped line above them.
+    since="$(/usr/bin/python3 -I -c 'import time; print(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time() - 86400)))')"
+    recent="$( [[ -s "$wlog" ]] && awk -v c="$since" '/^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9] / { keep = (substr($0, 1, 19) >= c) } keep' "$wlog" \
+               | grep -E 'Traceback|Error|error|failed' || true)"
+    if [[ -n "$recent" ]]; then
+      warn "worker logged $(wc -l <<<"$recent" | tr -d ' ') error(s) in the last day: $(tail -1 <<<"$recent" | cut -c1-120)"
+    else pass "worker log: no errors in the last day"; fi
     # $jj_status is live: each space whose first pane (its home) is in a jj repo carries it.
     if have jj && [[ -x "$summ" ]]; then
       hrc=0
