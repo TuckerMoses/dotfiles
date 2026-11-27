@@ -9,10 +9,31 @@
 | `modules/host-check.nix` | `host-check`, the on-machine test suite |
 | `modules/base.nix` | Boot loader, Nix settings, tools |
 | `modules/desktop.nix` | GNOME, NVIDIA and remote desktop; off by default |
+| `modules/dotfiles-user.nix` | The `dotfiles.users` option: the dotfiles' configs and tools for named users, through Home Manager |
 | `hosts/homepc/` | The home PC |
 | `hosts/vm/` | A QEMU guest running the same modules, for tests |
 | `install.sh` | Installs a host from the NixOS installer |
 | `test/` | VM harness (`vm.sh`) and lockout drills (`drills.sh`) |
+
+## The dotfiles for a user
+
+The other modules set up the system. `modules/dotfiles-user.nix` works one level down: it hands named
+users to the dotfiles' Home Manager module (`nix/home-manager/`; Home Manager is a Nix tool that places
+files and packages in a user's home), which links that user's configs and installs the tools the configs
+call. A host names users like this:
+
+```nix
+dotfiles.users.alice = { linkMode = "store"; };   # configs linked from the build: an edit needs a rebuild
+dotfiles.users.bob = {
+  linkMode = "checkout";                           # configs linked into a checkout: edits are live, as with Stow
+  checkout = "/srv/dotfiles";                      # absolute path of a git checkout of this repo
+};
+```
+
+Every host imports the file, and it is empty by default. No host names a user yet, so `homepc`'s system is
+unchanged by it and `tucker`'s home is still set up by Stow. The module never changes a login shell. The VM
+test `vm-home` (`nix/tests/`) is the one place users are named. How the module works and how to test it:
+the "Nix" section of the top-level `README.md`, and `test/README.md`.
 
 ## Changing a machine over SSH
 

@@ -81,14 +81,14 @@ footer { font-size: 13px; color: var(--muted); }
 <body>
 <main>
   <header>
-    <div class="eyebrow">dotfiles · herdr · updated 18 Nov 2026</div>
+    <div class="eyebrow">dotfiles · herdr · updated 27 Nov 2026</div>
     <h1>Herdr setup guide</h1>
     <p>Everything this repo changes or adds on top of stock herdr: the sidebar, the recent-sessions picker, the summarizer plugin, key bindings and the other plugins. Open it with <code>open ~/dotfiles/docs/herdr.html</code>.</p>
     <p class="muted">The terminal figures are drawn from the real layout with made-up sessions. They are not captures, so nothing from a real session is stored here.</p>
     <nav>
       <a href="#files">Files</a><a href="#sidebar">Sidebar</a><a href="#names">Session names</a><a href="#tabs">Tab names</a><a href="#picker">Picker</a><a href="#status">Statuses and dots</a>
       <a href="#updates">How updates happen</a><a href="#keys">Keys</a><a href="#plugins">Plugins</a>
-      <a href="#install">Install and check</a><a href="#trouble">Troubleshooting</a><a href="#limits">Limits</a>
+      <a href="#install">Install and check</a><a href="#sandbox">Sandbox</a><a href="#trouble">Troubleshooting</a><a href="#limits">Limits</a>
     </nav>
   </header>
 
@@ -328,6 +328,24 @@ herdr-plugins update [&lt;plugin&gt;... | &lt;plugin&gt; &lt;sha&gt;]  # the use
     <p>After editing <code>config.toml</code>, run <code>herdr config check</code> before reloading with <kbd>prefix</kbd> <kbd>shift+r</kbd>. The check is what catches mistakes; a reload on its own can report success for a config that has problems.</p>
   </section>
 
+  <section id="sandbox">
+    <h2>Testing a change in the sandbox</h2>
+    <p><code>herdr-sandbox</code> runs a herdr server and client in a throwaway <code>HOME</code> filled from this checkout's Nix build, so a change to <code>config.toml</code>, the scripts or the summarizer can be tried without touching your running herdr. It needs a machine with Nix (homepc today; the Mac has no Nix). Run it from the checkout:</p>
+<pre>nix run .#herdr-sandbox                                 # server and client; when the client exits, the server stops and HOME is deleted
+nix run .#herdr-sandbox -- --with-plugins               # first install the pinned plugins, as bootstrap.sh does (needs the network)
+nix run .#herdr-sandbox -- --summarizer                 # link the summarizer plugin, run dry
+nix run .#herdr-sandbox -- --no-attach -- &lt;command...&gt;  # start the server, run one command, stop; exits with its status
+nix run .#herdr-sandbox -- --keep                       # leave the throwaway HOME behind; its path is printed</pre>
+    <ul class="plain">
+      <li><b>Isolated:</b> the new <code>HOME</code> is a directory under <code>/tmp</code>. herdr's socket, config, state, logs and plugin registry are all inside it, and so are tmux's socket directory, <code>TMPDIR</code> and <code>XDG_RUNTIME_DIR</code>. It refuses to start when the new <code>HOME</code> is your real home, or when herdr would use a socket outside it. Programs start under <code>env -i</code>, with only the build's tools and scripts on <code>PATH</code>, so nothing from your own shell environment leaks in.</li>
+      <li><b>Not isolated:</b> it runs as you and can read the rest of the disk, and the network is open. It keeps files and sockets apart; it is not a security boundary.</li>
+      <li><b>The summarizer runs dry.</b> With <code>--summarizer</code>, <code>HERDR_SUMMARIZER_DRY=1</code> is set before the server starts, so a pass makes no model calls. Claude Code is not on the sandbox's <code>PATH</code> either.</li>
+      <li><b>The files are copies.</b> Editing <code>~/.config/herdr/config.toml</code> inside the sandbox changes nothing in the repo. Edit the checkout and start a new sandbox. A new file is seen only once git tracks it (<code>git add -N</code> is enough), because Nix builds from tracked files.</li>
+      <li><b>Without the network:</b> the flake check <code>herdr-headless</code> starts a herdr server, links the summarizer and checks its hook runs, all in Nix's build sandbox (see <code>test/README.md</code>).</li>
+      <li><b>Agents</b> may run <code>herdr-sandbox</code> with any flag, and never test a herdr change against your running herdr (see <code>CLAUDE.md</code>). <code>nix run .#sandbox</code> is the same without herdr: an interactive zsh, or one command, in a throwaway <code>HOME</code>.</li>
+    </ul>
+  </section>
+
   <section id="trouble">
     <h2>Troubleshooting</h2>
     <div class="table-wrap"><table>
@@ -362,7 +380,7 @@ herdr-plugins update [&lt;plugin&gt;... | &lt;plugin&gt; &lt;sha&gt;]  # the use
     </ul>
   </section>
 
-  <footer>Source of truth is the code: <code>herdr/.config/herdr/config.toml</code>, <code>herdr/.local/bin/herdr-summarize</code> (its header and <code>help</code> text) and <code>herdr-summarizer/</code>, and for the plugins <code>bootstrap.sh</code> and <code>herdr/.local/bin/herdr-plugins</code> (its header and <code>help</code> text). Update this page when those change.</footer>
+  <footer>Source of truth is the code: <code>herdr/.config/herdr/config.toml</code>, <code>herdr/.local/bin/herdr-summarize</code> (its header and <code>help</code> text) and <code>herdr-summarizer/</code>, and for the plugins <code>bootstrap.sh</code> and <code>herdr/.local/bin/herdr-plugins</code> (its header and <code>help</code> text), and for the sandbox <code>nix/packages/sandbox.nix</code>. Update this page when those change.</footer>
 </main>
 </body>
 </html>

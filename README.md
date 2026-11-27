@@ -21,7 +21,9 @@ Each top-level directory is a Stow package that mirrors `$HOME`:
 
 ```
 dotfiles/
-├── .github/workflows/                — CI (Claude Code Action for PR reviews, Linux test on x86-64 and arm64)
+├── .github/workflows/                — CI (Claude Code Action for PR reviews, Linux test on x86-64 and arm64, Nix checks)
+├── flake.nix, flake.lock, nix/       — the Nix package set, Home Manager module and checks (not stowed; see Nix below)
+├── nixos/                            — NixOS machines (not stowed; see nixos/README.md)
 ├── atuin/.config/atuin/config.toml   → ~/.config/atuin/config.toml
 ├── ghostty/.config/ghostty/config    → ~/.config/ghostty/config
 ├── herdr/.config/herdr/config.toml   → ~/.config/herdr/config.toml (plus herdr-summarize, herdr-recent, herdr-plugins, herdr-login-warning → ~/.local/bin)
@@ -56,6 +58,28 @@ dotfiles/
 | **zsh** | Zsh shell via Oh My Zsh (fzf-tab, autosuggestions, syntax-highlighting) |
 
 Claude Code notifications and sounds are handled by Herdr (toasts, `prefix+o` jump-to-agent, and its built-in sounds via `[ui.sound]`). The opt-in `herdr-summarizer/` plugin is not stowed; `herdr-summarizer/install.sh` links it.
+
+## Nix
+
+The same configs also build as a Nix package set (`flake.nix`, `nix/`). Nix builds each package from
+pinned sources into a read-only store, and Home Manager (a Nix tool that places files and packages in a
+user's home) links the configs and installs the tools. Stow and `bootstrap.sh` remain the way the Mac is
+set up, and no machine uses the Nix route for its live environment yet. The design is
+`docs/design/nix-dotfiles.md`.
+
+On a machine with Nix (Linux; the macOS outputs are only evaluated so far), from a checkout:
+
+```bash
+nix build .#tools                 # every program the configs call, as one environment
+nix flake check                   # build-sandbox checks and NixOS VM tests (see test/README.md)
+nix run .#sandbox                 # an interactive zsh in a throwaway HOME filled from this build
+nix run .#sandbox -- <command>    # run one command there and exit with its status
+nix run .#herdr-sandbox           # a herdr server and client in a throwaway HOME (see docs/herdr.html)
+```
+
+The Home Manager module (`homeManagerModules.default`) links configs either from the build (`store`
+mode: an edit needs a rebuild) or into a checkout (`checkout` mode: edits are live, as with Stow).
+NixOS hosts turn it on per user with `dotfiles.users` (see `nixos/README.md`).
 
 ## Adding a new config
 

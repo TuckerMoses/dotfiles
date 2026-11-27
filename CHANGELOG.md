@@ -6,6 +6,20 @@ All notable changes to this dotfiles setup.
 
 Queued work lives in `docs/proposals/`.
 
+### Added
+- The dotfiles build as a Nix package set, a second route beside Stow (`flake.nix`, `nix/`; design in `docs/design/nix-dotfiles.md`). No machine's live environment uses it yet, and the Mac and `bootstrap.sh` are unchanged. Packages: `home-tree` (the Stow packages' files laid out like `$HOME`), `scripts` (the four herdr scripts with store interpreters), `summarizer-plugin`, `oh-my-zsh-bundle` (Oh My Zsh with the four custom plugins), `tmux-plugins` (TPM and three plugins), `tools` (every program the configs call, plus basic utilities). herdr and jujutsu come from nixpkgs-unstable, tuicr from the release binary `bootstrap.sh` pins. All of them build on homepc (x86-64). The arm64 Linux and macOS outputs are only evaluated so far, and nothing has been tried on macOS
+- A Home Manager module (`homeManagerModules.default`) that links the configs one file at a time, from the build (`store` mode) or into a checkout (`checkout` mode, live edits as with Stow), and `nixos/modules/dotfiles-user.nix`, whose `dotfiles.users` option turns it on per user. No host names a user, and homepc's built system is unchanged
+- `nix run .#sandbox` and `nix run .#herdr-sandbox`: a shell, a command or a herdr server in a throwaway `HOME` under `/tmp`, started with `env -i` and only the build's tools on `PATH`. `herdr-sandbox --with-plugins` installs the pinned herdr plugins there, and `--summarizer` links the summarizer plugin, run dry. On homepc this gave a clean interactive zsh, and plugin installs and nvim's `Lazy restore` worked inside it
+- Flake checks: build-sandbox checks (`configs`, `zsh-interactive`, `scripts`, `herdr-headless`, `tool-versions`, `lifeline-guard`, `link-modes`) and NixOS VM tests (`vm-home`, `vm-lifeline`); see `test/README.md`
+- `.github/workflows/nix.yml`: on pull requests it evaluates every output and NixOS host, builds the build-sandbox checks on x86-64 and arm64 runners, and the VM tests on x86-64. It has not yet run on GitHub
+- `herdr-plugins sync`, which installs every pinned plugin at its pin and refuses outside a sandbox; `herdr-plugins` reads `bootstrap.sh` from `DOTFILES_DIR` when that is set
+- `validate.sh`: files placed from the Nix store pass when their bytes equal the checkout's; no owner home directory path under `nix/` or `nixos/`; every Python call uses `-I` with one fallback; `herdr-plugins` honours `DOTFILES_DIR` and `sync` refuses outside a sandbox; `herdr-summarize` finds commands on `PATH`
+- Three proposals for what comes next: switching `tucker` on homepc to the module, switching the Mac, and building the herdr plugins with Nix
+
+### Changed
+- `herdr-summarize` also searches `PATH` for herdr, claude and jj, after its fixed directories
+- `validate.sh`, `herdr-plugins` and `test/suite.sh` use `python3` from `PATH` where `/usr/bin/python3` does not exist, and every Python call runs with `-I`
+
 ## [2026-11-18]
 
 ### Added

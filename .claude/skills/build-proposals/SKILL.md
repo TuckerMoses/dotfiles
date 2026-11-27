@@ -152,6 +152,8 @@ and the blocked and done proposals with their reasons. With `--dry-run`, stop he
      `HERDR_CONFIG_PATH=<file> herdr config check`, `ghostty +validate-config --config-file=<file>`,
      and sourcing a tmux config into a throwaway server
      (`tmux -L <name> -f /dev/null new-session -d 'sleep 5' \; source-file <file>`);
+   - that herdr behaviour is tried in `herdr-sandbox` on a machine with Nix (`CLAUDE.md`, "Nix package set"), never on
+     the live herdr server;
    - that it may run `test/suite.sh local` (not the VM environments; Phase 6 runs those) to check its own work: the suite
      is safe from a worktree and tests the committed `HEAD`, so commit first. It must still never
      stow or bootstrap by hand. A `local` that exits 3 only because a system package it adds to `bootstrap.sh` is
@@ -168,6 +170,8 @@ the repo rule "New functionality needs a new `validate.sh` check" in `CLAUDE.md`
 must prove, showing it can fail, and `validate.sh` staying read-only are all defined there). Stow
 links for a new package are already checked, because `validate.sh` reads the package list from
 `bootstrap.sh`; the new check covers what that cannot. A check that cannot fail is worse than none.
+The Mac has no Nix, so a unit built there adds no flake check (the `CLAUDE.md` rule requires one only where it can
+be run); CI (`.github/workflows/nix.yml`) runs the existing Nix checks on the pull request.
 
 ## Phase 5: integrate
 
