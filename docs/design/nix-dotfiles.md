@@ -419,3 +419,44 @@ Recorded here only:
   directly.
 - Wrapped tmux and starship packages were agreed and are not built (section 4).
 - "Port the lockout drills to NixOS tests" is done in part (section 7).
+
+## 14. What the build changed
+
+Written after stages a to f were built (2026-11-27). Where this section and an earlier one
+disagree, this section describes what exists.
+
+- **Section 4, `oh-my-zsh-bundle`:** not patched. Upstream Oh My Zsh already moves its cache under
+  `$HOME` and skips its update check when its own directory is read-only. nixpkgs ships no
+  `.plugin.zsh` for zsh-syntax-highlighting, so the bundle adds a one-line one.
+- **Section 4, `tools`:** also carries bash, coreutils, findutils, grep, sed, awk, getopt and
+  less, and procps on Linux. Oh My Zsh and TPM call them, and nothing else is on `PATH` in the
+  sandbox.
+- **Section 4, source changes:** `herdr-plugins update` also refuses when the repo location is not
+  a git checkout. `validate.sh` gained five checks; its general home-path check now skips `nix/`
+  and `nixos/`, and a new check there forbids `/Users/` and the owner's home while allowing test
+  homes.
+- **Section 6, the sandbox's variables:** the list also has `__NIXOS_SET_ENVIRONMENT_DONE=1`. The
+  zsh in nixpkgs has a built-in startup file that, on NixOS, replaces `PATH` with the system one
+  unless that variable is set. The passwd home is read with Python's `pwd` module.
+- **Section 7, how the checks run:** each build-sandbox check runs under `bwrap` inside the Nix
+  build sandbox, which adds `/usr/bin/env` and a `/tmp`. TPM and the tmux plugins start with
+  `#!/usr/bin/env bash` and zsh writes here-documents to `/tmp`; the build sandbox has neither.
+  This needs a nested user namespace, which works on homepc. If a CI runner forbids it, the
+  alternative is to rewrite those interpreter lines in the `tmux-plugins` package.
+- **Section 7, `vm-lifeline`:** `lifeline.nix` has no option to turn off its connectivity
+  watchdog, so the test host disables that timer; a guest with no Tailscale login would otherwise
+  be rebooted about 19 minutes after boot.
+- **Section 7, `vm-home`:** also asserts that `herdr-sandbox` leaves nothing new in the user's
+  home. What a broken `.zshrc` does to SSH, for a user whose login shell is zsh: a command
+  (`ssh host true`) works whatever the break; an interactive login survives a syntax error and
+  ends at once if `.zshrc` runs `exit`. The test asserts the syntax-error case.
+- **Section 8:** the workflow computes its lists of hosts and checks from the flake. Nix 2.34.9 is
+  installed from a hash-checked installer, because the install action has no version setting.
+- **Section 9:** every host imports `dotfiles-user.nix`, and with it Home Manager's NixOS module.
+  With no users named, homepc's system path did not change at any stage.
+- **Section 10:** a flake check is required only where it can be run. A change made on the Mac,
+  which has no Nix, adds none.
+- **Section 11:** builders edited in the Mac checkout and built on homepc through a one-way
+  mirror of the tree; nothing was committed on homepc.
+- **The review of this document** was stopped by its own rules after six rounds, with findings
+  open, and waits for the owner. The open findings were given to the builders as an advisory.
