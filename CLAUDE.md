@@ -1,7 +1,7 @@
 # CLAUDE.md
 
 This repository manages personal dotfiles using [GNU Stow](https://www.gnu.org/software/stow/). It configures a terminal development environment across macOS and Linux.
-Nix is a second route to the same files (see "Nix package set"). The Mac and Stow are unchanged, and no machine's live environment is on the Nix route yet.
+Nix is a second route to the same files (see "Nix package set"). The Mac still uses Stow. `tucker` on homepc is on the Nix route (since 2026-11-27).
 
 ## Repository Structure
 
