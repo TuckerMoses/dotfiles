@@ -44,6 +44,13 @@ while (($#)); do
 done
 [[ $action != rollback || -z $gen ]] || die "--rollback takes no --activation-package"
 
+# A shell that was already open when Nix was installed has no nix on PATH (the installer's hook
+# runs when a shell starts). Fall back to where a multi-user install and the user profile put it.
+if ! command -v nix > /dev/null 2>&1; then
+  PATH="$PATH:/nix/var/nix/profiles/default/bin:$HOME/.nix-profile/bin"
+fi
+command -v nix > /dev/null 2>&1 || die "nix is not on PATH and not in /nix/var/nix/profiles/default/bin"
+
 # Whatever the machine's nix.conf enables.
 nixFlags=(--extra-experimental-features "nix-command flakes")
 user=$(id -un)

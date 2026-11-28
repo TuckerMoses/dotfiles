@@ -40,10 +40,19 @@ It does not touch your home. Open a **new** window and run `nix --version`. It s
 
 ## 2. Pre-flight: see what is in the way
 
+This step and step 4 need a checkout that has the Nix files. After the pull request is merged, that is
+`~/dotfiles` on `master`, and the commands below work as written. Before the merge, `~/dotfiles` does not have
+them: point both commands at a checkout of the branch instead, replacing `.` and `~/dotfiles` with its path
+and adding `--flake <that path>` after `--`. Step 3's `stow -D` always runs from `~/dotfiles`, where the
+Stow links point.
+
 ```sh
 cd ~/dotfiles && git pull
 nix --extra-experimental-features 'nix-command flakes' run .#dotfiles-switch -- --dry-run
 ```
+
+Run on this Mac on 2026-11-28 (macOS 27.2, from the branch): it built, listed 38 files to place, and listed
+as collisions exactly the Stow-linked files and `.oh-my-zsh`.
 
 This builds the configuration (the first time, it downloads a lot) and prints the files it would place. It
 activates nothing. Under "Collisions" you will see every file Stow links today, plus `.oh-my-zsh`. Each
@@ -232,8 +241,9 @@ Then reboot.
 
 - **Tested in CI on the macOS runner:** step 4 and `--rollback`, and step 5's zsh, herdr and plugin checks,
   for a fresh user.
+- **Tested on this Mac (macOS 27.2), 2026-11-28:** step 1 (the installer: Nix 2.34.9, daemon running, hook in
+  `/etc/zshrc`) and step 2 (the dry run).
 - **Not tested on this Mac or on macOS 27:**
-  - the installer itself
   - the herdr reload against a running Homebrew server
   - whether herdr panes are login shells (step 6)
   - the plugin switch (step 7)
