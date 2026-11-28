@@ -25,7 +25,6 @@ on:
       - herdr-summarizer/**
       - nvim/**
       - starship/**
-      - tmux/**
       - zsh/**
       - .github/workflows/linux-test.yml
   workflow_dispatch:

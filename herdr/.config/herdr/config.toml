@@ -35,7 +35,7 @@ auto_switch = false
 [keys]
 prefix = "ctrl+b"
 
-# Splits: tmux defaults (% and ") plus the | from .tmux.conf
+# Splits: tmux defaults (% and ") plus |
 split_vertical   = ["prefix+v", "prefix+percent", "prefix+|", "prefix+shift+backslash"]
 split_horizontal = ['prefix+minus', 'prefix+"', 'prefix+shift+quote']
 
@@ -55,7 +55,7 @@ settings         = "prefix+shift+s"
 switch_workspace = ["prefix+shift+1..9", "ctrl+1..9"]   # ctrl+N jumps workspaces without the prefix
 detach           = ["prefix+q", "prefix+d"]
 
-# Resize on prefix H/J/K/L (tmux .conf); swap moves to shift+arrows
+# Resize on prefix H/J/K/L (as the old tmux config had it); swap moves to shift+arrows
 resize_pane_left  = "prefix+shift+h"
 resize_pane_down  = "prefix+shift+j"
 resize_pane_up    = "prefix+shift+k"

@@ -24,6 +24,7 @@ writes a plan for each one at the moment it executes it, then deletes the propos
 | [herdr-jj-status-token](herdr-jj-status-token.md) | `done` | `$jj_status` in the spaces sidebar row for jj repos |
 | [herdr-plugin-pins](herdr-plugin-pins.md) | `done` | Every herdr plugin pinned in `bootstrap.sh`; `herdr-plugins status/review/update` moves the pins |
 | [tuicr](tuicr.md) | `done` | tuicr replaces herdr-reviewr: diff review for git and jj (`prefix+alt+r`), comments read by the agent skill |
+| [herdr-nix-plugin-builds](herdr-nix-plugin-builds.md) | `done` | herdr's three pinned plugins as Nix builds, placed and linked by the Home Manager module; pins stay in `bootstrap.sh` |
 
 ## Running the queue
 

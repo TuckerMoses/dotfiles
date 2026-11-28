@@ -1,0 +1,405 @@
+name: Nix
+
+# ── What runs here ───────────────────────────────────────────────────────────
+# The Nix route (flake.nix, nix/, nixos/): evaluation of every output and host,
+# the build-sandbox checks on both Linux architectures, and the NixOS VM tests
+# (attribute names starting with vm-) on x86-64 with KVM, and on macOS (Apple
+# Silicon) the Mac's configuration, the Darwin checks and one real activation
+# for the runner's user. test/suite.sh, the Stow route, stays in linux-test.yml.
+#
+# Check lists are computed from the flake in each job, so a check added later is
+# built without editing this file. homepc's system is evaluated, never built: its
+# NVIDIA driver is unfree, cache.nixos.org does not carry it, and every run would
+# compile kernel modules. The only binary cache is cache.nixos.org.
+
+on:
+  pull_request:
+    paths:
+      - flake.nix
+      - flake.lock
+      - nix/**
+      - nixos/**
+      - atuin/**
+      - ghostty/**
+      - herdr/**
+      - nvim/**
+      - starship/**
+      - zsh/**
+      - herdr-summarizer/**
+      - bootstrap.sh
+      - validate.sh
+      - .github/workflows/nix.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+# ── Nix ──────────────────────────────────────────────────────────────────────
+# Nix 2.34.9 is the version on homepc. The action's default installer is a newer
+# Nix, so install_url names this release and install_sha256 is that installer's
+# hash (the installer then checks its own tarball). It is one script for every
+# platform, macOS included: it picks the tarball for the machine and holds each
+# one's sha256 (aarch64-darwin: 2720033f...c703). KVM is set up by the vm job's
+# own step, not by the action, so it is visible in one place.
+# accept-flake-config = false: a nixConfig in the flake never adds a cache or a
+# setting in CI.
+
+jobs:
+  eval:
+    name: eval
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@382a9ed9481c7c1f94f68b72ef105b3417c73877 # v32.1.0
+        with:
+          install_url: https://releases.nixos.org/nix/nix-2.34.9/install
+          install_sha256: a03ce2e9eaf4ea1560260b9a93e311dbaf589d28fb5c9318f8d9e768ee6339d8
+          enable_kvm: false
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+            accept-flake-config = false
+
+      # Darwin and aarch64 included: their packages are evaluated, not built.
+      - name: nix flake check --all-systems --no-build
+        run: nix flake check --all-systems --no-build
+
+      # homepc needs nothing extra for its unfree driver: allowUnfree is set in its
+      # NixOS config (nixos/modules/desktop.nix).
+      - name: Evaluate every NixOS host
+        run: |
+          hosts=$(nix eval --json .#nixosConfigurations --apply builtins.attrNames | jq -r '.[]')
+          if [[ -z "$hosts" ]]; then
+            echo "::error::nixosConfigurations is empty"
+            exit 1
+          fi
+          { echo "### NixOS hosts (evaluated, not built)"; echo
+            echo "| Host | Result |"; echo "|---|---|"; } >> "$GITHUB_STEP_SUMMARY"
+          failed=0
+          for host in $hosts; do
+            echo "::group::$host"
+            if drv=$(nix eval --raw ".#nixosConfigurations.$host.config.system.build.toplevel.drvPath"); then
+              echo "$drv"
+              echo "| \`$host\` | pass |" >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "::error::$host failed to evaluate"
+              echo "| \`$host\` | **fail** |" >> "$GITHUB_STEP_SUMMARY"
+              failed=1
+            fi
+            echo "::endgroup::"
+          done
+          exit "$failed"
+
+  checks:
+    name: checks (${{ matrix.system }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            system: x86_64-linux
+          - runner: ubuntu-24.04-arm
+            system: aarch64-linux
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@382a9ed9481c7c1f94f68b72ef105b3417c73877 # v32.1.0
+        with:
+          install_url: https://releases.nixos.org/nix/nix-2.34.9/install
+          install_sha256: a03ce2e9eaf4ea1560260b9a93e311dbaf589d28fb5c9318f8d9e768ee6339d8
+          enable_kvm: false
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+            accept-flake-config = false
+
+      # One at a time, so the log and the summary show which check failed; a failure
+      # does not stop the rest.
+      - name: Build the build-sandbox checks
+        env:
+          SYSTEM: ${{ matrix.system }}
+        run: |
+          names=$(nix eval --json ".#checks.$SYSTEM" \
+            --apply 'c: builtins.filter (n: builtins.substring 0 3 n != "vm-") (builtins.attrNames c)' \
+            | jq -r '.[]')
+          if [[ -z "$names" ]]; then
+            echo "::error::checks.$SYSTEM has no build-sandbox checks"
+            exit 1
+          fi
+          { echo "### Build-sandbox checks: $SYSTEM"; echo
+            echo "| Check | Result |"; echo "|---|---|"; } >> "$GITHUB_STEP_SUMMARY"
+          failed=0
+          for name in $names; do
+            echo "::group::$name"
+            if nix build --no-link --print-build-logs ".#checks.$SYSTEM.$name"; then
+              echo "| \`$name\` | pass |" >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "::error::check $name failed"
+              echo "| \`$name\` | **fail** |" >> "$GITHUB_STEP_SUMMARY"
+              failed=1
+            fi
+            echo "::endgroup::"
+          done
+          exit "$failed"
+
+  vm:
+    name: vm (x86_64-linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          # udev applies the rule in the background: wait for it before testing the result.
+          sudo udevadm settle --timeout=30
+          ls -l /dev/kvm || true
+          if [[ ! -w /dev/kvm ]]; then
+            echo "::error::/dev/kvm is not writable after the udev rule"
+            exit 1
+          fi
+
+      # system-features replaces the default list, so the defaults are repeated with kvm.
+      - name: Install Nix
+        uses: cachix/install-nix-action@382a9ed9481c7c1f94f68b72ef105b3417c73877 # v32.1.0
+        with:
+          install_url: https://releases.nixos.org/nix/nix-2.34.9/install
+          install_sha256: a03ce2e9eaf4ea1560260b9a93e311dbaf589d28fb5c9318f8d9e768ee6339d8
+          enable_kvm: false
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+            accept-flake-config = false
+            system-features = nixos-test benchmark big-parallel kvm
+
+      # No vm-* checks is a clean skip, not a failure: the VM tests may not exist yet.
+      - name: Build the VM tests
+        run: |
+          names=$(nix eval --json .#checks.x86_64-linux \
+            --apply 'c: builtins.filter (n: builtins.substring 0 3 n == "vm-") (builtins.attrNames c)' \
+            | jq -r '.[]')
+          if [[ -z "$names" ]]; then
+            echo "No vm-* checks in checks.x86_64-linux; nothing to run."
+            echo "### VM tests: none defined, skipped" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          { echo "### VM tests: x86_64-linux"; echo
+            echo "| Check | Result |"; echo "|---|---|"; } >> "$GITHUB_STEP_SUMMARY"
+          failed=0
+          for name in $names; do
+            echo "::group::$name"
+            if nix build --no-link --print-build-logs ".#checks.x86_64-linux.$name"; then
+              echo "| \`$name\` | pass |" >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "::error::check $name failed"
+              echo "| \`$name\` | **fail** |" >> "$GITHUB_STEP_SUMMARY"
+              failed=1
+            fi
+            echo "::endgroup::"
+          done
+          exit "$failed"
+
+  # ── macOS ──────────────────────────────────────────────────────────────────
+  # One job, because macOS minutes cost several Linux ones: the Mac's own
+  # configuration is built (not activated: its user is not this runner's), then
+  # the Darwin build-sandbox checks, then runner@mac-ci is activated for the
+  # runner's own user (the runner is thrown away after the job). The activation
+  # steps run even when a check failed, so one run shows both.
+  darwin:
+    name: darwin (aarch64-darwin)
+    runs-on: macos-latest
+    timeout-minutes: 45
+    env:
+      CONFIG: runner@mac-ci
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@382a9ed9481c7c1f94f68b72ef105b3417c73877 # v32.1.0
+        with:
+          install_url: https://releases.nixos.org/nix/nix-2.34.9/install
+          install_sha256: a03ce2e9eaf4ea1560260b9a93e311dbaf589d28fb5c9318f8d9e768ee6339d8
+          enable_kvm: false
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+            accept-flake-config = false
+
+      # runner@mac-ci is built for this user and home; Home Manager's activation
+      # refuses any other USER or HOME.
+      - name: The runner's user
+        id: user
+        run: |
+          want=${CONFIG%@*}
+          uname -sm
+          if [[ "$(id -un)" != "$want" || "${USER:-}" != "$want" || "$HOME" != "/Users/$want" ]]; then
+            echo "::error::$CONFIG is built for user $want (home /Users/$want); this runner is $(id -un), USER=${USER:-unset}, HOME=$HOME"
+            exit 1
+          fi
+
+      - name: Build the Mac's configuration (johnmoses@mac)
+        run: nix build --no-link --print-build-logs '.#homeConfigurations."johnmoses@mac".activationPackage'
+
+      - name: Build the build-sandbox checks
+        if: ${{ !cancelled() }}
+        run: |
+          names=$(nix eval --json .#checks.aarch64-darwin --apply builtins.attrNames | jq -r '.[]')
+          if [[ -z "$names" ]]; then
+            echo "::error::checks.aarch64-darwin is empty"
+            exit 1
+          fi
+          { echo "### Build-sandbox checks: aarch64-darwin"; echo
+            echo "| Check | Result |"; echo "|---|---|"; } >> "$GITHUB_STEP_SUMMARY"
+          failed=0
+          for name in $names; do
+            echo "::group::$name"
+            if nix build --no-link --print-build-logs ".#checks.aarch64-darwin.$name"; then
+              echo "| \`$name\` | pass |" >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "::error::check $name failed"
+              echo "| \`$name\` | **fail** |" >> "$GITHUB_STEP_SUMMARY"
+              failed=1
+            fi
+            echo "::endgroup::"
+          done
+          exit "$failed"
+
+      # As docs/mac-cutover.md: the dry run lists what is in the way, and each of
+      # those is moved aside (not deleted) before the first activation.
+      - name: highwind-switch --dry-run, then move collisions aside
+        id: dry
+        if: ${{ !cancelled() && steps.user.outcome == 'success' }}
+        run: |
+          out=$(nix run .#highwind-switch -- --flake "$PWD" --config "$CONFIG" --dry-run)
+          echo "$out"
+          grep -q '^No Home Manager generation yet' <<<"$out" || { echo "::error::the dry run found a generation on a fresh runner"; exit 1; }
+          grep -qx '+ .zshrc' <<<"$out" || { echo "::error::the dry run would not place .zshrc"; exit 1; }
+          if [[ -e ~/.local/state/nix/profiles/home-manager ]]; then
+            echo "::error::the dry run created a Home Manager profile"; exit 1
+          fi
+          sed -n '/^Collisions/,$p' <<<"$out" | sed -n 's/^  //p' | { grep -vx none || true; } | while read -r f; do
+            echo "moving aside: ~/$f"
+            mv "$HOME/$f" "$HOME/$f.pre-nix"
+          done
+
+      - name: highwind-switch
+        id: activate
+        if: ${{ !cancelled() && steps.dry.outcome == 'success' }}
+        run: |
+          nix run .#highwind-switch -- --flake "$PWD" --config "$CONFIG" 2>&1 | tee "$RUNNER_TEMP/switch.log"
+          ids=$(nix eval --json .#packages.aarch64-darwin.herdr-plugins.plugins --apply builtins.attrNames | jq -r '.[]')
+          for id in $ids; do
+            grep -q "highwind: linked herdr plugin $id" "$RUNNER_TEMP/switch.log" \
+              || { echo "::error::the activation did not link herdr plugin $id"; exit 1; }
+          done
+          current=$(readlink ~/.local/state/home-manager/gcroots/current-home)
+          echo "current generation: $current"
+          echo "$current" > "$RUNNER_TEMP/gen-a"
+          [[ "$(readlink -f ~/.zshrc)" == /nix/store/* ]] || { echo "::error::~/.zshrc is not a store link"; exit 1; }
+          for c in zsh herdr starship nvim highwind-switch; do
+            [[ -x ~/.nix-profile/bin/$c ]] || { echo "::error::~/.nix-profile/bin/$c is missing"; exit 1; }
+          done
+          # On macOS the user's own git, compilers, python3 and BSD commands stay first.
+          for c in git python3 cc sed ls; do
+            [[ ! -e ~/.nix-profile/bin/$c ]] || { echo "::error::~/.nix-profile/bin/$c shadows the system's"; exit 1; }
+          done
+          fonts=$(find ~/Library/Fonts/HomeManager -name 'JetBrainsMonoNerdFont*' 2>/dev/null | head -3)
+          [[ -n "$fonts" ]] || { echo "::error::no JetBrains Mono Nerd Font in ~/Library/Fonts/HomeManager"; exit 1; }
+          echo "$fonts"
+
+      # A login shell from a clean environment, as a new Terminal window starts
+      # one: /etc/zprofile, the Nix installer's hook in /etc/zshrc, then the
+      # placed ~/.zshrc. It must print nothing on stderr, load the plugins, and
+      # find the Nix herdr first. tmux is the pty: zsh-vi-mode runs its
+      # after-init hook (fzf, atuin) only at the first prompt.
+      - name: An interactive login zsh is clean and loads the plugins
+        if: ${{ !cancelled() && steps.activate.outcome == 'success' }}
+        run: |
+          t=$RUNNER_TEMP/zsh
+          mkdir -p "$t"
+          cat > "$t/probe.zsh" <<'EOF'
+          print -r -- "zvm=${+functions[zvm_init]}"
+          print -r -- "starship=${+functions[prompt_starship_precmd]}"
+          [[ "$(bindkey -M viins '^T')" == *fzf* ]] && print fzf=1 || print fzf=0
+          [[ "$(bindkey -M viins '^R')" == *atuin* ]] && print atuin=1 || print atuin=0
+          print -r -- "zoxide=${+functions[__zoxide_z]}"
+          print -r -- "herdr=${commands[herdr]:A}"
+          print -r -- "path=$PATH"
+          print -r -- probe-done
+          EOF
+          tmux=~/.nix-profile/bin/tmux
+          $tmux -L ci -f /dev/null new-session -d -x 160 -y 40 \
+            "cd ~ && exec env -i HOME=$HOME USER=$USER LOGNAME=$USER SHELL=/bin/zsh TERM=xterm-256color PATH=/usr/bin:/bin:/usr/sbin:/sbin /bin/zsh -il 2>'$t/stderr'"
+          for _ in $(seq 1 120); do
+            [[ -n "$($tmux -L ci capture-pane -p 2>/dev/null | tr -d '[:space:]')" ]] && break
+            sleep 0.5
+          done
+          sleep 3
+          $tmux -L ci send-keys "source '$t/probe.zsh' > '$t/out' 2>&1; exit" Enter
+          for _ in $(seq 1 120); do grep -q probe-done "$t/out" 2>/dev/null && break; sleep 0.5; done
+          $tmux -L ci capture-pane -p || true
+          $tmux -L ci kill-server 2>/dev/null || true
+          cat "$t/out" || true
+          grep -q probe-done "$t/out" || { echo "::error::zsh never finished the probe"; exit 1; }
+          if [[ -s "$t/stderr" ]]; then cat "$t/stderr"; echo "::error::the interactive zsh wrote to stderr"; exit 1; fi
+          for i in zvm starship fzf atuin zoxide; do
+            grep -qx "$i=1" "$t/out" || { echo "::error::$i is not loaded"; exit 1; }
+          done
+          want=$(readlink -f ~/.nix-profile/bin/herdr)
+          grep -qxF "herdr=$want" "$t/out" || { echo "::error::herdr on the login shell's PATH is not the Nix one ($want)"; exit 1; }
+
+      - name: herdr reads the placed config and lists the Nix-built plugins
+        if: ${{ !cancelled() && steps.activate.outcome == 'success' }}
+        run: |
+          herdr=~/.nix-profile/bin/herdr
+          res=$($herdr config check 2>&1) || { echo "$res"; echo "::error::herdr config check failed"; exit 1; }
+          [[ "$res" == "config: ok" ]] || { echo "::error::herdr config check: $res"; exit 1; }
+          list=$($herdr plugin list 2>&1)
+          echo "$list"
+          for id in $(nix eval --json .#packages.aarch64-darwin.herdr-plugins.plugins --apply builtins.attrNames | jq -r '.[]'); do
+            grep -qE "^- $id \(.*\) enabled \[local:/nix/store/" <<<"$list" \
+              || { echo "::error::herdr plugin list does not show $id enabled from the store"; exit 1; }
+          done
+          PATH=~/.nix-profile/bin:$PATH ~/.local/bin/herdr-plugins check
+
+      # A second generation (A plus one marker file), then --rollback to A.
+      - name: highwind-switch --rollback
+        if: ${{ !cancelled() && steps.activate.outcome == 'success' }}
+        run: |
+          a=$(cat "$RUNNER_TEMP/gen-a")
+          b=$(nix build --no-link --print-out-paths --impure --expr \
+            '((builtins.getFlake (toString ./.)).homeConfigurations."runner@mac-ci".extendModules {
+               modules = [ { home.file.".highwind-ci-generation".text = "b"; } ];
+             }).activationPackage')
+          ~/.nix-profile/bin/highwind-switch --activation-package "$b"
+          [[ "$(cat ~/.highwind-ci-generation)" == b ]] || { echo "::error::generation B did not place its marker"; exit 1; }
+          ~/.nix-profile/bin/highwind-switch --rollback
+          [[ ! -e ~/.highwind-ci-generation ]] || { echo "::error::the rollback left B's marker"; exit 1; }
+          now=$(readlink ~/.local/state/home-manager/gcroots/current-home)
+          [[ "$now" == "$a" ]] || { echo "::error::after the rollback the generation is $now, not A ($a)"; exit 1; }
+          echo "rolled back to $a"

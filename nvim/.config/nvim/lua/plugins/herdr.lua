@@ -4,6 +4,8 @@
 -- wincmd first, then crosses into herdr at an edge; falls back to
 -- TmuxNavigate* when running under tmux instead of herdr.
 -- vim-tmux-navigator's own maps are disabled in plugins/tmux.lua so these win.
+-- On a Nix-managed home the plugin is the Nix build, at the path the Home
+-- Manager module keeps it (looked at only when herdr's own install is absent).
 return {
   {
     "LazyVim/LazyVim",
@@ -12,6 +14,12 @@ return {
         vim.fn.expand("~/.config/herdr/plugins/github/vim-herdr-navigation-*/editor/nvim.lua"),
         false, true
       )
+      if #matches == 0 then
+        matches = vim.fn.glob(
+          vim.fn.expand("~/.local/share/highwind/herdr-plugins/vim-herdr-navigation/editor/nvim.lua"),
+          false, true
+        )
+      end
       if #matches > 0 then
         dofile(matches[1])
       else

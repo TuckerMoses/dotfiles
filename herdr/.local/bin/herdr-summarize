@@ -95,12 +95,15 @@ STATUSES = ("you", "working", "idle", "done")
 # Picker order; stale outranks everything because it asks "close it or act on it".
 RANK = {"stale": 0, "you": 1, "working": 2, "idle": 3, "done": 4}
 
-# launchd starts jobs with a bare PATH; find tools explicitly.
+# launchd starts jobs with a bare PATH; find tools explicitly. $PATH is searched after the
+# fixed list, for machines (NixOS) where the tools live in none of these directories.
 SEARCH_PATH = ["/opt/homebrew/bin", "/usr/local/bin", os.path.join(HOME, ".local", "bin"), "/usr/bin", "/bin"]
 
 
 def which(name):
-    for d in SEARCH_PATH:
+    # Only absolute $PATH entries: an empty or relative one would mean the current directory.
+    path = [d for d in os.environ.get("PATH", "").split(os.pathsep) if os.path.isabs(d)]
+    for d in SEARCH_PATH + path:
         p = os.path.join(d, name)
         if os.access(p, os.X_OK):
             return p

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# ── Dotfiles test suite ─────────────────────────────────────────────────────
+# ── Highwind test suite ─────────────────────────────────────────────────────
 # Runs the same core (bootstrap x3, a headless herdr server, nvim plugins, the
 # summarizer hook, an interactive zsh, validate.sh) in one of four places:
 #
@@ -27,10 +27,13 @@ log()  { printf '[suite %s] %s\n' "$(date +%H:%M:%S)" "$*"; }
 die3() { log "cannot start the environment: $*"; exit 3; }
 usage() { sed -n '4,19p' "$0" | sed 's/^# \{0,1\}//'; }
 
+# NixOS has no /usr/bin/python3. -I on every call: no PYTHON* variables, no script or working dir on sys.path.
+PY=/usr/bin/python3; [[ -x "$PY" ]] || PY=python3
+
 STEPS=(bootstrap-1 herdr-server bootstrap-2 bootstrap-3-idempotent nvim-plugins summarizer-hook zsh-interactive validate teardown)
 
 real_home() {
-  /usr/bin/env python3 -c 'import os,pwd; print(pwd.getpwuid(os.getuid()).pw_dir)' 2>/dev/null \
+  /usr/bin/env python3 -I -c 'import os,pwd; print(pwd.getpwuid(os.getuid()).pw_dir)' 2>/dev/null \
     || getent passwd "$(id -un)" | cut -d: -f6
 }
 
@@ -132,7 +135,7 @@ core_summarizer() {
   herdr workspace create --cwd "$HOME" --label suite --focus >/dev/null || { record 6 fail "workspace create failed"; return; }
   for i in $(seq 1 "$HOOK_TIMEOUT"); do
     logs="$(herdr plugin log list --plugin herdr-summarizer --limit 50 2>/dev/null || true)"
-    verdict="$(echo "$logs" | /usr/bin/python3 -c 'import json,sys
+    verdict="$(echo "$logs" | "$PY" -I -c 'import json,sys
 try: logs=json.load(sys.stdin)["result"]["logs"]
 except Exception: logs=[]
 done=[l for l in logs if l.get("status") not in ("running","pending","queued")]
@@ -303,7 +306,7 @@ env_local() {
   log "local: HOME=$home  run=$RUN"
   # git: no system config and no credential helper. On macOS, Xcode's gitconfig sets
   # credential.helper=osxkeychain; the throwaway HOME has no keychain, so every https
-  # clone (Oh My Zsh, TPM plugins, lazy.nvim) would raise a "Keychain Not Found" dialog
+  # clone (Oh My Zsh and its plugins, lazy.nvim) would raise a "Keychain Not Found" dialog
   # on the user's screen. A fresh machine has no such helper either.
   env -i HOME="$home" USER="$(id -un)" LOGNAME="$(id -un)" PATH="$path" SHELL=/bin/bash \
     TERM=xterm-256color LANG="${LANG:-en_US.UTF-8}" TMPDIR="${TMPDIR:-/tmp}" TMUX_TMPDIR="$home/t" \

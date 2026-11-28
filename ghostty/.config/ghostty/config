@@ -4,7 +4,7 @@ font-size = 14
 font-thicken = true
 adjust-cell-height = 4
 
-# ── Theme (Catppuccin Mocha — matches tmux) ──────────────────────────────────
+# ── Theme (Catppuccin Mocha) ─────────────────────────────────────────────────
 theme = Catppuccin Mocha
 
 # ── Window ───────────────────────────────────────────────────────────────────

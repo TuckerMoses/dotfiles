@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ── Dotfiles validation ─────────────────────────────────────────────────────
+# ── Highwind validation ─────────────────────────────────────────────────────
 # Checks that everything in this repo is live on this machine and working:
 # every stowed file links back to this checkout, the tools bootstrap installs
 # exist, each config parses, herdr's plugins and integration are healthy, and
@@ -30,7 +30,9 @@ fail()    { FAILS=$((FAILS+1)); printf '  %s✗%s %s\n' "$R" "$N" "$*"; }
 info()    { (( QUIET )) || printf '  %s· %s%s\n' "$D" "$*" "$N"; }
 section() { (( QUIET )) || printf '\n%s%s%s\n' "$B" "$*" "$N"; }
 have()    { command -v "$1" >/dev/null 2>&1; }
-real()    { /usr/bin/python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$1" 2>/dev/null || realpath "$1"; }
+# NixOS has no /usr/bin/python3. -I on every call: no PYTHON* variables, no script or working dir on sys.path.
+PY=/usr/bin/python3; [[ -x "$PY" ]] || PY=python3
+real()    { "$PY" -I -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$1" 2>/dev/null || realpath "$1"; }
 
 # ── repo ─────────────────────────────────────────────────────────────────────
 section "Repository"
@@ -49,21 +51,81 @@ else warn "$branch has no upstream branch"; fi
 section "Stowed files (each must link back to this checkout)"
 packages="$(sed -n 's/^for pkg in \(.*\); do$/\1/p' "$BOOTSTRAP" | head -1)"
 packages="$packages $(grep -o -- '--restow [a-z][a-z0-9_-]*' "$BOOTSTRAP" | awk '{print $2}' | sort -u | tr '\n' ' ')"
+# A file Home Manager placed (the Nix module) instead of a link to this checkout. Prints nothing when it
+# is right, else what is wrong. <store> is /nix/store, or a throwaway directory in the self-test below.
+nix_placed() {  # <store> <home> <pkg> <rel> <target> <src>
+  case "$3/$4" in
+    # The module copies these two in as writable files, so lazy.nvim and LazyVim can rewrite them.
+    nvim/.config/nvim/lazy-lock.json|nvim/.config/nvim/lazyvim.json)
+      [[ -f "$5" && ! -L "$5" && -d "$2/.local/share/highwind" ]] && return ;;
+  esac
+  if [[ "$(real "$5")" != "$1"/* ]]; then echo "exists but is not linked to this checkout"
+  elif [[ "$3" == herdr && "$4" == .local/bin/* ]]; then :  # the build rewrites their interpreters
+  elif ! cmp -s "$5" "$6"; then echo "is a Nix store copy that differs from this checkout (rebuild the Home Manager configuration)"; fi
+}
 for pkg in $packages; do
   [[ -d "$DOTFILES_DIR/$pkg" ]] || continue
   bad=0; count=0
   while IFS= read -r -d '' src; do
     rel="${src#"$DOTFILES_DIR/$pkg/"}"; target="$HOME/$rel"; count=$((count+1))
     if [[ ! -e "$target" ]]; then fail "$pkg: ~/$rel is missing (run ./bootstrap.sh)"; bad=1
-    elif [[ "$(real "$target")" != "$(real "$src")" ]]; then fail "$pkg: ~/$rel exists but is not linked to this checkout"; bad=1; fi
+    elif [[ "$(real "$target")" != "$(real "$src")" ]]; then
+      why="exists but is not linked to this checkout"
+      [[ -d /nix/store ]] && why="$(nix_placed /nix/store "$HOME" "$pkg" "$rel" "$target" "$src")"
+      [[ -z "$why" ]] || { fail "$pkg: ~/$rel $why"; bad=1; }
+    fi
   done < <(find "$DOTFILES_DIR/$pkg" \( -type f -o -type l \) ! -name '.DS_Store' -print0)
   (( bad )) || pass "$pkg ($count file$([[ $count == 1 ]] || echo s))"
 done
+# nix_placed against a throwaway store and home, since a machine without Nix never reaches it above.
+check_nix_placed() {
+  local t s src="$DOTFILES_DIR/zsh/.zshrc" got=""
+  t="$(mktemp -d "${TMPDIR:-/tmp}/dotfiles-validate-store.XXXXXX")"; s="$(real "$t")/store"
+  mkdir -p "$s" "$t/home/.local/share/highwind"
+  cp "$src" "$s/same"; { cat "$src"; echo '# changed'; } >"$s/differs"; cp "$src" "$t/lock"
+  got+="[$(nix_placed "$s" "$t/home" zsh .zshrc "$s/same" "$src")]"
+  got+="[$(nix_placed "$s" "$t/home" zsh .zshrc "$s/differs" "$src")]"
+  got+="[$(nix_placed "$s" "$t/home" herdr .local/bin/herdr-plugins "$s/differs" "$src")]"
+  got+="[$(nix_placed "$s" "$t/home" nvim .config/nvim/lazy-lock.json "$t/lock" "$src")]"
+  got+="[$(nix_placed "$s" "$t/home" zsh .zshrc "$t/lock" "$src")]"
+  rm -rf "$t"
+  if [[ "$got" == "[][is a Nix store copy that differs"*"][][][exists but is not linked to this checkout]" ]]; then
+    pass "Nix store copies: equal bytes pass, a difference fails, herdr scripts and nvim lock files exempt (self-test)"
+  else fail "Nix store rule (nix_placed) gives the wrong answers on a throwaway store: $got"; fi
+}
+check_nix_placed
 
 # Configs must work for any user and any home directory: no literal home paths.
-hard="$(git -C "$DOTFILES_DIR" grep -nIE '(/Users|/home)/[A-Za-z0-9._-]+' -- . ':!docs' ':!CHANGELOG.md' ':!validate.sh' || true)"
+hard="$(git -C "$DOTFILES_DIR" grep -nIE '(/Users|/home)/[A-Za-z0-9._-]+' -- . ':!docs' ':!CHANGELOG.md' ':!validate.sh' ':!nix' ':!nixos' || true)"
 if [[ -z "$hard" ]]; then pass "no hardcoded home directory paths in tracked files"
 else fail "hardcoded home directory path (use \$HOME, ~ or a relative path): $(echo "$hard" | cut -d: -f1,2 | tr '\n' ' ')"; fi
+# The Nix files may name test homes (/home/test), never the owner's. A macOS home is built from the
+# user name ("/Users" + "/${user}", nix/lib/home-directory.nix); a literal name after /Users/ fails.
+check_nix_home_paths() {  # <repo>
+  local hard
+  hard="$(git -C "$1" grep -nIE '/Users/[A-Za-z0-9._-]|/home/tucker' -- nix nixos || true)"
+  if [[ -z "$hard" ]]; then pass "no owner home directory paths under nix/ and nixos/"
+  else fail "owner home directory path under nix/ or nixos/ (build it from the user name): $(echo "$hard" | cut -d: -f1,2 | tr '\n' ' ')"; fi
+}
+check_nix_home_paths "$DOTFILES_DIR"
+
+# Python in these scripts goes through one variable that falls back to python3 on PATH (NixOS has no
+# /usr/bin/python3), and every call has -I. herdr-summarize's interpreter line is rewritten by the Nix build instead.
+check_python_calls() {  # <repo>
+  local f bad="" n
+  for f in validate.sh test/suite.sh herdr/.local/bin/herdr-plugins; do
+    [[ -f "$1/$f" ]] || { bad+=" $f(missing)"; continue; }
+    # [p]: these patterns must not match their own lines in this file.
+    grep -qx 'PY=/usr/bin/[p]ython3; \[\[ -x "\$PY" \]\] || PY=python3' "$1/$f" || bad+=" $f(no fallback)"
+    n="$(grep -v '^[[:space:]]*#' "$1/$f" | grep -c '/usr/bin/[p]ython3')"
+    (( n == 1 )) || bad+=" $f(the absolute python path on $n code lines, not 1)"
+    n="$(grep -nE '(python3(\.[0-9]+)?|"\$(PY|p|tomlpy|\{TOMLPY:-\$PY\})")[[:space:]]+-(c|m|[[:space:]]|$)' "$1/$f" | grep -v '^[0-9]*:[[:space:]]*#' | cut -d: -f1 | tr '\n' ',')"
+    [[ -z "$n" ]] || bad+=" $f(no -I: line ${n%,})"
+  done
+  if [[ -z "$bad" ]]; then pass "Python calls: one system-Python fallback variable per script, all with -I"
+  else fail "Python calls:$bad"; fi
+}
+check_python_calls "$DOTFILES_DIR"
 
 # ── tools ────────────────────────────────────────────────────────────────────
 section "Tools installed by bootstrap"
@@ -89,32 +151,6 @@ if have zsh; then
   else pass "zsh: interactive start is clean"; fi
   if echo "$out" | grep -qx 'zvm-loaded=1'; then pass "zsh: zsh-vi-mode loaded"
   else fail "zsh: zsh-vi-mode not loaded (brew install zsh-vi-mode, or re-run ./bootstrap.sh)"; fi
-fi
-
-if have tmux; then
-  # Source the config into a throwaway server: source-file reports each bad line
-  # ("~/.tmux.conf:12: unknown command") on stderr. Errors from loading it with -f
-  # are only shown to the first attached client, so they would be missed.
-  sock="dotfiles-validate-$$"
-  errs="$(tmux -L "$sock" -f /dev/null new-session -d 'sleep 5' \; source-file "$HOME/.tmux.conf" 2>&1)"
-  ybind="$(tmux -L "$sock" list-keys -T copy-mode-vi 2>/dev/null | grep -E '^bind-key +-T copy-mode-vi +y ' || true)"
-  tmux -L "$sock" kill-server 2>/dev/null
-  if [[ -z "$errs" ]]; then pass "tmux: ~/.tmux.conf loads cleanly (throwaway server)"
-  else fail "tmux: $(echo "$errs" | head -3 | tr '\n' ' ')"; fi
-  # copy-mode y: pbcopy on macOS; on Linux a pipe that picks wl-copy or xclip at each copy.
-  if [[ -z "$ybind" ]]; then fail "tmux: copy-mode y is not bound"
-  elif [[ "$OS" == "Darwin" ]]; then
-    if [[ "$ybind" != *"copy-pipe-and-cancel pbcopy"* ]]; then fail "tmux: copy-mode y does not pipe to pbcopy"
-    elif ! have pbcopy; then fail "tmux: copy-mode y pipes to pbcopy, which is not installed"
-    else pass "tmux: copy-mode y copies with pbcopy"; fi
-  elif [[ "$ybind" != *copy-pipe-and-cancel*WAYLAND_DISPLAY*wl-copy*DISPLAY*xclip* ]]; then
-    fail "tmux: copy-mode y does not pipe to the wl-copy/xclip selector"
-  elif ! have wl-copy && ! have xclip; then fail "tmux: copy-mode y has neither wl-copy nor xclip to pipe to (re-run ./bootstrap.sh)"
-  elif { have wl-copy && [[ -n "${WAYLAND_DISPLAY:-}" ]]; } || { have xclip && [[ -n "${DISPLAY:-}" ]]; }; then
-    pass "tmux: copy-mode y copies to this session's clipboard"
-  elif [[ -n "${WAYLAND_DISPLAY:-}" ]]; then warn "tmux: Wayland session but wl-copy is not installed, so copy-mode y fills tmux's buffer only"
-  elif [[ -n "${DISPLAY:-}" ]]; then warn "tmux: X11 session but xclip is not installed, so copy-mode y fills tmux's buffer only"
-  else warn "tmux: this session has no Wayland or X11 display, so copy-mode y fills tmux's buffer only"; fi
 fi
 
 ghostty=""
@@ -162,8 +198,8 @@ fi
 # file it also reads can override it, an environment variable can point it
 # elsewhere, or a long-running process can still hold an older version.
 section "What programs actually load"
-mtime() { /usr/bin/python3 -c 'import os,sys; print(int(os.path.getmtime(os.path.realpath(sys.argv[1]))))' "$1" 2>/dev/null || echo 0; }
-when()  { /usr/bin/python3 -c 'import sys,time; print(time.strftime("%Y-%m-%d %H:%M", time.localtime(int(sys.argv[1]))))' "$1"; }
+mtime() { "$PY" -I -c 'import os,sys; print(int(os.path.getmtime(os.path.realpath(sys.argv[1]))))' "$1" 2>/dev/null || echo 0; }
+when()  { "$PY" -I -c 'import sys,time; print(time.strftime("%Y-%m-%d %H:%M", time.localtime(int(sys.argv[1]))))' "$1"; }
 
 # Environment variables that silently redirect a program to another config.
 for var in ZDOTDIR XDG_CONFIG_HOME STARSHIP_CONFIG ATUIN_CONFIG_DIR NVIM_APPNAME HERDR_CONFIG_PATH; do
@@ -172,53 +208,24 @@ for var in ZDOTDIR XDG_CONFIG_HOME STARSHIP_CONFIG ATUIN_CONFIG_DIR NVIM_APPNAME
     ZDOTDIR)         [[ "$(real "$val")" == "$(real "$HOME")" ]] && continue ;;
     XDG_CONFIG_HOME) [[ "$(real "$val")" == "$(real "$HOME/.config")" ]] && continue ;;
   esac
-  fail "$var=$val redirects a program away from the dotfiles config"
+  fail "$var=$val redirects a program away from the highwind config"
 done
 
-# tmux: it loads every file in its built-in search list, so any other existing
-# file adds to (and can override) the dotfiles one. The list comes from the binary.
-if have tmux; then
-  tmux_conf="$(real "$DOTFILES_DIR/tmux/.tmux.conf")"
-  search="$(strings "$(command -v tmux)" 2>/dev/null | grep -m1 -E '^[^ ]*tmux\.conf(:[^ ]*tmux\.conf)+$' || echo "/etc/tmux.conf:~/.tmux.conf:\$XDG_CONFIG_HOME/tmux/tmux.conf:~/.config/tmux/tmux.conf")"
-  shadow=0; seen=" "
-  IFS=':' read -r -a candidates <<<"$search"
-  for c in "${candidates[@]}"; do
-    c="${c/#\~/$HOME}"; c="${c/\$XDG_CONFIG_HOME/${XDG_CONFIG_HOME:-$HOME/.config}}"
-    [[ -e "$c" ]] || continue
-    r="$(real "$c")"; [[ "$seen" == *" $r "* ]] && continue; seen="$seen$r "
-    [[ "$r" == "$tmux_conf" ]] && continue
-    fail "tmux also loads $c, which is not the dotfiles config"; shadow=1
-  done
-  (( shadow )) || pass "tmux: no other config file on its search path"
-  # Running servers keep the config they loaded until it is re-sourced.
-  conf_t="$(mtime "$HOME/.tmux.conf")"; servers=0
-  sockdir="$(real "${TMUX_TMPDIR:-/tmp}/tmux-$(id -u)")"
-  for sock in "$sockdir"/*; do
-    [[ -S "$sock" ]] || continue
-    start="$(tmux -S "$sock" display -p '#{start_time}' 2>/dev/null)" || continue
-    servers=$((servers+1))
-    if (( start < conf_t )); then
-      warn "tmux server $(basename "$sock") started $(when "$start"), before ~/.tmux.conf changed $(when "$conf_t"): run tmux source-file ~/.tmux.conf"
-    else pass "tmux server $(basename "$sock") started after the last config change"; fi
-  done
-  (( servers )) || info "no tmux server running"
-fi
-
 # Ghostty on macOS also reads its Application Support config, after the XDG one,
-# so anything in it overrides the dotfiles config.
+# so anything in it overrides the highwind config.
 if [[ "$OS" == "Darwin" ]]; then
   for f in "$HOME/Library/Application Support/com.mitchellh.ghostty/config" \
            "$HOME/Library/Application Support/com.mitchellh.ghostty/config.ghostty"; do
     [[ -e "$f" ]] || continue
-    if [[ -s "$f" ]]; then fail "ghostty also loads ${f/#$HOME/~} after the dotfiles config, overriding it"
-    else info "ghostty: ${f/#$HOME/~} exists but is empty (harmless; anything added there overrides the dotfiles config)"; fi
+    if [[ -s "$f" ]]; then fail "ghostty also loads ${f/#$HOME/~} after the highwind config, overriding it"
+    else info "ghostty: ${f/#$HOME/~} exists but is empty (harmless; anything added there overrides the highwind config)"; fi
   done
 fi
 # A running Ghostty keeps the config it started with.
 if [[ "$OS" == "Darwin" ]]; then gpid="$(pgrep -f 'Ghostty.app/Contents/MacOS/ghostty' | head -1)"
 else gpid="$(pgrep -x ghostty | head -1)"; fi
 if [[ -n "$gpid" ]]; then
-  gstart="$(/usr/bin/python3 -c 'import sys,time; print(int(time.mktime(time.strptime(sys.argv[1].strip(), "%a %b %d %H:%M:%S %Y"))))' "$(ps -o lstart= -p "$gpid")" 2>/dev/null || echo 0)"
+  gstart="$("$PY" -I -c 'import sys,time; print(int(time.mktime(time.strptime(sys.argv[1].strip(), "%a %b %d %H:%M:%S %Y"))))' "$(ps -o lstart= -p "$gpid")" 2>/dev/null || echo 0)"
   gconf="$(mtime "$HOME/.config/ghostty/config")"
   if [[ "$OS" == "Darwin" ]]; then greload="cmd+shift+,"; else greload="ctrl+shift+,"; fi
   if (( gstart < gconf )); then warn "ghostty started before its config changed $(when "$gconf"): reload it ($greload) unless you already have"
@@ -231,14 +238,14 @@ fi
 if have nvim; then
   site="$HOME/.local/share/nvim/site"; extra=""
   for d in plugin ftplugin after lua init.lua init.vim; do [[ -e "$site/$d" ]] && extra="$extra $d"; done
-  if [[ -n "$extra" ]]; then warn "nvim also loads config from ${site/#$HOME/~} (${extra# }), which is not in dotfiles"
-  else pass "nvim: nothing config-like outside the dotfiles config dir"; fi
+  if [[ -n "$extra" ]]; then warn "nvim also loads config from ${site/#$HOME/~} (${extra# }), which is not in highwind"
+  else pass "nvim: nothing config-like outside the highwind config dir"; fi
   nconf="$(find "$DOTFILES_DIR/nvim" -type f -exec stat -f '%m' {} + 2>/dev/null | sort -n | tail -1)"
   [[ -n "$nconf" ]] || nconf="$(find "$DOTFILES_DIR/nvim" -type f -printf '%T@\n' 2>/dev/null | cut -d. -f1 | sort -n | tail -1)"
   stale=0; running=0
   for p in $(pgrep -x nvim); do
     running=$((running+1))
-    pstart="$(/usr/bin/python3 -c 'import sys,time; print(int(time.mktime(time.strptime(sys.argv[1].strip(), "%a %b %d %H:%M:%S %Y"))))' "$(ps -o lstart= -p "$p")" 2>/dev/null || echo 0)"
+    pstart="$("$PY" -I -c 'import sys,time; print(int(time.mktime(time.strptime(sys.argv[1].strip(), "%a %b %d %H:%M:%S %Y"))))' "$(ps -o lstart= -p "$p")" 2>/dev/null || echo 0)"
     if (( pstart < ${nconf:-0} )); then
       stale=$((stale+1))
       warn "nvim (pid $p, in $(lsof -a -p "$p" -d cwd -Fn 2>/dev/null | sed -n 's/^n//p' | sed "s#^$HOME#~#")) started $(when "$pstart"), before its config changed $(when "$nconf"): restart it"
@@ -259,7 +266,7 @@ for f in .zshenv .zprofile .zlogin .zlogout; do
   case "$f" in
     .zshenv)   info "~/.zshenv: machine-local env for non-interactive shells, untracked by design" ;;
     .zprofile) info "~/.zprofile: machine-local login setup (brew shellenv before .zshrc), untracked by design" ;;
-    *)         warn "zsh loads ~/$f, which is not in dotfiles" ;;
+    *)         warn "zsh loads ~/$f, which is not in highwind" ;;
   esac
 done
 [[ -e "$HOME/.zshrc.local" ]] && info "~/.zshrc.local: machine-local layer, untracked by design (keep secrets out of the repo)"
@@ -271,7 +278,7 @@ if have herdr && [[ -f "$HOME/.config/herdr/herdr-server.log" ]]; then
               grep 'api.request.complete' "$HOME/.config/herdr/herdr-server.log" | grep 'outcome="ok"' | grep 'method="server.reload_config"'
             } | cut -c1-19 | sort | tail -1)"
   if [[ -n "$hload" ]]; then
-    hload_t="$(/usr/bin/python3 -c 'import sys,calendar,time; print(calendar.timegm(time.strptime(sys.argv[1], "%Y-%m-%dT%H:%M:%S")))' "$hload")"
+    hload_t="$("$PY" -I -c 'import sys,calendar,time; print(calendar.timegm(time.strptime(sys.argv[1], "%Y-%m-%dT%H:%M:%S")))' "$hload")"
     if (( hload_t < hconf )); then warn "herdr last loaded its config $(when "$hload_t"), before it changed $(when "$hconf"): run herdr server reload-config"
     else pass "herdr loaded its config after the last change"; fi
   fi
@@ -281,8 +288,8 @@ fi
 section "herdr"
 # The TOML checks below need Python's tomllib (3.11+); macOS's /usr/bin/python3 can be older.
 tomlpy=""
-for p in /usr/bin/python3 python3 python3.14 python3.13 python3.12 python3.11; do
-  if have "$p" && "$p" -c 'import tomllib' 2>/dev/null; then tomlpy="$(command -v "$p")"; break; fi
+for p in "$PY" python3 python3.14 python3.13 python3.12 python3.11; do
+  if have "$p" && "$p" -I -c 'import tomllib' 2>/dev/null; then tomlpy="$(command -v "$p")"; break; fi
 done
 # Python checks print one "PASS|WARN|FAIL|INFO message" per line; anything else is a crash,
 # reported once with its last line (the exception).
@@ -327,7 +334,7 @@ check_bound_plugin_actions() {  # <config.toml> <`herdr plugin action list` JSON
     need="$(plugin_needs "$w")"
     [[ -n "$need" ]] && ! have "$need" && skipped+="$w:$need "
   done
-  out="$("$tomlpy" - "$1" "$2" "$skipped" 2>&1 <<'PY'
+  out="$("$tomlpy" -I - "$1" "$2" "$skipped" 2>&1 <<'PY'
 import json, sys, tomllib
 with open(sys.argv[1], "rb") as f:
     cfg = tomllib.load(f)
@@ -358,7 +365,7 @@ PY
 check_herdr_plus_config() {  # <plugin config dir>
   local out
   check_rules_pin cloudmanic/herdr-plus "$HERDR_PLUS_RULES_AT" herdr-plus
-  out="$("$tomlpy" - "$1" 2>&1 <<'PY'
+  out="$("$tomlpy" -I - "$1" 2>&1 <<'PY'
 import glob, os, re, sys, tomllib
 root = sys.argv[1]
 home = os.path.expanduser("~")
@@ -476,7 +483,7 @@ PY
 # Install root herdr runs a plugin from, from `herdr plugin list --json`: empty when the plugin is not
 # installed, "-" when it is installed but herdr gives no plugin_root, "?" when the JSON cannot be read.
 plugin_root() {  # <plugin list JSON> <plugin id>
-  /usr/bin/python3 -c 'import json, sys
+  "$PY" -I -c 'import json, sys
 for p in json.loads(sys.argv[1])["result"]["plugins"]:
     if p.get("plugin_id") == sys.argv[2]:
         print(p.get("plugin_root") or "-"); break' "$1" "$2" 2>/dev/null || echo "?"
@@ -566,7 +573,7 @@ check_fingers_binary() {  # <plugin root>
 # with $VAR and ~ expanded, against this shell's PATH.
 check_bound_commands() {  # <config.toml>
   local out
-  out="$("$tomlpy" - "$1" 2>&1 <<'PY'
+  out="$("$tomlpy" -I - "$1" 2>&1 <<'PY'
 import os, shlex, shutil, sys, tomllib
 with open(sys.argv[1], "rb") as f:
     cfg = tomllib.load(f)
@@ -594,7 +601,61 @@ PY
   emit "bound commands" <<<"$out"
 }
 
+# herdr-plugins takes the repo from HIGHWIND_DIR (the Nix build sets it), and sync refuses outside a
+# sandbox. This runs the checkout's copy, which the Stow check ties to the live one (on Nix the live one is
+# a wrapper that sets HIGHWIND_DIR itself). A fake herdr comes first on PATH, so even a sync that failed
+# to refuse would reach only the fake.
+check_herdr_plugins_env() {  # <herdr-plugins>
+  local t out rc ph mode
+  t="$(mktemp -d "${TMPDIR:-/tmp}/dotfiles-validate-hp.XXXXXX")"; mkdir -p "$t/repo" "$t/bin" "$t/home"
+  cp "$BOOTSTRAP" "$t/repo/bootstrap.sh"
+  printf '#!/bin/sh\necho "$*" >>"%s/herdr-called"\nexit 1\n' "$t" >"$t/bin/herdr"; chmod +x "$t/bin/herdr"
+  out="$(HIGHWIND_DIR="$t/repo" "$1" help 2>&1)"
+  ph="$("$PY" -I -c 'import os, pwd; print(pwd.getpwuid(os.getuid()).pw_dir)')"
+  if [[ "$(real "$(sed -n 's/^Pins are read from //p' <<<"$out")")" != "$(real "$t/repo/bootstrap.sh")" ]]; then
+    fail "herdr-plugins ignores HIGHWIND_DIR: help says $(tail -1 <<<"${out:-nothing}")"
+  else
+    # Each run trips one guard only: a throwaway HOME without HIGHWIND_SANDBOX, then the real HOME with it.
+    for mode in "HIGHWIND_SANDBOX unset" "HOME is the real home"; do
+      rc=0
+      if [[ "$mode" == HIGHWIND* ]]; then out="$(env -u HIGHWIND_SANDBOX HOME="$t/home" PATH="$t/bin:$PATH" HIGHWIND_DIR="$t/repo" "$1" sync 2>&1)" || rc=$?
+      else out="$(HIGHWIND_SANDBOX=1 HOME="$ph" PATH="$t/bin:$PATH" HIGHWIND_DIR="$t/repo" "$1" sync 2>&1)" || rc=$?; fi
+      if (( rc == 0 )) || [[ -e "$t/herdr-called" || "$out" != *"sync refused"* ]]; then
+        fail "herdr-plugins sync did not refuse ($mode, exit $rc): $(tail -1 <<<"${out:-no output}")"; mode=""; break
+      fi
+    done
+    [[ -z "$mode" ]] || pass "herdr-plugins reads HIGHWIND_DIR; sync refuses without HIGHWIND_SANDBOX=1 and in the real HOME"
+  fi
+  rm -rf "$t"
+}
+# On a Nix-managed home the plugins are Nix builds, which herdr lists as local links with no commit;
+# herdr-plugins reads the commit from the .highwind-pin file each build writes into its root. A fake herdr
+# lists one such plugin at bootstrap.sh's first pin, then at another commit: check must report it at its pin,
+# then off it (exit 1). Runs the checkout's copy, as above.
+check_herdr_plugins_nix() {  # <herdr-plugins>
+  local t repo pin out rc=0
+  read -r repo pin < <(sed -n 's/^[[:space:]]*herdr plugin install \([^ ]*\) --ref \([0-9a-f]\{7,40\}\).*/\1 \2/p' "$BOOTSTRAP" | head -1)
+  if [[ -z "${pin:-}" ]]; then fail "herdr-plugins and Nix-built plugins: no pinned plugin in bootstrap.sh to test with"; return; fi
+  t="$(mktemp -d "${TMPDIR:-/tmp}/dotfiles-validate-hn.XXXXXX")"; mkdir -p "$t/repo" "$t/bin" "$t/plugin"
+  cp "$BOOTSTRAP" "$t/repo/bootstrap.sh"
+  printf '#!/bin/sh\ncat "%s/list.json"\n' "$t" >"$t/bin/herdr"; chmod +x "$t/bin/herdr"
+  printf '{"result":{"plugins":[{"plugin_id":"nix-built","plugin_root":"%s","source":{"kind":"local"}}]}}\n' "$t/plugin" >"$t/list.json"
+  echo "$repo $pin" >"$t/plugin/.highwind-pin"
+  out="$(PATH="$t/bin:$PATH" HIGHWIND_DIR="$t/repo" "$1" check 2>&1)" || rc=$?
+  if (( rc != 0 )) || ! grep -qx "ok $repo at its pin ${pin:0:7}" <<<"$out"; then
+    fail "herdr-plugins check does not see a Nix-built plugin at its pin (exit $rc): $(grep -F "$repo" <<<"$out" | head -1)"
+  else
+    echo "$repo 0000000000000000000000000000000000000000" >"$t/plugin/.highwind-pin"
+    rc=0; out="$(PATH="$t/bin:$PATH" HIGHWIND_DIR="$t/repo" "$1" check 2>&1)" || rc=$?
+    if (( rc == 1 )) && grep -qx "drift $repo at 0000000, pinned ${pin:0:7}" <<<"$out"; then
+      pass "herdr-plugins check reads a Nix-built plugin's commit (.highwind-pin): at its pin, and off it"
+    else fail "herdr-plugins check does not see a Nix-built plugin off its pin (exit $rc): $(grep -F "$repo" <<<"$out" | head -1)"; fi
+  fi
+  rm -rf "$t"
+}
 check_herdr_plugins_cmd
+check_herdr_plugins_env "$DOTFILES_DIR/herdr/.local/bin/herdr-plugins"
+check_herdr_plugins_nix "$DOTFILES_DIR/herdr/.local/bin/herdr-plugins"
 if have herdr; then
   out="$(herdr config check 2>&1)"
   if echo "$out" | grep -q 'config: ok'; then pass "config.toml valid"; else fail "config.toml: $(echo "$out" | tail -2 | tr '\n' ' ')"; fi
@@ -659,7 +720,7 @@ check_tuicr_repo() {  # <label> <repo dir with an uncommitted change> <throwaway
               XDG_STATE_HOME="$h/.local/state" XDG_CACHE_HOME="$h/.cache")
   out="$(cd "$2" && "${tenv[@]}" tuicr review list --repo . 2>&1)"
   if [[ "$out" != \[* ]]; then fail "tuicr review list in a throwaway $1 repo: $(head -1 <<<"${out:-no output}")"; return; fi
-  out="$(cd "$2" && "${tenv[@]}" /usr/bin/python3 -c 'import subprocess, sys
+  out="$(cd "$2" && "${tenv[@]}" "$PY" -I -c 'import subprocess, sys
 try:
     r = subprocess.run(sys.argv[1:], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
                        text=True, timeout=20, start_new_session=True)
@@ -705,10 +766,27 @@ for f in "$summ" "$HOME/.local/bin/herdr-recent"; do
   if [[ -x "$f" ]]; then pass "$(basename "$f") executable"; else fail "$(basename "$f") missing or not executable"; fi
 done
 if [[ -x "$summ" ]]; then
-  if /usr/bin/python3 -c 'import sys; p=sys.argv[1]; compile(open(p).read(), p, "exec")' "$summ" 2>/dev/null \
+  if "$PY" -I -c 'import sys; p=sys.argv[1]; compile(open(p).read(), p, "exec")' "$summ" 2>/dev/null \
      && "$summ" help >/dev/null 2>&1; then pass "herdr-summarize compiles and runs"
   else fail "herdr-summarize does not compile or run (try: herdr-summarize help)"; fi
 fi
+# On NixOS herdr, claude and jj are in none of herdr-summarize's fixed directories, only on PATH. Loads the
+# checkout's copy (the Stow check ties the live one to it; on Nix the live one is a wrapper) and asks it for
+# a command that exists only in a throwaway directory at the end of PATH.
+check_summarize_path() {  # <herdr-summarize>
+  local t out
+  t="$(mktemp -d "${TMPDIR:-/tmp}/dotfiles-validate-path.XXXXXX")"
+  printf '#!/bin/sh\n' >"$t/dotfiles-validate-probe"; chmod +x "$t/dotfiles-validate-probe"
+  out="$(PATH="$PATH:$t" "$PY" -I -c 'import importlib.machinery, importlib.util, sys
+loader = importlib.machinery.SourceFileLoader("herdr_summarize", sys.argv[1])
+m = importlib.util.module_from_spec(importlib.util.spec_from_loader("herdr_summarize", loader))
+loader.exec_module(m)
+print(m.which("dotfiles-validate-probe") or "not found")' "$1" 2>&1)"
+  if [[ "$out" == "$t/dotfiles-validate-probe" ]]; then pass "herdr-summarize finds commands on PATH after its fixed directories"
+  else fail "herdr-summarize does not look on PATH for herdr, claude and jj (NixOS keeps them there): $(tail -1 <<<"${out:-no output}")"; fi
+  rm -rf "$t"
+}
+check_summarize_path "$DOTFILES_DIR/herdr/.local/bin/herdr-summarize"
 # $jj_status: what the summarizer reports for a throwaway jj repo (made and removed in
 # $TMPDIR, nothing else touched) and for a plain directory.
 if [[ -x "$summ" ]] && have jj; then
@@ -746,7 +824,7 @@ if have herdr && herdr workspace list >/dev/null 2>&1; then
     echo "$line" | grep -q ' enabled ' || fail "plugin is disabled"
     [[ -x "$DOTFILES_DIR/herdr-summarizer/plugin/hook" ]] || fail "plugin hook is not executable"
     logs="$(herdr plugin log list --plugin herdr-summarizer --limit 50 2>/dev/null)"
-    failed="$(echo "$logs" | /usr/bin/python3 -c 'import json,sys
+    failed="$(echo "$logs" | "$PY" -I -c 'import json,sys
 try: logs=json.load(sys.stdin)["result"]["logs"]
 except Exception: logs=[]
 bad=[l for l in logs if l.get("status")!="succeeded"]
@@ -759,7 +837,7 @@ print(len(bad), len(logs))' 2>/dev/null || echo "0 0")"
     # Only the last day counts: the log holds nothing but errors, so any old line would warn forever.
     # Lines start "YYYY-MM-DD HH:MM:SS", which compares correctly as text; untimestamped lines (a
     # traceback) belong to the timestamped line above them.
-    since="$(/usr/bin/python3 -I -c 'import time; print(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time() - 86400)))')"
+    since="$("$PY" -I -c 'import time; print(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time() - 86400)))')"
     recent="$( [[ -s "$wlog" ]] && awk -v c="$since" '/^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9] / { keep = (substr($0, 1, 19) >= c) } keep' "$wlog" \
                | grep -E 'Traceback|Error|error|failed' || true)"
     if [[ -n "$recent" ]]; then
@@ -768,7 +846,7 @@ print(len(bad), len(logs))' 2>/dev/null || echo "0 0")"
     # $jj_status is live: each space whose first pane (its home) is in a jj repo carries it.
     if have jj && [[ -x "$summ" ]]; then
       hrc=0
-      homes="$(/usr/bin/python3 -c 'import json, subprocess, sys
+      homes="$("$PY" -I -c 'import json, subprocess, sys
 def h(*a):
     r = subprocess.run(["herdr"] + list(a), capture_output=True, text=True, timeout=10)
     if r.returncode != 0:
