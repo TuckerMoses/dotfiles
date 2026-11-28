@@ -5,7 +5,7 @@ Managed with [GNU Stow](https://www.gnu.org/software/stow/).
 ## New machine setup
 
 ```bash
-git clone https://github.com/TuckerMoses/dotfiles.git ~/dotfiles
+git clone https://github.com/TuckerMoses/highwind.git ~/dotfiles
 cd ~/dotfiles
 ./bootstrap.sh
 ./validate.sh    # checks everything is linked, installed and loading cleanly
