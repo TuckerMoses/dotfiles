@@ -151,6 +151,25 @@ then runs as the Nix herdr if your shell finds that one first. After this switch
 `herdr-plugins update <plugin>` (it edits `~/dotfiles/bootstrap.sh` and prints the next two commands),
 then `nix run .#herdr-plugin-hashes ...`, then `dotfiles-switch`.
 
+### Before you ever stop the server: prove the restore
+
+The cutover leaves the running server alone. It is Homebrew's herdr, and it stays that until you stop it
+yourself. After that, `herdr` starts the Nix build, which restores from the same files
+(`~/.config/herdr/session.json`, `session-history.json`, `session-snapshots/`, `sessions/` and
+`~/.local/state/herdr/`). Both builds are 0.9.5 and neither route touches those files, so it should restore.
+Nobody has seen one build restore the other's session, so test it on a throwaway named session first. Your
+real session is not involved:
+
+```sh
+/opt/homebrew/bin/herdr --session restore-test     # make a tab and a split or two, then detach (prefix+d)
+herdr session stop restore-test
+~/.nix-profile/bin/herdr --session restore-test    # the layout should come back
+herdr session delete restore-test                  # after detaching again
+```
+
+If the layout does not come back, keep starting herdr as `/opt/homebrew/bin/herdr` and do not uninstall
+Homebrew's copy.
+
 ## 8. What stays on Homebrew
 
 Everything this repo does not manage stays on Homebrew: about 50 formulae and casks, plus tuicr (nixpkgs
@@ -158,7 +177,8 @@ has 0.29.0, and the repo needs 0.30.0) and stow (the way back needs it). `herdr-
 `/opt/homebrew/bin` before `PATH`, so it uses Homebrew's herdr for as long as that is installed. A later,
 optional step is to `brew uninstall` the formulae Nix now provides (herdr, jj, nvim, starship, atuin,
 zoxide, fzf, lazygit, lazyjj, zsh-vi-mode, tmux, jq, gh, go). Run `brew uses --installed <formula>` first,
-and uninstall herdr only after the server has been restarted from the Nix herdr. While Homebrew has
+and uninstall herdr only after the restore test in step 7 has passed and the server has been restarted
+from the Nix herdr. Until then Homebrew's copy is the way to start your session as it always has. While Homebrew has
 zsh-vi-mode, `.zshrc` sources that copy rather than the one in the Nix Oh My Zsh bundle. Both work.
 
 ## 9. The way back
@@ -217,5 +237,6 @@ Then reboot.
   - the herdr reload against a running Homebrew server
   - whether herdr panes are login shells (step 6)
   - the plugin switch (step 7)
+  - the Nix herdr restoring a session the Homebrew herdr saved (step 7 has the test)
   - everything in step 9
 - If something differs, the step's own check is where you see it.
