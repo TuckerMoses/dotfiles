@@ -15,7 +15,7 @@
   zsh-syntax-highlighting,
   zsh-vi-mode,
 }:
-runCommand "dotfiles-oh-my-zsh-bundle" { } ''
+runCommand "highwind-oh-my-zsh-bundle" { } ''
   cp -r ${oh-my-zsh}/share/oh-my-zsh $out
   chmod -R u+w $out
   plugins=$out/custom/plugins

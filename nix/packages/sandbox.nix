@@ -103,17 +103,17 @@ writeShellApplication {
     # ── The throwaway HOME ───────────────────────────────────────────────────
     cp -R ${home-tree}/. "$home/"
     chmod -R u+w "$home"
-    mkdir -p "$home/.local/bin" "$home/.local/share/dotfiles" "$tmux_tmpdir" "$home/.run"
+    mkdir -p "$home/.local/bin" "$home/.local/share/highwind" "$tmux_tmpdir" "$home/.run"
     chmod 700 "$tmux_tmpdir" "$home/.run"
     ln -s ${oh-my-zsh-bundle} "$home/.oh-my-zsh"
     for s in herdr-summarize herdr-recent herdr-login-warning herdr-plugins; do
       ln -s "${scripts}/bin/$s" "$home/.local/bin/$s"
     done
-    ln -s ${summarizer-plugin} "$home/.local/share/dotfiles/herdr-summarizer-plugin"
+    ln -s ${summarizer-plugin} "$home/.local/share/highwind/herdr-summarizer-plugin"
     # herdr's third-party plugins from this build, where the Home Manager module puts them.
-    mkdir -p "$home/.local/share/dotfiles/herdr-plugins"
+    mkdir -p "$home/.local/share/highwind/herdr-plugins"
     for p in ${herdr-plugins}/*; do
-      ln -s "$(readlink -f "$p")" "$home/.local/share/dotfiles/herdr-plugins/''${p##*/}"
+      ln -s "$(readlink -f "$p")" "$home/.local/share/highwind/herdr-plugins/''${p##*/}"
     done
 
     # nixpkgs' zsh sources /etc/set-environment on NixOS, replacing PATH, unless
@@ -125,7 +125,7 @@ writeShellApplication {
       TERM=xterm-256color
       LANG=C.UTF-8
       COLORTERM=truecolor
-      DOTFILES_SANDBOX=1
+      HIGHWIND_SANDBOX=1
       SSL_CERT_FILE="${certs}"
       NIX_SSL_CERT_FILE="${certs}"
       TMUX_TMPDIR="$tmux_tmpdir"
@@ -148,15 +148,15 @@ writeShellApplication {
       # The plugins come from this build, linked as the module links them. --with-plugins
       # installs them with herdr's own installer instead (network, go and cargo), to test it.
       if (( with_plugins )); then
-        inenv dotfiles-herdr-plugins-sync || { echo "sandbox: plugin sync failed" >&2; exit 1; }
+        inenv highwind-herdr-plugins-sync || { echo "sandbox: plugin sync failed" >&2; exit 1; }
       else
-        for p in "$home/.local/share/dotfiles/herdr-plugins"/*; do
+        for p in "$home/.local/share/highwind/herdr-plugins"/*; do
           inenv herdr plugin link "$p" >/dev/null \
             || { echo "sandbox: linking the herdr plugin $p failed" >&2; exit 1; }
         done
       fi
       if (( summarizer )); then
-        inenv herdr plugin link "$home/.local/share/dotfiles/herdr-summarizer-plugin" >/dev/null \
+        inenv herdr plugin link "$home/.local/share/highwind/herdr-summarizer-plugin" >/dev/null \
           || { echo "sandbox: linking the summarizer plugin failed" >&2; exit 1; }
       fi
     fi

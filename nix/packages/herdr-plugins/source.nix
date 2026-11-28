@@ -37,6 +37,6 @@ in
   # herdr records a linked plugin as `local`, with no commit; herdr-plugins status and check read
   # this file in its root instead.
   marker = ''
-    echo ${lib.escapeShellArg "${repo} ${rev}"} > "$out/.dotfiles-pin"
+    echo ${lib.escapeShellArg "${repo} ${rev}"} > "$out/.highwind-pin"
   '';
 }

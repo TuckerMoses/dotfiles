@@ -30,22 +30,22 @@ in
 pkgs.testers.runNixOSTest {
   name = "vm-home";
 
-  # dotfiles-user.nix reads inputs.home-manager and inputs.self, as it does on a real host.
+  # highwind-user.nix reads inputs.home-manager and inputs.self, as it does on a real host.
   node.specialArgs = { inherit inputs; };
 
   nodes.machine =
     { pkgs, ... }:
     {
       # Only the module under test; it brings the Home Manager NixOS module with it.
-      imports = [ ../../nixos/modules/dotfiles-user.nix ];
+      imports = [ ../../nixos/modules/highwind-user.nix ];
 
       virtualisation.memorySize = 3072;
       virtualisation.cores = 2;
 
       services.openssh.enable = true;
 
-      # dotfiles-user.nix does not enable zsh; the global prompt and compinit would run before
-      # the user's own .zshrc and make the "clean shell" check about NixOS, not the dotfiles.
+      # highwind-user.nix does not enable zsh; the global prompt and compinit would run before
+      # the user's own .zshrc and make the "clean shell" check about NixOS, not highwind.
       programs.zsh = {
         enable = true;
         promptInit = "";
@@ -67,7 +67,7 @@ pkgs.testers.runNixOSTest {
           };
         };
 
-      dotfiles.users = {
+      highwind.users = {
         alice = { };
         bob = {
           linkMode = "checkout";
@@ -80,8 +80,8 @@ pkgs.testers.runNixOSTest {
 
       # The checkout user's repo: a writable copy of the flake source, made before Home Manager
       # links into it. Referencing self here also puts the source in the guest's closure.
-      systemd.services.dotfiles-checkout-bob = {
-        description = "Copy the dotfiles flake source into bob's checkout";
+      systemd.services.highwind-checkout-bob = {
+        description = "Copy the highwind flake source into bob's checkout";
         wantedBy = [ "multi-user.target" ];
         before = [ "home-manager-bob.service" ];
         requiredBy = [ "home-manager-bob.service" ];
@@ -163,10 +163,10 @@ pkgs.testers.runNixOSTest {
 
     with subtest("a checkout edit is live without a rebuild"):
         machine.succeed(ssh("bob",
-            "echo \"alias dotfiles_live_probe='echo live'\" >> ~/dotfiles/zsh/.zshrc"))
-        out = machine.succeed(ssh_tty("bob", "alias dotfiles_live_probe; exit"))
-        assert "dotfiles_live_probe=" in out, f"the edit is not live:\n{out}"
-        machine.succeed(ssh("bob", "sed -i '/dotfiles_live_probe/d' ~/dotfiles/zsh/.zshrc"))
+            "echo \"alias highwind_live_probe='echo live'\" >> ~/dotfiles/zsh/.zshrc"))
+        out = machine.succeed(ssh_tty("bob", "alias highwind_live_probe; exit"))
+        assert "highwind_live_probe=" in out, f"the edit is not live:\n{out}"
+        machine.succeed(ssh("bob", "sed -i '/highwind_live_probe/d' ~/dotfiles/zsh/.zshrc"))
 
     with subtest("SSH logins with a broken .zshrc"):
         # The row asserts the syntax error case; the rest is recorded for the lockout question.

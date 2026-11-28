@@ -16,7 +16,7 @@ return {
       )
       if #matches == 0 then
         matches = vim.fn.glob(
-          vim.fn.expand("~/.local/share/dotfiles/herdr-plugins/vim-herdr-navigation/editor/nvim.lua"),
+          vim.fn.expand("~/.local/share/highwind/herdr-plugins/vim-herdr-navigation/editor/nvim.lua"),
           false, true
         )
       end

@@ -15,15 +15,15 @@
 # <plugin> is a repo (herdr-plus), owner/repo, or a plugin id (cloudmanic.herdr-plus).
 # For update, <sha> is 7 to 40 lowercase hex characters, the last argument, after exactly one <plugin>; a tag name is not accepted
 # (give the commit it points at).
-# DOTFILES_DIR, when set, is the directory whose bootstrap.sh is read, instead of the checkout this script is linked from
+# HIGHWIND_DIR, when set, is the directory whose bootstrap.sh is read, instead of the checkout this script is linked from
 # (a Nix build sets it). update refuses unless it is the top of a git checkout. update --repo DIR edits DIR's bootstrap.sh
-# instead; without it, when DOTFILES_DIR is the read-only copy a Nix build packaged, update uses the checkout dotfiles-switch
-# builds from ($DOTFILES_FLAKE, else ~/dotfiles) and says so.
-# A plugin a Nix build provides (herdr lists it as a local link with a .dotfiles-pin file) counts as installed at the
+# instead; without it, when HIGHWIND_DIR is the read-only copy a Nix build packaged, update uses the checkout highwind-switch
+# builds from ($HIGHWIND_FLAKE, else ~/dotfiles) and says so.
+# A plugin a Nix build provides (herdr lists it as a local link with a .highwind-pin file) counts as installed at the
 # commit that file names, for status, check and sync. update reviews it and moves its pin in bootstrap.sh without
 # reinstalling (herdr's installer must not replace a Nix build), then names the two commands that rebuild it there:
-# nix run .#herdr-plugin-hashes (the hashes the new pin needs) and dotfiles-switch.
-# sync runs only with DOTFILES_SANDBOX=1 and a HOME other than the user's own (a sandbox's throwaway HOME). It installs each
+# nix run .#herdr-plugin-hashes (the hashes the new pin needs) and highwind-switch.
+# sync runs only with HIGHWIND_SANDBOX=1 and a HOME other than the user's own (a sandbox's throwaway HOME). It installs each
 # pin with herdr plugin install --yes, needs the build tool bootstrap.sh requires for it (go, cargo), and fails on a missing
 # tool, a herdr plugin install line without a --ref pin, or an install that does not end at the pin.
 # review takes any ref GitHub resolves (a branch, a tag, a sha), and the commit it resolves to must be upstream's own: on the
@@ -66,8 +66,8 @@ while [[ -L "$self" ]]; do
   link="$(readlink "$self")"
   case "$link" in /*) self="$link" ;; *) self="$(dirname "$self")/$link" ;; esac
 done
-if [[ -n "${DOTFILES_DIR:-}" ]]; then
-  REPO="$(cd "$DOTFILES_DIR" 2>/dev/null && pwd)" || { echo "herdr-plugins: DOTFILES_DIR=$DOTFILES_DIR is not a directory" >&2; exit 2; }
+if [[ -n "${HIGHWIND_DIR:-}" ]]; then
+  REPO="$(cd "$HIGHWIND_DIR" 2>/dev/null && pwd)" || { echo "herdr-plugins: HIGHWIND_DIR=$HIGHWIND_DIR is not a directory" >&2; exit 2; }
 else
   REPO="$(cd "$(dirname "$self")/../../.." && pwd)"
 fi
@@ -91,13 +91,13 @@ usage() {
 
 # ── pins and installed state ─────────────────────────────────────────────────
 pins() {  # "<owner/repo> <sha>" per pinned plugin
-  [[ -f "$BOOTSTRAP" ]] || die "no bootstrap.sh at $REPO (is this script linked from the dotfiles checkout?)"
+  [[ -f "$BOOTSTRAP" ]] || die "no bootstrap.sh at $REPO (is this script linked from the highwind checkout?)"
   sed -n 's/^[[:space:]]*herdr plugin install \([^ ]*\) --ref \([0-9a-f]\{7,40\}\).*/\1 \2/p' "$BOOTSTRAP"
 }
 
 # "<owner/repo> <plugin id> <resolved commit> <github|nix>" per installed GitHub plugin, and per plugin
 # a Nix build provides (herdr lists it as a local link; the build writes "<owner/repo> <commit>" into
-# .dotfiles-pin in its root). Fails when herdr can't list.
+# .highwind-pin in its root). Fails when herdr can't list.
 installed() {
   local json
   have herdr || return 1
@@ -109,7 +109,7 @@ for p in json.loads(sys.argv[1])["result"]["plugins"]:
         print("%s/%s %s %s github" % (s.get("owner"), s.get("repo"), p.get("plugin_id", "?"), s.get("resolved_commit", "?")))
     elif s.get("kind") == "local" and p.get("plugin_root"):
         try:
-            with open(os.path.join(p["plugin_root"], ".dotfiles-pin")) as f:
+            with open(os.path.join(p["plugin_root"], ".highwind-pin")) as f:
                 w = f.read().split()
         except OSError:
             continue
@@ -655,16 +655,16 @@ cmd_update() {
   # update is the user's. Piped input cannot pass this check and the confirmations are read from the
   # terminal, not stdin. An agent that spawns a pty is stopped by CLAUDE.md, not by this.
   [[ -t 0 && -t 1 ]] || die "update needs a terminal; the user runs it"
-  # The checkout whose bootstrap.sh moves. A Nix build's wrapper points DOTFILES_DIR at a read-only store copy of
-  # bootstrap.sh; the pins are then moved in the checkout dotfiles-switch builds from, which is named, not guessed at.
+  # The checkout whose bootstrap.sh moves. A Nix build's wrapper points HIGHWIND_DIR at a read-only store copy of
+  # bootstrap.sh; the pins are then moved in the checkout highwind-switch builds from, which is named, not guessed at.
   if [[ "${1:-}" == --repo ]]; then
     [[ -n "${2:-}" ]] || die "--repo needs a directory"
     REPO="$(cd "$2" 2>/dev/null && pwd)" || die "--repo $2 is not a directory"
     shift 2
   elif [[ "$(cd "$REPO" && pwd -P)" == /nix/store/* ]]; then
-    local co="${DOTFILES_FLAKE:-$HOME/dotfiles}"
-    REPO="$(cd "$co" 2>/dev/null && pwd)" || die "the pins here are a read-only Nix copy, and $co (\$DOTFILES_FLAKE, else ~/dotfiles) is not a directory; give the checkout with --repo DIR"
-    echo "herdr-plugins: the pins here are a read-only Nix copy; moving them in $REPO (the checkout dotfiles-switch builds from; --repo DIR for another)"
+    local co="${HIGHWIND_FLAKE:-$HOME/dotfiles}"
+    REPO="$(cd "$co" 2>/dev/null && pwd)" || die "the pins here are a read-only Nix copy, and $co (\$HIGHWIND_FLAKE, else ~/dotfiles) is not a directory; give the checkout with --repo DIR"
+    echo "herdr-plugins: the pins here are a read-only Nix copy; moving them in $REPO (the checkout highwind-switch builds from; --repo DIR for another)"
   fi
   BOOTSTRAP="$REPO/bootstrap.sh"
   # In a linked worktree update would reinstall on the live machine and rewrite a bootstrap.sh that
@@ -673,10 +673,10 @@ cmd_update() {
   gdir="$(cd "$REPO" && cd "$(git rev-parse --git-dir 2>/dev/null)" 2>/dev/null && pwd -P)" || gdir=""
   cdir="$(cd "$REPO" && cd "$(git rev-parse --git-common-dir 2>/dev/null)" 2>/dev/null && pwd -P)" || cdir=""
   [[ -z "$gdir" || "$gdir" == "$cdir" ]] || die "$REPO is a linked git worktree. update edits bootstrap.sh and reinstalls on the live machine; the user runs it from the main checkout's stowed herdr-plugins (the first entry of 'git worktree list'); agents do not run it"
-  # A Nix build points DOTFILES_DIR at a store directory holding bootstrap.sh alone: nothing to edit or commit there.
+  # A Nix build points HIGHWIND_DIR at a store directory holding bootstrap.sh alone: nothing to edit or commit there.
   local top
   top="$(cd "$REPO" && git rev-parse --show-toplevel 2>/dev/null)" || top=""
-  [[ -n "$top" && "$(cd "$top" && pwd -P)" == "$(cd "$REPO" && pwd -P)" ]] || die "$REPO is not a git checkout of the dotfiles (DOTFILES_DIR=${DOTFILES_DIR:-unset}); update edits and commits bootstrap.sh, so the user runs it from the main checkout's stowed herdr-plugins"
+  [[ -n "$top" && "$(cd "$top" && pwd -P)" == "$(cd "$REPO" && pwd -P)" ]] || die "$REPO is not a git checkout of highwind (HIGHWIND_DIR=${HIGHWIND_DIR:-unset}); update edits and commits bootstrap.sh, so the user runs it from the main checkout's stowed herdr-plugins"
   have gh || die "update needs the GitHub CLI (gh) to show what changed"
   local inst repo pin head targets="" t id got moved="" nixmoved="" failed="" rrc want="" nix
   # An unreadable plugin list is not an empty one: update could otherwise move the pin of an installed plugin.
@@ -702,10 +702,10 @@ cmd_update() {
     pin="$(pins | awk -v r="$repo" '$1 == r { print $2; exit }')"
     id="$(lookup "$inst" "$repo" 2)"; got="$(lookup "$inst" "$repo" 3)"
     # A Nix build placed this one: herdr's installer must not replace it. Its pin moves in bootstrap.sh only, and
-    # the build follows through hashes.nix and dotfiles-switch (named at the end).
+    # the build follows through hashes.nix and highwind-switch (named at the end).
     nix=0; [[ "$(lookup "$inst" "$repo" 4)" == nix ]] && nix=1
     if (( nix )) && [[ "$got" != "$pin"* ]]; then
-      echo "$repo: the Nix build here is at ${got:0:7} but bootstrap.sh pins ${pin:0:7}: run dotfiles-switch to rebuild it at the pin"
+      echo "$repo: the Nix build here is at ${got:0:7} but bootstrap.sh pins ${pin:0:7}: run highwind-switch to rebuild it at the pin"
     fi
     # Installed at a commit other than its pin: the pin is the reviewed state, so put the install back
     # on it (no review) before looking at anything newer.
@@ -734,7 +734,7 @@ cmd_update() {
     if (( nix )); then
       if set_pin "$repo" "$pin" "$head"; then
         moved="$moved $repo"; nixmoved="$nixmoved $repo"
-        echo "$repo: bootstrap.sh now pins ${head:0:7}; the Nix build here moves at the next dotfiles-switch (below)"
+        echo "$repo: bootstrap.sh now pins ${head:0:7}; the Nix build here moves at the next highwind-switch (below)"
       else failed="$failed $repo"; fi
       continue
     fi
@@ -771,7 +771,7 @@ cmd_update() {
       echo "    nix run .#herdr-plugin-hashes > /tmp/hashes.nix && mv /tmp/hashes.nix nix/packages/herdr-plugins/hashes.nix"
       if [[ -n "$nixmoved" ]]; then
         echo "Then rebuild the Nix-provided plugins here (${nixmoved# }) at their new pins:"
-        echo "    dotfiles-switch --flake $REPO"
+        echo "    highwind-switch --flake $REPO"
       fi
     fi
     if [[ " $moved " == *" cloudmanic/herdr-plus "* ]]; then
@@ -795,7 +795,7 @@ canon() { (cd "$1" 2>/dev/null && pwd -P) || printf '%s\n' "$1"; }
 
 cmd_sync() {
   local ph pinned nlines repo pin tool got failed=""
-  [[ "${DOTFILES_SANDBOX:-}" == 1 ]] || die "sync refused: it installs plugins into HOME and runs only in a sandbox (DOTFILES_SANDBOX=1, set by nix run .#sandbox and .#herdr-sandbox)"
+  [[ "${HIGHWIND_SANDBOX:-}" == 1 ]] || die "sync refused: it installs plugins into HOME and runs only in a sandbox (HIGHWIND_SANDBOX=1, set by nix run .#sandbox and .#herdr-sandbox)"
   ph="$(passwd_home || true)"
   [[ -n "$ph" ]] || die "sync refused: could not read this user's home from the user database to compare with HOME"
   [[ -n "${HOME:-}" && "$(canon "$HOME")" != "$(canon "$ph")" ]] || die "sync refused: HOME (${HOME:-unset}) is this user's real home; it runs only in a sandbox's throwaway HOME"

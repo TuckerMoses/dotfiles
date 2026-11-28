@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# ── Dotfiles test suite ─────────────────────────────────────────────────────
+# ── Highwind test suite ─────────────────────────────────────────────────────
 # Runs the same core (bootstrap x3, a headless herdr server, nvim plugins, the
 # summarizer hook, an interactive zsh, validate.sh) in one of four places:
 #

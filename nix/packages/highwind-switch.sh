@@ -1,17 +1,17 @@
-# dotfiles-switch: build this user's standalone Home Manager configuration from the flake and
+# highwind-switch: build this user's standalone Home Manager configuration from the flake and
 # activate it, as the user, without root. The system (safe-switch) is never involved.
-# Packaged by dotfiles-switch.nix (writeShellApplication adds the strict mode and PATH).
+# Packaged by highwind-switch.nix (writeShellApplication adds the strict mode and PATH).
 
 usage() {
   cat <<'EOF'
-Usage: dotfiles-switch [--flake DIR] [--config USER@HOST] [--dry-run | --rollback]
+Usage: highwind-switch [--flake DIR] [--config USER@HOST] [--dry-run | --rollback]
                        [--activation-package PATH]
 
 Builds homeConfigurations."USER@HOST".activationPackage from the flake and activates it.
 Programs that can reload do so through the activation's onChange hooks (herdr reloads its
 config.toml when its server is running); others pick the change up when they next start.
 
-  --flake DIR      The checkout to build from (default: $DOTFILES_FLAKE, else ~/dotfiles).
+  --flake DIR      The checkout to build from (default: $HIGHWIND_FLAKE, else ~/dotfiles).
   --config NAME    The configuration (default: <user>@<short hostname>, or <user>@mac on macOS).
   --dry-run        Build and print what would change; activate nothing.
   --rollback       Activate the previous Home Manager generation (each run goes one further
@@ -23,11 +23,13 @@ EOF
 }
 
 die() {
-  echo "dotfiles-switch: $*" >&2
+  echo "highwind-switch: $*" >&2
   exit 1
 }
 
-flake=${DOTFILES_FLAKE:-$HOME/dotfiles}
+# The checkout keeps the directory name dotfiles on purpose: Claude Code keys its project memory
+# and session history on that path.
+flake=${HIGHWIND_FLAKE:-$HOME/dotfiles}
 config=""
 action=switch
 gen=""
@@ -85,7 +87,7 @@ fi
 # ── Build ────────────────────────────────────────────────────────────────────
 if [[ -z $gen ]]; then
   [[ -e $flake/flake.nix ]] || die "no flake.nix in $flake (use --flake DIR)"
-  echo "dotfiles-switch: building $config from $flake" >&2
+  echo "highwind-switch: building $config from $flake" >&2
   gen=$(nix "${nixFlags[@]}" build --no-link --print-out-paths \
     "$flake#homeConfigurations.\"$config\".activationPackage") \
     || die "could not build homeConfigurations.\"$config\" from $flake"
@@ -96,7 +98,7 @@ gen=$(readlink -e "$gen") || die "no such activation package: $gen"
 # ── Dry run ──────────────────────────────────────────────────────────────────
 # Read-only: nothing is activated and no profile is touched.
 if [[ $action == dry-run ]]; then
-  echo "dotfiles-switch: built $gen"
+  echo "highwind-switch: built $gen"
   list() { (cd "$1" && find . \( -type f -o -type l \) -print | sed 's|^\./||' | LC_ALL=C sort); }
   if [[ -n $current ]]; then
     echo "Files, relative to $HOME (+ placed, - removed, ~ changed), against $current:"

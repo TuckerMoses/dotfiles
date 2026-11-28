@@ -1,5 +1,5 @@
 {
-  description = "The dotfiles as a Nix package set, and NixOS hosts";
+  description = "highwind: the configs and tools of the owner's machines as a Nix package set, and NixOS hosts";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
@@ -65,7 +65,7 @@
       packages = forAllSystems (
         system:
         let
-          d = (pkgsFor system).dotfiles;
+          d = (pkgsFor system).highwind;
         in
         {
           inherit (d)
@@ -76,7 +76,7 @@
             tools
             sandbox
             herdr-sandbox
-            dotfiles-switch
+            highwind-switch
             herdr-plugin-vim-herdr-navigation
             herdr-plugin-herdr-plus
             herdr-plugin-herdr-fingers
@@ -91,31 +91,31 @@
       homeManagerModules.default = import ./nix/home-manager self;
 
       # ── Standalone Home Manager configurations ──────────────────────────────
-      # One per user and machine, activated by that user with dotfiles-switch (no root, no
-      # safe-switch). The NixOS option dotfiles.users is the other way in, for a machine that
+      # One per user and machine, activated by that user with highwind-switch (no root, no
+      # safe-switch). The NixOS option highwind.users is the other way in, for a machine that
       # switches system and user together; homepc uses this one.
       homeConfigurations = {
         "tucker@homepc" = mkHome "tucker" "x86_64-linux" (
           { pkgs, ... }:
           {
-            dotfiles.linkMode = "store";
-            dotfiles.profiles.personal.enable = true;
+            highwind.linkMode = "store";
+            highwind.profiles.personal.enable = true;
             # The login shell stays bash, so SSH never depends on .zshrc.
-            dotfiles.interactiveShell = pkgs.zsh;
+            highwind.interactiveShell = pkgs.zsh;
           }
         );
         # The vm-switch test's user: base profile only.
         "test@vm" = mkHome "test" "x86_64-linux" (
           { pkgs, ... }:
           {
-            dotfiles.interactiveShell = pkgs.zsh;
+            highwind.interactiveShell = pkgs.zsh;
           }
         );
         # The Mac (docs/mac-cutover.md). zsh is its login shell already, so no interactiveShell.
-        # dotfiles-switch calls any Mac "mac", whatever its network name (dotfiles-switch.sh).
+        # highwind-switch calls any Mac "mac", whatever its network name (highwind-switch.sh).
         "johnmoses@mac" = mkHome "johnmoses" "aarch64-darwin" {
-          dotfiles.linkMode = "store";
-          dotfiles.profiles.personal.enable = true;
+          highwind.linkMode = "store";
+          highwind.profiles.personal.enable = true;
         };
         # CI's macOS runner activates this one (its user is runner): base profile only.
         "runner@mac-ci" = mkHome "runner" "aarch64-darwin" { };
@@ -134,8 +134,8 @@
         {
           sandbox = app self.packages.${system}.sandbox;
           herdr-sandbox = app self.packages.${system}.herdr-sandbox;
-          # The first switch on a machine, before dotfiles-switch is on PATH.
-          dotfiles-switch = app self.packages.${system}.dotfiles-switch;
+          # The first switch on a machine, before highwind-switch is on PATH.
+          highwind-switch = app self.packages.${system}.highwind-switch;
           # After a herdr plugin pin moved in bootstrap.sh: the hashes its build needs.
           herdr-plugin-hashes = app self.packages.${system}.herdr-plugin-hashes;
         }

@@ -12,7 +12,7 @@ let
     fileset = ../../herdr-summarizer/plugin;
   };
 in
-runCommand "dotfiles-summarizer-plugin" { } ''
+runCommand "highwind-summarizer-plugin" { } ''
   mkdir -p $out
   cp -r ${src}/. $out/
   chmod -R u+w $out

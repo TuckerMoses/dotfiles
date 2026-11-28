@@ -2,7 +2,7 @@
 # that reads it, against a throwaway HOME filled from home-tree.
 { pkgs, checkLib }:
 let
-  d = pkgs.dotfiles;
+  d = pkgs.highwind;
   # Check-only: Ghostty's closure is large and only its config parser is needed here. nixpkgs
   # builds Ghostty from source on Linux only; on macOS it repackages the release app.
   ghostty = if pkgs.stdenv.hostPlatform.isDarwin then pkgs.ghostty-bin else pkgs.ghostty;

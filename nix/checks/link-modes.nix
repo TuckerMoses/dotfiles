@@ -1,7 +1,7 @@
 # link-modes (docs/design/nix-dotfiles.md, section 7): the Home Manager module places exactly the
 # Stow set, in both link modes, for a test user: all of it with the personal profile on, the Stow
 # set minus the personal files with it off. No base file names the owner's directories, and
-# dotfiles.interactiveShell appends one setting to herdr's and Ghostty's configs, both valid.
+# highwind.interactiveShell appends one setting to herdr's and Ghostty's configs, both valid.
 {
   pkgs,
   home-manager,
@@ -45,7 +45,7 @@ let
   # ── Profiles ─────────────────────────────────────────────────────────────
   # home-tree says which files are personal; the content rule in the script checks that it says
   # so of every file that names the owner's directories.
-  tree = pkgs.dotfiles.home-tree;
+  tree = pkgs.highwind.home-tree;
   personalRels = map (f: f.rel) (lib.filter (f: f.profile == "personal") tree.files);
   baseFiles = lib.filter (f: !(lib.elem f.rel personalRels)) stowFiles;
   # Personal entries named file by file must exist, so a rename cannot leave one stale.
@@ -62,7 +62,7 @@ let
           home.username = "test";
           home.homeDirectory = import ../lib/home-directory.nix { inherit lib; } system "test";
           home.stateVersion = "26.05";
-          dotfiles.enable = true;
+          highwind.enable = true;
         }
         extra
       ];
@@ -70,18 +70,18 @@ let
   checkout = "/test/checkout";
   zsh = lib.getExe pkgs.zsh;
   homes = {
-    store = mkHome { dotfiles.linkMode = "store"; };
+    store = mkHome { highwind.linkMode = "store"; };
     checkout = mkHome {
-      dotfiles.linkMode = "checkout";
-      dotfiles.checkout = checkout;
+      highwind.linkMode = "checkout";
+      highwind.checkout = checkout;
     };
-    personal = mkHome { dotfiles.profiles.personal.enable = true; };
-    shell = mkHome { dotfiles.interactiveShell = pkgs.zsh; };
+    personal = mkHome { highwind.profiles.personal.enable = true; };
+    shell = mkHome { highwind.interactiveShell = pkgs.zsh; };
   };
   excluded =
     t:
     t == ".oh-my-zsh"
-    || lib.hasPrefix ".local/share/dotfiles/" t
+    || lib.hasPrefix ".local/share/highwind/" t
     || lib.elem t data.homeManagerTargets;
   placed =
     h: lib.filter (t: !excluded t) (map (f: f.target) (lib.attrValues h.config.home.file)) ++ nvimCopied;
@@ -89,15 +89,15 @@ let
   # Configurations that must not build.
   refuses = extra: !(builtins.tryEval homesBad.${extra}.activationPackage.drvPath).success;
   homesBad = {
-    unset = mkHome { dotfiles.linkMode = "checkout"; };
+    unset = mkHome { highwind.linkMode = "checkout"; };
     relative = mkHome {
-      dotfiles.linkMode = "checkout";
-      dotfiles.checkout = "test/checkout";
+      highwind.linkMode = "checkout";
+      highwind.checkout = "test/checkout";
     };
     shell = mkHome {
-      dotfiles.linkMode = "checkout";
-      dotfiles.checkout = checkout;
-      dotfiles.interactiveShell = pkgs.zsh;
+      highwind.linkMode = "checkout";
+      highwind.checkout = checkout;
+      highwind.interactiveShell = pkgs.zsh;
     };
   };
 
@@ -117,7 +117,7 @@ let
     fileset = lib.fileset.unions (map (p: root + "/${p}") stowPackages);
   };
   expectedDir = {
-    store = "${pkgs.dotfiles.bootstrap-dir}";
+    store = "${pkgs.highwind.bootstrap-dir}";
     inherit checkout;
   };
   herdrConfig = ".config/herdr/config.toml";
@@ -133,7 +133,7 @@ let
     }:
     let
       h = homes.${name};
-      mode = h.config.dotfiles.linkMode;
+      mode = h.config.highwind.linkMode;
     in
     ''
       m=${name} mode=${mode}
@@ -157,7 +157,7 @@ let
       done < ${configList}
       for s in ${lib.escapeShellArgs scriptNames}; do
         case "$(readlink -f "$hf/.local/bin/$s")" in
-          ${builtins.storeDir}/*-dotfiles-scripts-*/bin/*) ;;
+          ${builtins.storeDir}/*-highwind-scripts-*/bin/*) ;;
           *) fail "$m: .local/bin/$s does not resolve into the scripts package" ;;
         esac
       done
@@ -165,10 +165,10 @@ let
         [ ! -e "$hf/$n" ] || fail "$m: $n is linked; it must be copied in as a writable file"
         grep -qF "$n" "$act/activate" || fail "$m: the activation script does not copy $n"
       done
-      grep -qF 'dotfiles: herdr reloaded its config' "$act/activate" \
+      grep -qF 'highwind: herdr reloaded its config' "$act/activate" \
         || fail "$m: the activation has no herdr reload hook for ${herdrConfig}"
-      grep -qxE "export DOTFILES_DIR='?${expectedDir.${mode}}'?" "$hf/.local/bin/herdr-plugins" \
-        || fail "$m: herdr-plugins does not set DOTFILES_DIR=${expectedDir.${mode}}"
+      grep -qxE "export HIGHWIND_DIR='?${expectedDir.${mode}}'?" "$hf/.local/bin/herdr-plugins" \
+        || fail "$m: herdr-plugins does not set HIGHWIND_DIR=${expectedDir.${mode}}"
       echo "$m ($mode mode): $(wc -l < placed-$m) files placed, matching ${expect}"
     '';
 in
@@ -215,14 +215,14 @@ pkgs.runCommand "check-link-modes" { } ''
   export HOME=$TMPDIR/shell-home
   mkdir -p $HOME/.config/herdr
   cp "$hf/${herdrConfig}" $HOME/${herdrConfig}
-  res=$(${pkgs.dotfiles.tools}/bin/herdr config check 2>&1) || fail "shell: herdr config check: $res"
+  res=$(${pkgs.highwind.tools}/bin/herdr config check 2>&1) || fail "shell: herdr config check: $res"
   grep -q 'config: ok' <<<"$res" || fail "shell: herdr config check: $res"
   res=$(${ghostty}/bin/ghostty +validate-config --config-file="$hf/${ghosttyConfig}" 2>&1) \
     || fail "shell: ghostty +validate-config: $res"
   echo "shell: herdr's and Ghostty's configs start ${zsh} and stay valid"
 
-  ${lib.boolToString (refuses "unset")} || fail "checkout mode with dotfiles.checkout unset evaluates"
-  ${lib.boolToString (refuses "relative")} || fail "checkout mode with a relative dotfiles.checkout evaluates"
-  ${lib.boolToString (refuses "shell")} || fail "checkout mode with dotfiles.interactiveShell evaluates"
+  ${lib.boolToString (refuses "unset")} || fail "checkout mode with highwind.checkout unset evaluates"
+  ${lib.boolToString (refuses "relative")} || fail "checkout mode with a relative highwind.checkout evaluates"
+  ${lib.boolToString (refuses "shell")} || fail "checkout mode with highwind.interactiveShell evaluates"
   touch $out
 ''

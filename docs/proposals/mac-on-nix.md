@@ -7,7 +7,7 @@ source: session (nixos-host)
 
 - **What:** Install Nix on the Mac and switch the Mac user's configs and tools from Stow and Homebrew to
   `homeConfigurations."johnmoses@mac"`, a standalone Home Manager configuration activated with
-  `dotfiles-switch`, with Stow kept as the way back. nix-darwin is a later step.
+  `highwind-switch`, with Stow kept as the way back. nix-darwin is a later step.
 - **Why here:** The Mac and homepc set up the same environment two ways: Homebrew and `bootstrap.sh` on the
   Mac, the flake on homepc (`tucker@homepc`). One route means one place where a tool version or a plugin pin
   is decided.
@@ -24,7 +24,7 @@ source: session (nixos-host)
     runner, which also activates `runner@mac-ci` (dry run, switch, clean login zsh, herdr config and plugins,
     rollback). The `darwin` job in `.github/workflows/nix.yml`.
   - The cutover is the runbook `docs/mac-cutover.md`: install Nix (the official installer, Nix 2.34.9),
-    `stow -D` each package, move `~/.oh-my-zsh` aside, `dotfiles-switch`, checks in a new terminal window,
+    `stow -D` each package, move `~/.oh-my-zsh` aside, `highwind-switch`, checks in a new terminal window,
     and the way back.
   - tuicr stays on Homebrew until nixpkgs carries 0.30.0 or later; Ghostty stays the app in `/Applications`;
     Claude Code stays the native install. `brew uninstall` of the tools Nix now provides is a later,

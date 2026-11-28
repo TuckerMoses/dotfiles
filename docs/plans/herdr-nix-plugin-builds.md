@@ -34,19 +34,19 @@ Found on homepc (herdr 0.9.5) in the sandbox's throwaway HOME:
 - `nix/lib/bootstrap-data.nix` reads every `herdr plugin install <owner/repo> --ref <sha>` line with herdr-plugins'
   pattern and fails on one without a pin. `nix/packages/herdr-plugins/source.nix` takes a plugin's pin from there
   and its hashes from `hashes.nix`, keyed by plugin and commit; a commit with no entry stops evaluation with a message
-  naming the plugin, the new pin, the file and the command. Each build writes `.dotfiles-pin` (`<owner/repo>
+  naming the plugin, the new pin, the file and the command. Each build writes `.highwind-pin` (`<owner/repo>
   <commit>`) into its root.
-- Packages (`pkgs.dotfiles` and `packages.<system>`): `herdr-plugin-vim-herdr-navigation` (a copy),
+- Packages (`pkgs.highwind` and `packages.<system>`): `herdr-plugin-vim-herdr-navigation` (a copy),
   `herdr-plugin-herdr-plus` (`buildGoModule`, binary in `bin/`), `herdr-plugin-herdr-fingers`
   (`buildRustPackage`, binary moved to `target/release/`), each the repo plus its artifacts; `herdr-plugins`, a
   link farm by plugin id with `.plugins`; `herdr-plugin-hashes` (also an app), which prints a new `hashes.nix`
   (source hash from `nix flake prefetch`, the Go or Rust hash from a build with that hash empty). All evaluate on
   aarch64-darwin.
-- The module: `dotfiles.herdrPlugins.enable` (default: store mode) places each plugin at
-  `~/.local/share/dotfiles/herdr-plugins/<id>`, and an activation step after `linkGeneration` runs `herdr plugin link`
+- The module: `highwind.herdrPlugins.enable` (default: store mode) places each plugin at
+  `~/.local/share/highwind/herdr-plugins/<id>`, and an activation step after `linkGeneration` runs `herdr plugin link`
   only when herdr's recorded root is not the current build. It skips a plugin herdr installed itself, says why, and
   never fails the activation.
-- `herdr-plugins`: `installed()` also reports a `local` plugin whose root has `.dotfiles-pin`, so `status`, `check`
+- `herdr-plugins`: `installed()` also reports a `local` plugin whose root has `.highwind-pin`, so `status`, `check`
   and `sync` treat it as installed at that commit; `update` skips it with a message. The text contracts are unchanged.
 - `nvim/.config/nvim/lua/plugins/herdr.lua`: a second lookup at the module's path, only when the first finds nothing.
 - `herdr-sandbox` links the build's plugins after its server starts; `--with-plugins` stays, as the way to test
@@ -64,7 +64,7 @@ Found on homepc (herdr 0.9.5) in the sandbox's throwaway HOME:
   at their pins; nvim maps `<C-h>`; generation B links nothing again and the list still has three. With the "already
   linked" test removed from the activation, it failed at B.
 - `validate.sh`: `check_herdr_plugins_nix` runs the checkout's `herdr-plugins check` against a fake herdr listing a
-  linked plugin with `.dotfiles-pin` at the pin, then off it; with the marker read removed it failed.
+  linked plugin with `.highwind-pin` at the pin, then off it; with the marker read removed it failed.
 - A pin moved in a throwaway copy (`cloudmanic/herdr-plus --ref 2222...`): `nix build` and `nix flake check
   --no-build` both stopped with the message above.
 

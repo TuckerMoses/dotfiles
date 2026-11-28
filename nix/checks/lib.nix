@@ -3,7 +3,7 @@
 { pkgs }:
 let
   lib = pkgs.lib;
-  d = pkgs.dotfiles;
+  d = pkgs.highwind;
 in
 rec {
   # Shell lines that make $HOME a throwaway home under the build directory and export the
@@ -19,20 +19,20 @@ rec {
       mkdir -p "$HOME"
       cp -R ${d.home-tree}/. "$HOME/"
       chmod -R u+w "$HOME"
-      mkdir -p "$HOME/.local/bin" "$HOME/.local/share/dotfiles" "$HOME/.tmp" "$HOME/.run"
+      mkdir -p "$HOME/.local/bin" "$HOME/.local/share/highwind" "$HOME/.tmp" "$HOME/.run"
       chmod 700 "$HOME/.tmp" "$HOME/.run"
       ln -s ${d.oh-my-zsh-bundle} "$HOME/.oh-my-zsh"
       for s in herdr-summarize herdr-recent herdr-login-warning herdr-plugins; do
         ln -s "${d.scripts}/bin/$s" "$HOME/.local/bin/$s"
       done
-      ln -s ${d.summarizer-plugin} "$HOME/.local/share/dotfiles/herdr-summarizer-plugin"
+      ln -s ${d.summarizer-plugin} "$HOME/.local/share/highwind/herdr-summarizer-plugin"
 
       # ── Environment ──────────────────────────────────────────────────────────
       # As the sandbox app sets it. nixpkgs' zsh sources /etc/set-environment on NixOS unless
       # __NIXOS_SET_ENVIRONMENT_DONE is set.
       export PATH="${lib.makeBinPath ([ d.tools d.scripts ] ++ path)}"
       export SHELL="${pkgs.zsh}/bin/zsh"
-      export TERM=xterm-256color LANG=C.UTF-8 COLORTERM=truecolor DOTFILES_SANDBOX=1
+      export TERM=xterm-256color LANG=C.UTF-8 COLORTERM=truecolor HIGHWIND_SANDBOX=1
       export TMUX_TMPDIR="$HOME/.tmp" TMPDIR="$HOME/.tmp" XDG_RUNTIME_DIR="$HOME/.run"
       # zsh's here-document files (TMPPREFIX, /tmp/zsh by default) stay in the throwaway HOME too.
       export TMPPREFIX="$HOME/.tmp/zsh"

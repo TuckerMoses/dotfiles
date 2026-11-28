@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# ── Dotfiles bootstrap ──────────────────────────────────────────────────────
+# ── Highwind bootstrap ──────────────────────────────────────────────────────
 # Clone this repo to ~/dotfiles, then run: ./bootstrap.sh
 # Idempotent — safe to re-run on updates.
 # Contract: "==> Installing" is printed before every install attempt, so a run that prints none installed nothing
@@ -21,7 +21,7 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-echo "==> Bootstrapping dotfiles from $DOTFILES_DIR"
+echo "==> Bootstrapping highwind from $DOTFILES_DIR"
 
 # ── macOS: install Homebrew + packages ───────────────────────────────────────
 if [[ "$(uname)" == "Darwin" ]]; then

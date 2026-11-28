@@ -2,7 +2,7 @@
 # links in the throwaway HOME, in a build sandbox that has no /usr/bin at all.
 { pkgs, checkLib }:
 let
-  d = pkgs.dotfiles;
+  d = pkgs.highwind;
 in
 checkLib.mkCheck "scripts" { } ''
   bin="$HOME/.local/bin"
@@ -97,7 +97,7 @@ checkLib.mkCheck "scripts" { } ''
 
   # ── herdr-plugins ────────────────────────────────────────────────────────
   res=$("$bin/herdr-plugins" help 2>&1) || fail "herdr-plugins help exited non-zero: $res"
-  grep -qF 'Pins are read from ${d.scripts.dotfilesDir}/bootstrap.sh' <<<"$res" \
-    || fail "herdr-plugins help: expected 'Pins are read from ${d.scripts.dotfilesDir}/bootstrap.sh', got: $(tail -2 <<<"$res")"
+  grep -qF 'Pins are read from ${d.scripts.highwindDir}/bootstrap.sh' <<<"$res" \
+    || fail "herdr-plugins help: expected 'Pins are read from ${d.scripts.highwindDir}/bootstrap.sh', got: $(tail -2 <<<"$res")"
   echo "herdr-plugins: help runs and reads the packaged bootstrap.sh"
 ''

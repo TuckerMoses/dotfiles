@@ -1,4 +1,4 @@
-# dotfiles
+# highwind
 
 Managed with [GNU Stow](https://www.gnu.org/software/stow/).
 
@@ -77,7 +77,7 @@ nix run .#herdr-sandbox           # a herdr server and client in a throwaway HOM
 
 The Home Manager module (`homeManagerModules.default`) links configs either from the build (`store`
 mode: an edit needs a rebuild) or into a checkout (`checkout` mode: edits are live, as with Stow).
-NixOS hosts turn it on per user with `dotfiles.users` (see `nixos/README.md`).
+NixOS hosts turn it on per user with `highwind.users` (see `nixos/README.md`).
 
 ## Adding a new config
 

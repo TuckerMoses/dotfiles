@@ -8,7 +8,7 @@
 
 flake=$(pwd -P)
 [[ -f $flake/bootstrap.sh && -f $flake/nix/packages/herdr-plugins/hashes.nix ]] \
-  || { echo "herdr-plugin-hashes: run it at the top of the dotfiles checkout" >&2; exit 2; }
+  || { echo "herdr-plugin-hashes: run it at the top of the highwind checkout" >&2; exit 2; }
 nixFlags=(--extra-experimental-features "nix-command flakes")
 system=$(nix "${nixFlags[@]}" eval --impure --raw --expr builtins.currentSystem)
 pins=$(sed -n 's/^[[:space:]]*herdr plugin install \([^ ]*\) --ref \([0-9a-f]\{7,40\}\).*/\1 \2/p' "$flake/bootstrap.sh")

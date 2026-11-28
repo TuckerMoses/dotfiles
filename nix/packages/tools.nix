@@ -39,7 +39,7 @@
   standalone ? true,
 }:
 buildEnv {
-  name = "dotfiles-tools";
+  name = "highwind-tools";
   paths = [
     zsh
     tmux

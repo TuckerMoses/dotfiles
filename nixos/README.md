@@ -9,34 +9,34 @@
 | `modules/host-check.nix` | `host-check`, the on-machine test suite |
 | `modules/base.nix` | Boot loader, Nix settings, tools |
 | `modules/desktop.nix` | GNOME, NVIDIA and remote desktop; off by default |
-| `modules/dotfiles-user.nix` | The `dotfiles.users` option: the dotfiles' configs and tools for named users, through Home Manager |
+| `modules/highwind-user.nix` | The `highwind.users` option: highwind's configs and tools for named users, through Home Manager |
 | `hosts/homepc/` | The home PC |
 | `hosts/vm/` | A QEMU guest running the same modules, for tests |
 | `install.sh` | Installs a host from the NixOS installer |
 | `test/` | VM harness (`vm.sh`) and lockout drills (`drills.sh`) |
 
-## The dotfiles for a user
+## highwind for a user
 
 A machine has two layers, changed by two commands:
 
 | Layer | Defined in | Changed with | Needs root | Undone by |
 |---|---|---|---|---|
 | The system (boot, SSH, Tailscale, firewall, services) | `nixosConfigurations.<host>` | `safe-switch` / `trial-boot` | yes | the timer, unless `safe-confirm` keeps it |
-| One user's dotfiles (configs, tools, font) | `homeConfigurations."<user>@<host>"` | `dotfiles-switch` | no | `dotfiles-switch --rollback` |
+| One user's environment (configs, tools, font) | `homeConfigurations."<user>@<host>"` | `highwind-switch` | no | `highwind-switch --rollback` |
 
 The user layer is a standalone Home Manager configuration (Home Manager is a Nix tool that places files
-and packages in a user's home) built from the dotfiles' module (`nix/home-manager/`). `dotfiles-switch`
+and packages in a user's home) built from highwind's module (`nix/home-manager/`). `highwind-switch`
 builds the caller's `"<user>@<host>"` from `~/dotfiles` (or `--flake DIR`) and activates it as that user,
 so a config change never goes near sshd, Tailscale or the firewall, and nothing re-activates it at boot.
 `--dry-run` builds and lists the files that would change, and any path in the way; `--rollback` goes back
-one Home Manager generation. `nix run ~/dotfiles#dotfiles-switch` works before it is on `PATH`.
+one Home Manager generation. `nix run ~/dotfiles#highwind-switch` works before it is on `PATH`.
 
 `homepc` defines `tucker@homepc`: store mode, the personal profile, and zsh in herdr panes and Ghostty
 windows while the login shell stays bash, so an SSH login never depends on `.zshrc`. A new machine is one
 `mkHome` line in `flake.nix`.
 
-`modules/dotfiles-user.nix` is the other way in, for a machine whose system and users should switch
-together: `dotfiles.users.<name> = { linkMode; checkout; }` runs the same module inside the system's
+`modules/highwind-user.nix` is the other way in, for a machine whose system and users should switch
+together: `highwind.users.<name> = { linkMode; checkout; }` runs the same module inside the system's
 Home Manager. A user who changed only their part would be put back to the system's copy at the next boot,
 so the two are not mixed for one user. Every host imports it, empty by default; only the VM test
 `vm-home` names users. `vm-switch` tests the standalone route (switch, reload, reboot, rollback, logins in

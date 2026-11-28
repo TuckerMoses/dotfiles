@@ -1,4 +1,4 @@
-# Turns the dotfiles Home Manager module on for the users a host names
+# Turns the highwind Home Manager module on for the users a host names
 # (docs/design/nix-dotfiles.md, section 5). Empty by default: a host that names no user gets
 # nothing from this file.
 {
@@ -8,16 +8,16 @@
   ...
 }:
 let
-  users = config.dotfiles.users;
+  users = config.highwind.users;
 in
 {
   # imports cannot depend on config, so the Home Manager NixOS module is always imported; with
   # no users it adds nothing to the system.
   imports = [ inputs.home-manager.nixosModules.home-manager ];
 
-  options.dotfiles.users = lib.mkOption {
+  options.highwind.users = lib.mkOption {
     default = { };
-    description = "Users whose home Home Manager fills with the dotfiles.";
+    description = "Users whose home Home Manager fills with highwind's configs and tools.";
     type = lib.types.attrsOf (
       lib.types.submodule {
         options = {
@@ -27,7 +27,7 @@ in
               "checkout"
             ];
             default = "store";
-            description = "See the Home Manager module's dotfiles.linkMode.";
+            description = "See the Home Manager module's highwind.linkMode.";
           };
           checkout = lib.mkOption {
             type = lib.types.nullOr lib.types.str;
@@ -43,7 +43,7 @@ in
     home-manager.useGlobalPkgs = true;
     home-manager.users = lib.mapAttrs (_: u: {
       imports = [ inputs.self.homeManagerModules.default ];
-      dotfiles = {
+      highwind = {
         enable = true;
         inherit (u) linkMode checkout;
       };

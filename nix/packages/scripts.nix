@@ -19,7 +19,7 @@
   getent,
   bootstrap-dir,
   # The repo herdr-plugins reads bootstrap.sh from: a checkout, or bootstrap.sh alone.
-  dotfilesDir ? bootstrap-dir,
+  highwindDir ? bootstrap-dir,
 }:
 let
   scripts = [
@@ -46,7 +46,7 @@ let
   );
 in
 stdenvNoCC.mkDerivation {
-  pname = "dotfiles-scripts";
+  pname = "highwind-scripts";
   version = "0";
 
   src = lib.fileset.toSource {
@@ -83,10 +83,10 @@ stdenvNoCC.mkDerivation {
       wrapProgram "$out/bin/$s" --prefix PATH : ${runtimePath}
     done
     wrapProgram "$out/bin/herdr-plugins" --prefix PATH : ${runtimePath} \
-      --set DOTFILES_DIR ${lib.escapeShellArg "${dotfilesDir}"}
-    makeWrapper "$out/bin/.herdr-plugins-wrapped" "$out/bin/dotfiles-herdr-plugins-sync" \
+      --set HIGHWIND_DIR ${lib.escapeShellArg "${highwindDir}"}
+    makeWrapper "$out/bin/.herdr-plugins-wrapped" "$out/bin/highwind-herdr-plugins-sync" \
       --prefix PATH : ${runtimePath} \
-      --set DOTFILES_DIR ${lib.escapeShellArg "${dotfilesDir}"} --add-flags sync
+      --set HIGHWIND_DIR ${lib.escapeShellArg "${highwindDir}"} --add-flags sync
 
     if grep -rlE '/usr/bin/(env )?python3' $out; then
       echo "a packaged script still calls /usr/bin/python3 or /usr/bin/env python3" >&2
@@ -94,10 +94,10 @@ stdenvNoCC.mkDerivation {
     fi
   '';
 
-  passthru = { inherit dotfilesDir; };
+  passthru = { inherit highwindDir; };
 
   meta = {
-    description = "The dotfiles' herdr scripts with store interpreters";
+    description = "highwind's herdr scripts with store interpreters";
     platforms = lib.platforms.unix;
   };
 }

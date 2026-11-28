@@ -17,4 +17,4 @@ let
     ]
   );
 in
-(linkFarm "dotfiles-herdr-plugins" plugins) // { inherit plugins; }
+(linkFarm "highwind-herdr-plugins" plugins) // { inherit plugins; }

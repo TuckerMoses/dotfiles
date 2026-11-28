@@ -2,7 +2,7 @@
 
 This runbook is for the owner to follow at the Mac, with an assistant watching. It moves the Mac's dotfiles
 from Stow to `homeConfigurations."johnmoses@mac"`, a standalone Home Manager configuration activated with
-`dotfiles-switch` (the same shape homepc runs). Homebrew stays, and so does everything this repo does not
+`highwind-switch` (the same shape homepc runs). Homebrew stays, and so does everything this repo does not
 manage. Plan for about an hour. **Keep one terminal window open from start to finish.** A shell that is already
 running does not reread its startup files, so a bad config cannot lock you out of that window.
 
@@ -48,7 +48,7 @@ Stow links point.
 
 ```sh
 cd ~/dotfiles && git pull
-nix --extra-experimental-features 'nix-command flakes' run .#dotfiles-switch -- --dry-run
+nix --extra-experimental-features 'nix-command flakes' run .#highwind-switch -- --dry-run
 ```
 
 Run on this Mac on 2026-11-28 (macOS 27.2, from the branch): it built, listed 38 files to place, and listed
@@ -77,13 +77,13 @@ listed aside the same way (`mv ~/X ~/X.pre-nix`).
 ## 4. Activate
 
 ```sh
-nix --extra-experimental-features 'nix-command flakes' run ~/dotfiles#dotfiles-switch
+nix --extra-experimental-features 'nix-command flakes' run ~/dotfiles#highwind-switch
 ```
 
-It prints three lines of the form `dotfiles: herdr plugin <id> is installed by herdr itself (github); left
-as it is`, explained in step 7. It also prints `dotfiles: herdr reloaded its config`, because the running
+It prints three lines of the form `highwind: herdr plugin <id> is installed by herdr itself (github); left
+as it is`, explained in step 7. It also prints `highwind: herdr reloaded its config`, because the running
 herdr server picks up the new `config.toml`. If it prints `did not apply` instead, reload by hand with
-`herdr server reload-config` or `prefix+shift+r`. From now on, `dotfiles-switch` is on `PATH`.
+`herdr server reload-config` or `prefix+shift+r`. From now on, `highwind-switch` is on `PATH`.
 
 ## 5. Check, in a NEW window (keep the old one open)
 
@@ -101,7 +101,7 @@ placed `~/.config/ghostty/config`. The Nerd Font is copied into `~/Library/Fonts
 
 From now on, do not run `./bootstrap.sh` or `stow`, except as part of the way back (step 9). Either one would
 try to restow over Home Manager's links. A config change now goes: edit the file in `~/dotfiles`, then run
-`dotfiles-switch`.
+`highwind-switch`.
 
 ## 6. PATH order (read this once)
 
@@ -149,16 +149,16 @@ To switch to the Nix builds instead (the same commits, built by Nix), do this on
 herdr plugin uninstall vim-herdr-navigation
 herdr plugin uninstall cloudmanic.herdr-plus
 herdr plugin uninstall nathan-poncet.herdr-fingers
-dotfiles-switch                  # prints "dotfiles: linked herdr plugin <id>" three times
+highwind-switch                  # prints "highwind: linked herdr plugin <id>" three times
 herdr plugin list                # each: enabled [local:/nix/store/...]
 herdr-plugins check
 ```
 
-Uninstalling herdr-plus may delete its config directory. `dotfiles-switch` puts those links back. If a
+Uninstalling herdr-plus may delete its config directory. `highwind-switch` puts those links back. If a
 plugin key (`prefix+t`, `prefix+f`, `ctrl+h`) stops responding, restart herdr when convenient. The server
 then runs as the Nix herdr if your shell finds that one first. After this switch, moving a pin goes:
 `herdr-plugins update <plugin>` (it edits `~/dotfiles/bootstrap.sh` and prints the next two commands),
-then `nix run .#herdr-plugin-hashes ...`, then `dotfiles-switch`.
+then `nix run .#herdr-plugin-hashes ...`, then `highwind-switch`.
 
 ### Before you ever stop the server: prove the restore
 
@@ -192,7 +192,7 @@ zsh-vi-mode, `.zshrc` sources that copy rather than the one in the Nix Oh My Zsh
 
 ## 9. The way back
 
-**One generation back.** `dotfiles-switch --rollback` activates the previous generation. It cannot go back
+**One generation back.** `highwind-switch --rollback` activates the previous generation. It cannot go back
 from the first generation: there is nothing before it.
 
 **Back to Stow** (Nix stays installed). In the old window:

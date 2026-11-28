@@ -291,11 +291,11 @@ jobs:
 
       # As docs/mac-cutover.md: the dry run lists what is in the way, and each of
       # those is moved aside (not deleted) before the first activation.
-      - name: dotfiles-switch --dry-run, then move collisions aside
+      - name: highwind-switch --dry-run, then move collisions aside
         id: dry
         if: ${{ !cancelled() && steps.user.outcome == 'success' }}
         run: |
-          out=$(nix run .#dotfiles-switch -- --flake "$PWD" --config "$CONFIG" --dry-run)
+          out=$(nix run .#highwind-switch -- --flake "$PWD" --config "$CONFIG" --dry-run)
           echo "$out"
           grep -q '^No Home Manager generation yet' <<<"$out" || { echo "::error::the dry run found a generation on a fresh runner"; exit 1; }
           grep -qx '+ .zshrc' <<<"$out" || { echo "::error::the dry run would not place .zshrc"; exit 1; }
@@ -307,21 +307,21 @@ jobs:
             mv "$HOME/$f" "$HOME/$f.pre-nix"
           done
 
-      - name: dotfiles-switch
+      - name: highwind-switch
         id: activate
         if: ${{ !cancelled() && steps.dry.outcome == 'success' }}
         run: |
-          nix run .#dotfiles-switch -- --flake "$PWD" --config "$CONFIG" 2>&1 | tee "$RUNNER_TEMP/switch.log"
+          nix run .#highwind-switch -- --flake "$PWD" --config "$CONFIG" 2>&1 | tee "$RUNNER_TEMP/switch.log"
           ids=$(nix eval --json .#packages.aarch64-darwin.herdr-plugins.plugins --apply builtins.attrNames | jq -r '.[]')
           for id in $ids; do
-            grep -q "dotfiles: linked herdr plugin $id" "$RUNNER_TEMP/switch.log" \
+            grep -q "highwind: linked herdr plugin $id" "$RUNNER_TEMP/switch.log" \
               || { echo "::error::the activation did not link herdr plugin $id"; exit 1; }
           done
           current=$(readlink ~/.local/state/home-manager/gcroots/current-home)
           echo "current generation: $current"
           echo "$current" > "$RUNNER_TEMP/gen-a"
           [[ "$(readlink -f ~/.zshrc)" == /nix/store/* ]] || { echo "::error::~/.zshrc is not a store link"; exit 1; }
-          for c in zsh herdr starship nvim dotfiles-switch; do
+          for c in zsh herdr starship nvim highwind-switch; do
             [[ -x ~/.nix-profile/bin/$c ]] || { echo "::error::~/.nix-profile/bin/$c is missing"; exit 1; }
           done
           # On macOS the user's own git, compilers, python3 and BSD commands stay first.
@@ -388,18 +388,18 @@ jobs:
           PATH=~/.nix-profile/bin:$PATH ~/.local/bin/herdr-plugins check
 
       # A second generation (A plus one marker file), then --rollback to A.
-      - name: dotfiles-switch --rollback
+      - name: highwind-switch --rollback
         if: ${{ !cancelled() && steps.activate.outcome == 'success' }}
         run: |
           a=$(cat "$RUNNER_TEMP/gen-a")
           b=$(nix build --no-link --print-out-paths --impure --expr \
             '((builtins.getFlake (toString ./.)).homeConfigurations."runner@mac-ci".extendModules {
-               modules = [ { home.file.".dotfiles-ci-generation".text = "b"; } ];
+               modules = [ { home.file.".highwind-ci-generation".text = "b"; } ];
              }).activationPackage')
-          ~/.nix-profile/bin/dotfiles-switch --activation-package "$b"
-          [[ "$(cat ~/.dotfiles-ci-generation)" == b ]] || { echo "::error::generation B did not place its marker"; exit 1; }
-          ~/.nix-profile/bin/dotfiles-switch --rollback
-          [[ ! -e ~/.dotfiles-ci-generation ]] || { echo "::error::the rollback left B's marker"; exit 1; }
+          ~/.nix-profile/bin/highwind-switch --activation-package "$b"
+          [[ "$(cat ~/.highwind-ci-generation)" == b ]] || { echo "::error::generation B did not place its marker"; exit 1; }
+          ~/.nix-profile/bin/highwind-switch --rollback
+          [[ ! -e ~/.highwind-ci-generation ]] || { echo "::error::the rollback left B's marker"; exit 1; }
           now=$(readlink ~/.local/state/home-manager/gcroots/current-home)
           [[ "$now" == "$a" ]] || { echo "::error::after the rollback the generation is $now, not A ($a)"; exit 1; }
           echo "rolled back to $a"

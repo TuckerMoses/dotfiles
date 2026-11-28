@@ -9,7 +9,7 @@
 { pkgs, checkLib }:
 let
   lib = pkgs.lib;
-  plugins = pkgs.dotfiles.herdr-plugins;
+  plugins = pkgs.highwind.herdr-plugins;
   ids = lib.attrNames plugins.plugins;
 in
 checkLib.mkCheck "herdr-headless" { } ''
@@ -45,7 +45,7 @@ checkLib.mkCheck "herdr-headless" { } ''
   echo "herdr: server answering on $sock"
 
   # ── Summarizer plugin ────────────────────────────────────────────────────
-  res=$(herdr plugin link "$HOME/.local/share/dotfiles/herdr-summarizer-plugin" 2>&1) \
+  res=$(herdr plugin link "$HOME/.local/share/highwind/herdr-summarizer-plugin" 2>&1) \
     || fail "herdr plugin link of the summarizer failed: $res"
   herdr plugin list 2>/dev/null | grep -q '^- herdr-summarizer ' \
     || fail "herdr plugin list does not show herdr-summarizer after linking: $(herdr plugin list 2>&1)"
@@ -80,7 +80,7 @@ checkLib.mkCheck "herdr-headless" { } ''
 
   # ── Third-party plugins ──────────────────────────────────────────────────
   # The module's stable path, then one link each, as its activation step does.
-  pdir="$HOME/.local/share/dotfiles/herdr-plugins"
+  pdir="$HOME/.local/share/highwind/herdr-plugins"
   mkdir -p "$pdir"
   for p in ${plugins}/*; do ln -s "$(readlink -f "$p")" "$pdir/''${p##*/}"; done
   for p in "$pdir"/*; do
@@ -93,7 +93,7 @@ checkLib.mkCheck "herdr-headless" { } ''
   done
   echo "plugins: ${toString (lib.length ids)} linked and enabled"
 
-  # herdr lists a link with no commit; herdr-plugins reads the build's .dotfiles-pin.
+  # herdr lists a link with no commit; herdr-plugins reads the build's .highwind-pin.
   rc=0; out=$(herdr-plugins check 2>&1) || rc=$?
   [ "$rc" = 0 ] || fail "herdr-plugins check exited $rc: $out"
   n=$(grep -c '^ok .* at its pin ' <<<"$out" || true)

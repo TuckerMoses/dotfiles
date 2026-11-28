@@ -1,5 +1,5 @@
 # herdr-plus project (prefix+t) — stowed from ~/dotfiles/herdr
-name = "dotfiles"
+name = "highwind"
 description = "Stow packages for the terminal setup"
 working_dir = "~/dotfiles"
 

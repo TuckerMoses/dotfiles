@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-This repository manages personal dotfiles using [GNU Stow](https://www.gnu.org/software/stow/). It configures a terminal development environment across macOS and Linux.
+This repository, **highwind**, is the configuration of the owner's machines (macOS and Linux) and of his user environment: a terminal development setup delivered by Nix and Home Manager, with [GNU Stow](https://www.gnu.org/software/stow/) still serving the Mac until its cutover (`docs/mac-cutover.md`). The checkout stays at `~/dotfiles` on every machine.
 Nix is a second route to the same files (see "Nix package set"). The Mac still uses Stow. `tucker` on homepc is on the Nix route (since 2026-11-27).
 
 ## Repository Structure
@@ -174,39 +174,39 @@ the same files Stow links. Home Manager, a Nix tool that places files and packag
 Design and reasons: `docs/design/nix-dotfiles.md`. `nix` commands run on a machine with Nix (homepc today); the
 Mac has no Nix until its cutover.
 
-- **Outputs:** `overlays.default` (adds `pkgs.dotfiles.*`, `nix/overlay.nix`); `packages.<system>`: `home-tree`,
-  `scripts`, `summarizer-plugin`, `oh-my-zsh-bundle`, `tools`, `sandbox`, `herdr-sandbox`, `dotfiles-switch`,
+- **Outputs:** `overlays.default` (adds `pkgs.highwind.*`, `nix/overlay.nix`); `packages.<system>`: `home-tree`,
+  `scripts`, `summarizer-plugin`, `oh-my-zsh-bundle`, `tools`, `sandbox`, `herdr-sandbox`, `highwind-switch`,
   `herdr-plugins` and one `herdr-plugin-<repo>` per pinned plugin, `herdr-plugin-hashes` (`nix/packages/`); `apps`
-  for the two sandboxes, `dotfiles-switch` and `herdr-plugin-hashes`; `homeManagerModules.default`
+  for the two sandboxes, `highwind-switch` and `herdr-plugin-hashes`; `homeManagerModules.default`
   (`nix/home-manager/`); `homeConfigurations."<user>@<host>"` (`tucker@homepc`, `test@vm`, `johnmoses@mac`,
   `runner@mac-ci`; one `mkHome` line each, `nix/lib/home-configuration.nix`); `checks` on every system. Linux
   builds on homepc and in CI; aarch64-darwin builds only in CI's `darwin` job (macOS runner), which also
   activates `runner@mac-ci`.
 - **The Mac** is still on Stow and Homebrew. `johnmoses@mac` is ready for it, and the owner switches it himself
   by following `docs/mac-cutover.md`. Until then, nothing on the Mac uses Nix.
-- **Link modes** (`dotfiles.linkMode`): `store` links each config from the build, so an edit needs a rebuild;
-  `checkout` links each config into `dotfiles.checkout`, so edits there are live at once, as with Stow. In both,
+- **Link modes** (`highwind.linkMode`): `store` links each config from the build, so an edit needs a rebuild;
+  `checkout` links each config into `highwind.checkout`, so edits there are live at once, as with Stow. In both,
   the four herdr scripts and nvim's two lock files come from the build.
-- **Profiles:** `base` (default) is everything portable; `dotfiles.profiles.personal.enable` adds what names the
-  owner's directories (herdr-plus `projects/` and `worktrees/`, the validate-dotfiles quick action; the list is
+- **Profiles:** `base` (default) is everything portable; `highwind.profiles.personal.enable` adds what names the
+  owner's directories (herdr-plus `projects/` and `worktrees/`, the validate-highwind quick action; the list is
   in `nix/packages/home-tree.nix`, and `link-modes` fails on a base config that names them). Stow places both.
-  `dotfiles.interactiveShell` (store mode) makes herdr panes and Ghostty windows start that shell, by appending
+  `highwind.interactiveShell` (store mode) makes herdr panes and Ghostty windows start that shell, by appending
   one setting to the placed copies of their configs, so the login shell can stay bash.
 - **herdr plugins:** on the Nix route the three pinned plugins are Nix builds at the pins in `bootstrap.sh` (still
   the one place a pin is written), with their source and Go/Rust hashes in `nix/packages/herdr-plugins/hashes.nix`,
-  keyed by commit. The module places them under `~/.local/share/dotfiles/herdr-plugins/` and `herdr plugin link`s
-  each (`dotfiles.herdrPlugins.enable`, on in store mode). A moved pin stops the build until `hashes.nix` is
+  keyed by commit. The module places them under `~/.local/share/highwind/herdr-plugins/` and `herdr plugin link`s
+  each (`highwind.herdrPlugins.enable`, on in store mode). A moved pin stops the build until `hashes.nix` is
   replaced with what `nix run .#herdr-plugin-hashes` prints. On a Nix home, `herdr-plugins update` reviews a
-  Nix-built plugin, moves its pin in the checkout's `bootstrap.sh` (`--repo DIR`, else `$DOTFILES_FLAKE` or
+  Nix-built plugin, moves its pin in the checkout's `bootstrap.sh` (`--repo DIR`, else `$HIGHWIND_FLAKE` or
   `~/dotfiles`) without reinstalling it, and prints those two follow-up commands.
-- **Switching a user:** `dotfiles-switch` builds the caller's `homeConfigurations."<user>@<host>"` from
+- **Switching a user:** `highwind-switch` builds the caller's `homeConfigurations."<user>@<host>"` from
   `~/dotfiles` and activates it, as the user, with no root and no `safe-switch`; `--dry-run` lists what would
   change, `--rollback` goes back one generation. herdr reloads its `config.toml` by itself (an `onChange` hook,
   only when its server runs); new zsh shells read the new files; running nvim and Ghostty need a restart. The
-  NixOS option `dotfiles.users.<name>` (`nixos/modules/dotfiles-user.nix`) is the other way in; only `vm-home` uses it.
+  NixOS option `highwind.users.<name>` (`nixos/modules/highwind-user.nix`) is the other way in; only `vm-home` uses it.
 - **Checks:** `nix flake check`, or one with `nix build .#checks.x86_64-linux.<name>`. Build-sandbox checks
   (`nix/checks/`: no network, no real `$HOME`) and NixOS VM tests (`nix/tests/`, named `vm-*`, x86_64-linux, KVM;
-  `vm-switch` drives `dotfiles-switch` through a switch, a herdr reload, a reboot and a rollback).
+  `vm-switch` drives `highwind-switch` through a switch, a herdr reload, a reboot and a rollback).
 - **Sandboxes:** `nix run .#sandbox -- [--keep] [--summarizer] [--] [<command...>]` runs `zsh -i`, or the command,
   in a throwaway `HOME` under `/tmp` filled from the build, under `env -i` with only the build's tools on `PATH`.
   `nix run .#herdr-sandbox -- [--keep] [--with-plugins] [--summarizer] [--no-attach] [--] [<command...>]` also starts
@@ -214,7 +214,7 @@ Mac has no Nix until its cutover.
   installer instead; `--summarizer` links the summarizer, run dry). Both refuse to start in the real home. They isolate files and sockets; they are not a security boundary.
 - **Testing herdr changes:** a change to `herdr/`, `herdr-summarizer/` or a herdr script is tested with a flake
   check or in `herdr-sandbox` (on the Mac, `test/suite.sh local`). An agent never tests against the owner's running
-  herdr, and never runs the plugin sync (`dotfiles-herdr-plugins-sync`) outside a sandbox.
+  herdr, and never runs the plugin sync (`highwind-herdr-plugins-sync`) outside a sandbox.
 
 ## NixOS hosts
 
@@ -287,7 +287,7 @@ Worktrees should be removed before testing (see above). In general, remove a wor
 - **Preserve the section comment style** (`# ── Section ──────────`) when adding to config files.
 - **Maintain Catppuccin Mocha consistency** — use the palette when adding new UI elements.
 - **Keep bootstrap.sh idempotent** — guard installations with existence checks (`command -v`, `[[ -d ... ]]`).
-- **Don't add unnecessary complexity** — this is a personal dotfiles repo, not a framework.
+- **Don't add unnecessary complexity** — this is a personal configuration repo, not a framework.
 - **Test cross-platform** — any bootstrap changes must work on both macOS and Linux.
 - **Stow structure must mirror `$HOME`** — files must be placed exactly where they'd live under `~`.
 - **Prefer appending to existing config sections** over creating new files when possible.

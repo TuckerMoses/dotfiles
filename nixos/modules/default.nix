@@ -5,6 +5,6 @@
     ./safe-rebuild.nix
     ./host-check.nix
     ./desktop.nix
-    ./dotfiles-user.nix
+    ./highwind-user.nix
   ];
 }

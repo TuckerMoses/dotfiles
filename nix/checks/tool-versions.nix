@@ -5,7 +5,7 @@
 { pkgs, nixpkgs }:
 let
   lib = pkgs.lib;
-  d = pkgs.dotfiles;
+  d = pkgs.highwind;
   root = ../..;
   data = import ../lib/bootstrap-data.nix { inherit lib; };
 

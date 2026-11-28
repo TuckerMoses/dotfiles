@@ -1,5 +1,6 @@
 # herdr-plus worktree layout: fills a herdr git worktree of this repo when it is created or
 # reopened (matched on the repo's basename). Stowed from ~/dotfiles/herdr.
+# The checkout keeps the directory name dotfiles, so the basename matched is still that.
 repo = "dotfiles"
 
 [[tabs]]

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ── Dotfiles validation ─────────────────────────────────────────────────────
+# ── Highwind validation ─────────────────────────────────────────────────────
 # Checks that everything in this repo is live on this machine and working:
 # every stowed file links back to this checkout, the tools bootstrap installs
 # exist, each config parses, herdr's plugins and integration are healthy, and
@@ -57,7 +57,7 @@ nix_placed() {  # <store> <home> <pkg> <rel> <target> <src>
   case "$3/$4" in
     # The module copies these two in as writable files, so lazy.nvim and LazyVim can rewrite them.
     nvim/.config/nvim/lazy-lock.json|nvim/.config/nvim/lazyvim.json)
-      [[ -f "$5" && ! -L "$5" && -d "$2/.local/share/dotfiles" ]] && return ;;
+      [[ -f "$5" && ! -L "$5" && -d "$2/.local/share/highwind" ]] && return ;;
   esac
   if [[ "$(real "$5")" != "$1"/* ]]; then echo "exists but is not linked to this checkout"
   elif [[ "$3" == herdr && "$4" == .local/bin/* ]]; then :  # the build rewrites their interpreters
@@ -81,7 +81,7 @@ done
 check_nix_placed() {
   local t s src="$DOTFILES_DIR/zsh/.zshrc" got=""
   t="$(mktemp -d "${TMPDIR:-/tmp}/dotfiles-validate-store.XXXXXX")"; s="$(real "$t")/store"
-  mkdir -p "$s" "$t/home/.local/share/dotfiles"
+  mkdir -p "$s" "$t/home/.local/share/highwind"
   cp "$src" "$s/same"; { cat "$src"; echo '# changed'; } >"$s/differs"; cp "$src" "$t/lock"
   got+="[$(nix_placed "$s" "$t/home" zsh .zshrc "$s/same" "$src")]"
   got+="[$(nix_placed "$s" "$t/home" zsh .zshrc "$s/differs" "$src")]"
@@ -208,17 +208,17 @@ for var in ZDOTDIR XDG_CONFIG_HOME STARSHIP_CONFIG ATUIN_CONFIG_DIR NVIM_APPNAME
     ZDOTDIR)         [[ "$(real "$val")" == "$(real "$HOME")" ]] && continue ;;
     XDG_CONFIG_HOME) [[ "$(real "$val")" == "$(real "$HOME/.config")" ]] && continue ;;
   esac
-  fail "$var=$val redirects a program away from the dotfiles config"
+  fail "$var=$val redirects a program away from the highwind config"
 done
 
 # Ghostty on macOS also reads its Application Support config, after the XDG one,
-# so anything in it overrides the dotfiles config.
+# so anything in it overrides the highwind config.
 if [[ "$OS" == "Darwin" ]]; then
   for f in "$HOME/Library/Application Support/com.mitchellh.ghostty/config" \
            "$HOME/Library/Application Support/com.mitchellh.ghostty/config.ghostty"; do
     [[ -e "$f" ]] || continue
-    if [[ -s "$f" ]]; then fail "ghostty also loads ${f/#$HOME/~} after the dotfiles config, overriding it"
-    else info "ghostty: ${f/#$HOME/~} exists but is empty (harmless; anything added there overrides the dotfiles config)"; fi
+    if [[ -s "$f" ]]; then fail "ghostty also loads ${f/#$HOME/~} after the highwind config, overriding it"
+    else info "ghostty: ${f/#$HOME/~} exists but is empty (harmless; anything added there overrides the highwind config)"; fi
   done
 fi
 # A running Ghostty keeps the config it started with.
@@ -238,8 +238,8 @@ fi
 if have nvim; then
   site="$HOME/.local/share/nvim/site"; extra=""
   for d in plugin ftplugin after lua init.lua init.vim; do [[ -e "$site/$d" ]] && extra="$extra $d"; done
-  if [[ -n "$extra" ]]; then warn "nvim also loads config from ${site/#$HOME/~} (${extra# }), which is not in dotfiles"
-  else pass "nvim: nothing config-like outside the dotfiles config dir"; fi
+  if [[ -n "$extra" ]]; then warn "nvim also loads config from ${site/#$HOME/~} (${extra# }), which is not in highwind"
+  else pass "nvim: nothing config-like outside the highwind config dir"; fi
   nconf="$(find "$DOTFILES_DIR/nvim" -type f -exec stat -f '%m' {} + 2>/dev/null | sort -n | tail -1)"
   [[ -n "$nconf" ]] || nconf="$(find "$DOTFILES_DIR/nvim" -type f -printf '%T@\n' 2>/dev/null | cut -d. -f1 | sort -n | tail -1)"
   stale=0; running=0
@@ -266,7 +266,7 @@ for f in .zshenv .zprofile .zlogin .zlogout; do
   case "$f" in
     .zshenv)   info "~/.zshenv: machine-local env for non-interactive shells, untracked by design" ;;
     .zprofile) info "~/.zprofile: machine-local login setup (brew shellenv before .zshrc), untracked by design" ;;
-    *)         warn "zsh loads ~/$f, which is not in dotfiles" ;;
+    *)         warn "zsh loads ~/$f, which is not in highwind" ;;
   esac
 done
 [[ -e "$HOME/.zshrc.local" ]] && info "~/.zshrc.local: machine-local layer, untracked by design (keep secrets out of the repo)"
@@ -601,35 +601,35 @@ PY
   emit "bound commands" <<<"$out"
 }
 
-# herdr-plugins takes the repo from DOTFILES_DIR (the Nix build sets it), and sync refuses outside a
+# herdr-plugins takes the repo from HIGHWIND_DIR (the Nix build sets it), and sync refuses outside a
 # sandbox. This runs the checkout's copy, which the Stow check ties to the live one (on Nix the live one is
-# a wrapper that sets DOTFILES_DIR itself). A fake herdr comes first on PATH, so even a sync that failed
+# a wrapper that sets HIGHWIND_DIR itself). A fake herdr comes first on PATH, so even a sync that failed
 # to refuse would reach only the fake.
 check_herdr_plugins_env() {  # <herdr-plugins>
   local t out rc ph mode
   t="$(mktemp -d "${TMPDIR:-/tmp}/dotfiles-validate-hp.XXXXXX")"; mkdir -p "$t/repo" "$t/bin" "$t/home"
   cp "$BOOTSTRAP" "$t/repo/bootstrap.sh"
   printf '#!/bin/sh\necho "$*" >>"%s/herdr-called"\nexit 1\n' "$t" >"$t/bin/herdr"; chmod +x "$t/bin/herdr"
-  out="$(DOTFILES_DIR="$t/repo" "$1" help 2>&1)"
+  out="$(HIGHWIND_DIR="$t/repo" "$1" help 2>&1)"
   ph="$("$PY" -I -c 'import os, pwd; print(pwd.getpwuid(os.getuid()).pw_dir)')"
   if [[ "$(real "$(sed -n 's/^Pins are read from //p' <<<"$out")")" != "$(real "$t/repo/bootstrap.sh")" ]]; then
-    fail "herdr-plugins ignores DOTFILES_DIR: help says $(tail -1 <<<"${out:-nothing}")"
+    fail "herdr-plugins ignores HIGHWIND_DIR: help says $(tail -1 <<<"${out:-nothing}")"
   else
-    # Each run trips one guard only: a throwaway HOME without DOTFILES_SANDBOX, then the real HOME with it.
-    for mode in "DOTFILES_SANDBOX unset" "HOME is the real home"; do
+    # Each run trips one guard only: a throwaway HOME without HIGHWIND_SANDBOX, then the real HOME with it.
+    for mode in "HIGHWIND_SANDBOX unset" "HOME is the real home"; do
       rc=0
-      if [[ "$mode" == DOTFILES* ]]; then out="$(env -u DOTFILES_SANDBOX HOME="$t/home" PATH="$t/bin:$PATH" DOTFILES_DIR="$t/repo" "$1" sync 2>&1)" || rc=$?
-      else out="$(DOTFILES_SANDBOX=1 HOME="$ph" PATH="$t/bin:$PATH" DOTFILES_DIR="$t/repo" "$1" sync 2>&1)" || rc=$?; fi
+      if [[ "$mode" == HIGHWIND* ]]; then out="$(env -u HIGHWIND_SANDBOX HOME="$t/home" PATH="$t/bin:$PATH" HIGHWIND_DIR="$t/repo" "$1" sync 2>&1)" || rc=$?
+      else out="$(HIGHWIND_SANDBOX=1 HOME="$ph" PATH="$t/bin:$PATH" HIGHWIND_DIR="$t/repo" "$1" sync 2>&1)" || rc=$?; fi
       if (( rc == 0 )) || [[ -e "$t/herdr-called" || "$out" != *"sync refused"* ]]; then
         fail "herdr-plugins sync did not refuse ($mode, exit $rc): $(tail -1 <<<"${out:-no output}")"; mode=""; break
       fi
     done
-    [[ -z "$mode" ]] || pass "herdr-plugins reads DOTFILES_DIR; sync refuses without DOTFILES_SANDBOX=1 and in the real HOME"
+    [[ -z "$mode" ]] || pass "herdr-plugins reads HIGHWIND_DIR; sync refuses without HIGHWIND_SANDBOX=1 and in the real HOME"
   fi
   rm -rf "$t"
 }
 # On a Nix-managed home the plugins are Nix builds, which herdr lists as local links with no commit;
-# herdr-plugins reads the commit from the .dotfiles-pin file each build writes into its root. A fake herdr
+# herdr-plugins reads the commit from the .highwind-pin file each build writes into its root. A fake herdr
 # lists one such plugin at bootstrap.sh's first pin, then at another commit: check must report it at its pin,
 # then off it (exit 1). Runs the checkout's copy, as above.
 check_herdr_plugins_nix() {  # <herdr-plugins>
@@ -640,15 +640,15 @@ check_herdr_plugins_nix() {  # <herdr-plugins>
   cp "$BOOTSTRAP" "$t/repo/bootstrap.sh"
   printf '#!/bin/sh\ncat "%s/list.json"\n' "$t" >"$t/bin/herdr"; chmod +x "$t/bin/herdr"
   printf '{"result":{"plugins":[{"plugin_id":"nix-built","plugin_root":"%s","source":{"kind":"local"}}]}}\n' "$t/plugin" >"$t/list.json"
-  echo "$repo $pin" >"$t/plugin/.dotfiles-pin"
-  out="$(PATH="$t/bin:$PATH" DOTFILES_DIR="$t/repo" "$1" check 2>&1)" || rc=$?
+  echo "$repo $pin" >"$t/plugin/.highwind-pin"
+  out="$(PATH="$t/bin:$PATH" HIGHWIND_DIR="$t/repo" "$1" check 2>&1)" || rc=$?
   if (( rc != 0 )) || ! grep -qx "ok $repo at its pin ${pin:0:7}" <<<"$out"; then
     fail "herdr-plugins check does not see a Nix-built plugin at its pin (exit $rc): $(grep -F "$repo" <<<"$out" | head -1)"
   else
-    echo "$repo 0000000000000000000000000000000000000000" >"$t/plugin/.dotfiles-pin"
-    rc=0; out="$(PATH="$t/bin:$PATH" DOTFILES_DIR="$t/repo" "$1" check 2>&1)" || rc=$?
+    echo "$repo 0000000000000000000000000000000000000000" >"$t/plugin/.highwind-pin"
+    rc=0; out="$(PATH="$t/bin:$PATH" HIGHWIND_DIR="$t/repo" "$1" check 2>&1)" || rc=$?
     if (( rc == 1 )) && grep -qx "drift $repo at 0000000, pinned ${pin:0:7}" <<<"$out"; then
-      pass "herdr-plugins check reads a Nix-built plugin's commit (.dotfiles-pin): at its pin, and off it"
+      pass "herdr-plugins check reads a Nix-built plugin's commit (.highwind-pin): at its pin, and off it"
     else fail "herdr-plugins check does not see a Nix-built plugin off its pin (exit $rc): $(grep -F "$repo" <<<"$out" | head -1)"; fi
   fi
   rm -rf "$t"

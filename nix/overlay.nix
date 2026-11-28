@@ -1,11 +1,11 @@
-# Adds pkgs.dotfiles: the packages the dotfiles need (see docs/design/nix-dotfiles.md, section 4).
+# Adds pkgs.highwind: the packages highwind needs (see docs/design/nix-dotfiles.md, section 4).
 # Takes the flake inputs so two tools can come from nixpkgs-unstable.
 inputs: final: prev:
 let
   unstable = inputs.nixpkgs-unstable.legacyPackages.${prev.stdenv.hostPlatform.system};
 in
 {
-  dotfiles = prev.lib.makeScope final.newScope (self: {
+  highwind = prev.lib.makeScope final.newScope (self: {
     # ── Tools from nixpkgs-unstable ──────────────────────────────────────────
     # 26.05 has no herdr and only jujutsu 0.41.0; bootstrap.sh pins 0.47.1.
     herdr = unstable.herdr;
@@ -28,7 +28,7 @@ in
     tools = self.callPackage ./packages/tools.nix { };
     sandbox = self.callPackage ./packages/sandbox.nix { };
     herdr-sandbox = self.callPackage ./packages/sandbox.nix { withHerdr = true; };
-    dotfiles-switch = self.callPackage ./packages/dotfiles-switch.nix { };
+    highwind-switch = self.callPackage ./packages/highwind-switch.nix { };
 
     # ── herdr's third-party plugins ──────────────────────────────────────────
     # Built at the pins bootstrap.sh writes (nix/packages/herdr-plugins/source.nix).

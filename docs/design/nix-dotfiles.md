@@ -1,5 +1,8 @@
 # Design: the dotfiles as a Nix package set
 
+The project was renamed highwind on 2026-11-28; its identifiers below use the new name, and this
+file keeps its original name.
+
 Status: design, written 2026-11-27, before any of it is built. Branch `feat/nix-dotfiles`, stacked
 on `feat/nixos-host` (PR #7).
 
@@ -64,7 +67,7 @@ Checked on homepc on 2026-11-27 unless a file is named.
 ```
 flake.nix
   inputs:   nixpkgs (26.05), nixpkgs-unstable, home-manager (release-26.05), disko
-  outputs:  overlays.default            adds pkgs.dotfiles.*
+  outputs:  overlays.default            adds pkgs.highwind.*
             packages.<system>.*         the same set, per system
             apps.<system>.*             sandbox, herdr-sandbox
             homeManagerModules.default  places configs and tools for one user
@@ -77,7 +80,7 @@ nix/
   home-manager/    the module in section 5
   checks/          section 7
   tests/           NixOS VM tests, section 7
-nixos/modules/dotfiles-user.nix   turns the module on for named users of a host
+nixos/modules/highwind-user.nix   turns the module on for named users of a host
 ```
 
 Systems: `x86_64-linux`, `aarch64-linux`, `aarch64-darwin`. The Darwin packages are evaluated in this change and not built, because no machine with Nix on macOS exists
@@ -98,12 +101,12 @@ No file added under `nix/` or `nixos/` may contain a literal owner home director
 
 ## 4. The package set
 
-Everything lives under `pkgs.dotfiles` and is exported as `packages.<system>`.
+Everything lives under `pkgs.highwind` and is exported as `packages.<system>`.
 
 | Package | What it is |
 |---|---|
 | `home-tree` | A store directory laid out like `$HOME`: the union of the Stow packages `atuin`, `ghostty`, `herdr`, `nvim`, `starship`, `tmux`, `zsh`, minus the four scripts under `herdr/.local/bin`. Built with `lib.fileset` from those directories only, so a docs edit does not rebuild it. |
-| `scripts` | `herdr-summarize`, `herdr-recent`, `herdr-login-warning`, `herdr-plugins`, with interpreters rewritten to store paths and their runtime commands (python 3.11 or later, fzf, git, gh, jq, coreutils, awk, sed) on a wrapped `PATH`. Takes a `dotfilesDir` argument (default: `bootstrap-dir`, an overlay attribute made once with `lib.fileset.toSource` from `./bootstrap.sh` only); the `herdr-plugins` and `dotfiles-herdr-plugins-sync` wrappers set `DOTFILES_DIR` to it with `makeWrapper --set`. `dotfiles-herdr-plugins-sync` is on `PATH` through the package only and is not one of the four linked scripts. |
+| `scripts` | `herdr-summarize`, `herdr-recent`, `herdr-login-warning`, `herdr-plugins`, with interpreters rewritten to store paths and their runtime commands (python 3.11 or later, fzf, git, gh, jq, coreutils, awk, sed) on a wrapped `PATH`. Takes a `highwindDir` argument (default: `bootstrap-dir`, an overlay attribute made once with `lib.fileset.toSource` from `./bootstrap.sh` only); the `herdr-plugins` and `highwind-herdr-plugins-sync` wrappers set `HIGHWIND_DIR` to it with `makeWrapper --set`. `highwind-herdr-plugins-sync` is on `PATH` through the package only and is not one of the four linked scripts. |
 | `summarizer-plugin` | `herdr-summarizer/plugin` with `hook` rewritten to call the packaged `herdr-summarize`. |
 | `oh-my-zsh-bundle` | nixpkgs `oh-my-zsh` with `custom/plugins/` holding `zsh-autosuggestions`, `fzf-tab`, `zsh-syntax-highlighting` and `zsh-vi-mode` from nixpkgs. Linked as `~/.oh-my-zsh`. Its `oh-my-zsh.sh` is patched so that when `$ZSH` is not writable it sets `ZSH_CACHE_DIR=${XDG_CACHE_HOME:-$HOME/.cache}/oh-my-zsh` and disables the update check; `zsh/.zshrc` stays unchanged. |
 | `tmux-plugins` | `tpm`, `tmux-sensible`, `tmux-resurrect`, `tmux-continuum`, under the directory names TPM expects in `~/.tmux/plugins`. |
@@ -130,9 +133,9 @@ The JetBrains Mono Nerd Font comes from nixpkgs through Home Manager's fontconfi
 
 - **herdr's third-party plugins** (vim-herdr-navigation, herdr-plus, herdr-fingers). herdr
   installs and builds them into `~/.config/herdr/plugins` from the pins in `bootstrap.sh`. That
-  stays. On a Nix machine `dotfiles-herdr-plugins-sync` runs the same `herdr plugin install ... --ref`
+  stays. On a Nix machine `highwind-herdr-plugins-sync` runs the same `herdr plugin install ... --ref`
   lines, read by `herdr-plugins`' existing `bootstrap.sh` parser. It needs the network, exits
-  non-zero on a missing pin line or a failed install, and refuses unless `DOTFILES_SANDBOX=1`
+  non-zero on a missing pin line or a failed install, and refuses unless `HIGHWIND_SANDBOX=1`
   (set by both sandbox programs) and `$HOME` differs from the passwd home (`getent passwd`), the test section 6
   uses. Live use belongs to the "switch tucker" follow-up.
 - **lazy.nvim's plugins.** lazy.nvim fetches them on first start from `lazy-lock.json`.
@@ -151,7 +154,7 @@ All are backward compatible and change nothing on the Mac.
 1. `herdr-summarize`: its command lookup also searches `$PATH`, after the fixed list. On NixOS
    the fixed list finds nothing but `~/.local/bin`.
 2. `herdr-plugins`: the repo location can be given by an environment variable
-   (`DOTFILES_DIR`); without it the symlink walk is used as today. It gains a `sync` subcommand
+   (`HIGHWIND_DIR`); without it the symlink walk is used as today. It gains a `sync` subcommand
    (the sync behaviour in "Not packaged" above).
 3. `validate.sh`, `herdr-plugins`, `test/suite.sh`: where `/usr/bin/python3` does not exist, use
    `python3` from `PATH`. Every call gets `-I`, so the interpreter ignores `PYTHON*` variables and does not put the working
@@ -160,7 +163,7 @@ All are backward compatible and change nothing on the Mac.
    equal the checkout's file, and fails with "rebuild" advice when they differ. The four
    `herdr/.local/bin` scripts are exempt from the byte comparison (their interpreters are
    rewritten): a store path passes for them. `lazy-lock.json` and `lazyvim.json` pass when they are
-   regular files and `~/.local/share/dotfiles` exists (the module's signal).
+   regular files and `~/.local/share/highwind` exists (the module's signal).
 5. `validate.sh` fails on a file under `nix/` or `nixos/` matching `/Users/` or `/home/tucker`
    (section 3).
 6. Checks: source changes 1-5 each get a `validate.sh` check (run against a throwaway copy and shown
@@ -177,9 +180,9 @@ what it reports for the test user.
 
 | Option | Meaning |
 |---|---|
-| `dotfiles.enable` | Turn the module on. |
-| `dotfiles.linkMode` | `"store"` (default) or `"checkout"`. |
-| `dotfiles.checkout` | Absolute path of a git checkout of this repo. Required in `checkout` mode. |
+| `highwind.enable` | Turn the module on. |
+| `highwind.linkMode` | `"store"` (default) or `"checkout"`. |
+| `highwind.checkout` | Absolute path of a git checkout of this repo. Required in `checkout` mode. |
 
 What it does in both modes:
 
@@ -187,12 +190,12 @@ What it does in both modes:
   `~/.local/bin`, because `herdr/config.toml` calls them by that path.
 - Links `~/.oh-my-zsh` to `oh-my-zsh-bundle` and the four entries of `tmux-plugins` into a real
   `~/.tmux/plugins` directory.
-- Links `summarizer-plugin` at `~/.local/share/dotfiles/herdr-summarizer-plugin`, a path that
+- Links `summarizer-plugin` at `~/.local/share/highwind/herdr-summarizer-plugin`, a path that
   stays the same across rebuilds. Linking it into herdr stays opt-in and manual, as today.
 - Installs the font.
-- Passes `dotfilesDir` to `scripts.override`: the checkout in `checkout` mode, `bootstrap-dir` in
+- Passes `highwindDir` to `scripts.override`: the checkout in `checkout` mode, `bootstrap-dir` in
   `store` mode (where `update` refuses, as it already does in a worktree).
-- Asserts that in `checkout` mode `dotfiles.checkout` is non-null and absolute.
+- Asserts that in `checkout` mode `highwind.checkout` is non-null and absolute.
 
 It links config files one by one, so `~/.config/herdr`, `~/.config/nvim` and `~/.tmux/plugins`
 stay real, writable directories; only the store bundles named above are linked as directories.
@@ -212,11 +215,11 @@ the two nvim files are as in `store` mode, so changing any of them means rebuild
 The module never sets a login shell, never writes `~/.zshrc.local`, `~/.zshenv` or `~/.zprofile`,
 and never touches `~/.claude`.
 
-`nixos/modules/dotfiles-user.nix` is added to `nixos/modules/default.nix`, so every host imports it
+`nixos/modules/highwind-user.nix` is added to `nixos/modules/default.nix`, so every host imports it
 (section 9 covers it from stage b). It adds the option
-`dotfiles.users.<name> = { linkMode = "store" | "checkout"; checkout = null or an absolute path; }`,
+`highwind.users.<name> = { linkMode = "store" | "checkout"; checkout = null or an absolute path; }`,
 empty by default and set only by the VM test host and the VM tests, and passes each entry to the
-module's options, setting `dotfiles.enable = true` for it. `mkHost` gains `specialArgs = { inherit inputs; }`; the file imports
+module's options, setting `highwind.enable = true` for it. `mkHost` gains `specialArgs = { inherit inputs; }`; the file imports
 `inputs.home-manager.nixosModules.home-manager` and `inputs.self.homeManagerModules.default`, sets
 `home-manager.useGlobalPkgs = true` and `home.stateVersion = "26.05"` for each named user. The module
 takes its packages from `self.packages.${pkgs.stdenv.hostPlatform.system}` (the flake exports it
@@ -241,14 +244,14 @@ Unattended runs use these forms. With no command, `sandbox` runs `zsh -i` and `h
   `oh-my-zsh-bundle` as `~/.oh-my-zsh`, the four `tmux-plugins` entries into a real `~/.tmux/plugins`
   and the four scripts into `~/.local/bin`.
 - Starts the program with `env -i` and exactly: `HOME`, `PATH` (the `bin` directories of `tools` and `scripts` only), `SHELL` (the sandbox zsh's store path), `TERM=xterm-256color`, `LANG=C.UTF-8`,
-  `COLORTERM=truecolor`, `DOTFILES_SANDBOX=1`, `SSL_CERT_FILE` and `NIX_SSL_CERT_FILE` (both the `cacert`
+  `COLORTERM=truecolor`, `HIGHWIND_SANDBOX=1`, `SSL_CERT_FILE` and `NIX_SSL_CERT_FILE` (both the `cacert`
   bundle's store path, so https fetches work), and `TMUX_TMPDIR`, `TMPDIR` and `XDG_RUNTIME_DIR` all
   inside the throwaway `HOME`; `--summarizer` adds `HERDR_SUMMARIZER_DRY=1`. It refuses to start if the new `HOME` equals the passwd home or the caller's `$HOME`
   (captured before `env -i`), or if `TMUX_TMPDIR` is outside it. These are the guards
   `test/suite.sh local` has.
 - `herdr-sandbox` starts a herdr server whose socket, config, state and plugin registry are all
   inside the throwaway `HOME`, then attaches to it. `--with-plugins` runs
-  `dotfiles-herdr-plugins-sync` first. `--summarizer` links the packaged summarizer plugin with
+  `highwind-herdr-plugins-sync` first. `--summarizer` links the packaged summarizer plugin with
   `HERDR_SUMMARIZER_DRY=1`, so no model calls are made.
 - Deletes the directory on exit unless `--keep` is given.
 
@@ -274,7 +277,7 @@ Build-sandbox checks, for every Linux system:
 | `herdr-headless` | A herdr server starts in the temporary `HOME`; the summarizer plugin links; creating a workspace produces hook runs that all succeed and a non-empty state file, with `HERDR_SUMMARIZER_DRY=1` exported before the server starts. Steps 2 and 6 of `test/suite.sh`. |
 | `tool-versions` | The floors in section 4; the tuicr version and both sha256 values in the `fetchurl` equal those parsed from `bootstrap.sh`; the `tuicr` package hard-codes its version and two hashes, and `bootstrap-data.nix` is read only by the checks. |
 | `lifeline-guard` | Pure evaluation, no VM: each of the nine config changes that `nixos/test/drills.sh` expects the lockout guard to refuse does fail an assertion, and the unmodified host passes. |
-| `link-modes` | Home Manager's activation package builds for a test user in each mode. In `store` mode the placed set equals the Stow set, so a new package fails the check until `home-tree` names it. Placed set: `config.home.file` targets minus those under `.oh-my-zsh`, `.tmux/plugins/` and `.local/share/dotfiles/`, plus the two nvim names. Stow set: paths from `git ls-files -- <pkg>` with `<pkg>/` removed, over the packages `bootstrap.sh` names on its `for pkg in` line plus every `--restow <name>` (as `validate.sh` lines 50-51 read them), skipping a name with no directory as `validate.sh` does. Both are sorted with `LC_ALL=C`. `link-modes` and `tool-versions` both read `bootstrap.sh` through `nix/lib/bootstrap-data.nix`, written in stage b with the package list and extended in stage c with the tuicr values. The test user comes from `home-manager.lib.homeManagerConfiguration` (user `test`, home `/home/test`, stateVersion `"26.05"`, pkgs from the flake). In `checkout` mode `dotfiles.checkout` is `/test/checkout` and each config link targets `<checkout>/<package>/<relative path>`, with the scripts and nvim files as in `store` mode; with it unset, `builtins.tryEval` of the activation package fails. In both modes the `herdr-plugins` wrapper carries the expected `DOTFILES_DIR`. |
+| `link-modes` | Home Manager's activation package builds for a test user in each mode. In `store` mode the placed set equals the Stow set, so a new package fails the check until `home-tree` names it. Placed set: `config.home.file` targets minus those under `.oh-my-zsh`, `.tmux/plugins/` and `.local/share/highwind/`, plus the two nvim names. Stow set: paths from `git ls-files -- <pkg>` with `<pkg>/` removed, over the packages `bootstrap.sh` names on its `for pkg in` line plus every `--restow <name>` (as `validate.sh` lines 50-51 read them), skipping a name with no directory as `validate.sh` does. Both are sorted with `LC_ALL=C`. `link-modes` and `tool-versions` both read `bootstrap.sh` through `nix/lib/bootstrap-data.nix`, written in stage b with the package list and extended in stage c with the tuicr values. The test user comes from `home-manager.lib.homeManagerConfiguration` (user `test`, home `/home/test`, stateVersion `"26.05"`, pkgs from the flake). In `checkout` mode `highwind.checkout` is `/test/checkout` and each config link targets `<checkout>/<package>/<relative path>`, with the scripts and nvim files as in `store` mode; with it unset, `builtins.tryEval` of the activation package fails. In both modes the `herdr-plugins` wrapper carries the expected `HIGHWIND_DIR`. |
 
 Each check must be shown to fail: the builder breaks its input in the working tree, runs that one
 check, reverts, and never commits the break. The PR description gets a table of check, break and
@@ -284,7 +287,7 @@ NixOS VM tests (`x86_64-linux` only in this change; attribute names start with `
 
 | Test | Asserts |
 |---|---|
-| `vm-home` | A machine with a user in `store` mode and one in `checkout` mode boots; both Home Manager units succeed; each user logs in over SSH with a key into zsh; the interactive shell is clean; in `checkout` mode an edit to a config in the checkout is live without a rebuild; an interactive login (`ssh -tt user@host`, `exit 0` on stdin) still connects and returns 0 after the user's `.zshrc` is deliberately broken. The test host sets `programs.zsh.enable`, each user's shell to zsh, and the global prompt and `compinit` off (`dotfiles-user.nix` does not enable zsh), and copies the flake source to a fixed path in the checkout user's HOME, owned by that user, in a oneshot unit ordered before that user's Home Manager unit. |
+| `vm-home` | A machine with a user in `store` mode and one in `checkout` mode boots; both Home Manager units succeed; each user logs in over SSH with a key into zsh; the interactive shell is clean; in `checkout` mode an edit to a config in the checkout is live without a rebuild; an interactive login (`ssh -tt user@host`, `exit 0` on stdin) still connects and returns 0 after the user's `.zshrc` is deliberately broken. The test host sets `programs.zsh.enable`, each user's shell to zsh, and the global prompt and `compinit` off (`highwind-user.nix` does not enable zsh), and copies the flake source to a fixed path in the checkout user's HOME, owned by that user, in a oneshot unit ordered before that user's Home Manager unit. |
 | `vm-lifeline` | A machine with the `lifeline` module boots with sshd answering on ports 22 and 2222, the firewall up with both ports open, and sleep targets masked. |
 
 **What is not ported.** The remaining drills in `nixos/test/drills.sh` (`safe-switch` confirmed
@@ -386,7 +389,7 @@ caches (`~/.cache/nix`, `~/.local/state/nix`); the sandbox's directories are und
 |---|---|
 | 0. Clone and baseline (orchestrator) | In order: (1) on the Mac, `git push origin feat/nix-dotfiles` with this design committed; (2) on homepc, `git clone -b feat/nix-dotfiles https://github.com/TuckerMoses/dotfiles.git ~/dotfiles-nix` (public, no credential); (3) `git -C ~/dotfiles-nix worktree add --detach .worktrees/base origin/feat/nixos-host`, then the section 9 command run in that worktree with its output written to `~/dotfiles-nix/.git/homepc-baseline`. If any step fails, the orchestrator stops and reports. Done when `grep -q '^/nix/store/' ~/dotfiles-nix/.git/homepc-baseline` succeeds. |
 | a. Inputs, overlay, packages, source changes | Every package except `sandbox` and `herdr-sandbox` (stage b) builds on homepc for `x86_64-linux`; `nix flake check --all-systems --no-build` passes (Darwin and aarch64 evaluate); the `nixpkgs` and `disko` `locked` entries equal feat/nixos-host's (section 3); `bash -n` passes on `validate.sh` and `test/suite.sh`; each new `validate.sh` check from source changes 1-5 passes on the repo and was seen to fail on a broken throwaway copy (rows in the PR table). A check passes when `./validate.sh` run from the copy prints that check's pass line and no fail line for it, whatever the exit code (homepc exits 1 by design); on the broken copy it prints that check's fail line. The tests for source changes 4 and 5 link the throwaway `HOME`'s files to `nix build .#home-tree` and `.#scripts` outputs; homepc's system path equals the section 9 baseline. |
-| b. Home Manager module, `dotfiles-user.nix`, sandbox apps, the `link-modes` check | `link-modes` passes. Assertions run inside the sandboxed command, against its own `$HOME`, and these items do not use `--keep`. `nix run .#sandbox -- zsh -ic exit` exits 0 with empty stderr (the pty assertion is the `zsh-interactive` check, stage c). `nix run .#sandbox -- sh -c 'tmux new-session -d; p=$(tmux display -p "#{socket_path}"); tmux kill-server; case $p in "$HOME"/*) ;; *) exit 1;; esac'` exits 0. `nix run .#herdr-sandbox -- --no-attach -- sh -c 'herdr status server | grep -q "^socket: $HOME/"'` exits 0. Isolation: `stamp=$(mktemp); nix run .#herdr-sandbox -- --no-attach -- true; find ~/.config/herdr ~/.config/nvim ~/.tmux ~/.oh-my-zsh ~/.local/share/nvim ~/.local/share/dotfiles ~/.local/state/herdr ~/.local/bin ~/.cache/oh-my-zsh ~/.zshrc -newer "$stamp" 2>/dev/null` prints nothing (paths that do not exist are skipped). `nix run .#herdr-sandbox -- --with-plugins --no-attach -- true` exits 0. `nix run .#sandbox -- sh -c 'nvim --headless "+Lazy! restore" +qa && cd ~/.config/nvim && jq -r "to_entries[] | .key + \" \" + .value.commit" lazy-lock.json | while read n c; do [ "$(git -C "$HOME/.local/share/nvim/lazy/$n" rev-parse HEAD)" = "$c" ] || exit 1; done'` exits 0. `nix run .#sandbox -- git ls-remote https://github.com/TuckerMoses/dotfiles.git HEAD` exits 0 (the PR gets exit codes and last output lines of the network items; if the network is unavailable it says so). homepc's system path still equals the baseline. |
+| b. Home Manager module, `highwind-user.nix`, sandbox apps, the `link-modes` check | `link-modes` passes. Assertions run inside the sandboxed command, against its own `$HOME`, and these items do not use `--keep`. `nix run .#sandbox -- zsh -ic exit` exits 0 with empty stderr (the pty assertion is the `zsh-interactive` check, stage c). `nix run .#sandbox -- sh -c 'tmux new-session -d; p=$(tmux display -p "#{socket_path}"); tmux kill-server; case $p in "$HOME"/*) ;; *) exit 1;; esac'` exits 0. `nix run .#herdr-sandbox -- --no-attach -- sh -c 'herdr status server | grep -q "^socket: $HOME/"'` exits 0. Isolation: `stamp=$(mktemp); nix run .#herdr-sandbox -- --no-attach -- true; find ~/.config/herdr ~/.config/nvim ~/.tmux ~/.oh-my-zsh ~/.local/share/nvim ~/.local/share/highwind ~/.local/state/herdr ~/.local/bin ~/.cache/oh-my-zsh ~/.zshrc -newer "$stamp" 2>/dev/null` prints nothing (paths that do not exist are skipped). `nix run .#herdr-sandbox -- --with-plugins --no-attach -- true` exits 0. `nix run .#sandbox -- sh -c 'nvim --headless "+Lazy! restore" +qa && cd ~/.config/nvim && jq -r "to_entries[] | .key + \" \" + .value.commit" lazy-lock.json | while read n c; do [ "$(git -C "$HOME/.local/share/nvim/lazy/$n" rev-parse HEAD)" = "$c" ] || exit 1; done'` exits 0. `nix run .#sandbox -- git ls-remote https://github.com/TuckerMoses/dotfiles.git HEAD` exits 0 (the PR gets exit codes and last output lines of the network items; if the network is unavailable it says so). homepc's system path still equals the baseline. |
 | c. The other build-sandbox checks | All seven build-sandbox checks, `link-modes` included, built by attribute name, pass on homepc, and each was seen to fail on a broken input. |
 | d. VM tests and CI workflow | `vm-home` and `vm-lifeline` pass on homepc; `.github/workflows/nix.yml` implements section 8, `nix run nixpkgs#actionlint` passes on it, and every `uses:` is a full commit SHA. |
 | f. Docs, skill, proposals | Section 10 is done and the three proposals listed in section 12 exist in `docs/proposals/`. |
@@ -457,7 +460,7 @@ disagree, this section describes what exists.
   ends at once if `.zshrc` runs `exit`. The test asserts the syntax-error case.
 - **Section 8:** the workflow computes its lists of hosts and checks from the flake. Nix 2.34.9 is
   installed from a hash-checked installer, because the install action has no version setting.
-- **Section 9:** every host imports `dotfiles-user.nix`, and with it Home Manager's NixOS module.
+- **Section 9:** every host imports `highwind-user.nix`, and with it Home Manager's NixOS module.
   With no users named, homepc's system path did not change at any stage.
 - **Section 10:** a flake check is required only where it can be run. A change made on the Mac,
   which has no Nix, adds none.
@@ -481,12 +484,12 @@ disagree, this section describes what exists.
   server as their pty. (`bwrap` was later dropped; see "how the checks run" above.)
 - **Sections 5 and 9, the user environment** (2026-11-27): a user's dotfiles are a standalone Home
   Manager configuration, `homeConfigurations."<user>@<host>"` (`nix/lib/home-configuration.nix`), which
-  the user activates with `dotfiles-switch` (no root; `--dry-run`, `--rollback` through Home Manager's
-  own profile). A user-only activation through `dotfiles.users` would be undone at the next boot, when
+  the user activates with `highwind-switch` (no root; `--dry-run`, `--rollback` through Home Manager's
+  own profile). A user-only activation through `highwind.users` would be undone at the next boot, when
   the system re-activates its embedded copy, so that option stays for machines that switch both
   together. herdr reloads through an `onChange` hook on its `config.toml`; nvim and Ghostty need a
   restart. `tucker@homepc` is store mode with the login shell left bash: herdr has `[terminal]
-  default_shell` and Ghostty `command`, and `dotfiles.interactiveShell` appends them to the placed copies,
+  default_shell` and Ghostty `command`, and `highwind.interactiveShell` appends them to the placed copies,
   so the repo files Stow links stay as they are. `vm-switch` tests switch, reload, reboot and rollback.
 - **Section 7, `link-modes`:** `home-tree` marks each file `base` or `personal` (files that name the
   owner's directories); the check compares the placed set with the Stow set with the personal profile
@@ -495,7 +498,7 @@ disagree, this section describes what exists.
   (`nix/packages/herdr-plugins/`), at the pins `bootstrap.sh` writes, read through `bootstrap-data.nix`; the pins did
   not move to a data file. Source and Go/Rust hashes live in `hashes.nix`, keyed by commit, so a moved pin stops the
   build with a message until `nix run .#herdr-plugin-hashes` refreshes it. The module places each at
-  `~/.local/share/dotfiles/herdr-plugins/<id>` and `herdr plugin link`s it (`dotfiles.herdrPlugins.enable`); the
+  `~/.local/share/highwind/herdr-plugins/<id>` and `herdr plugin link`s it (`highwind.herdrPlugins.enable`); the
   sandboxes link them too, and `--with-plugins` stays as the test of herdr's own installer.
   Record: `docs/plans/herdr-nix-plugin-builds.md`.
 - **Sections 3, 7 and 8, macOS** (2026-11-27): aarch64-darwin is now built, in CI only (a `darwin` job on GitHub's

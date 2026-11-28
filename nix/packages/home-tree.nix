@@ -30,7 +30,7 @@ let
     ];
     files = [
       # Runs $HOME/dotfiles/validate.sh.
-      "${herdrPlus}/quick-actions/validate-dotfiles.toml"
+      "${herdrPlus}/quick-actions/validate-highwind.toml"
     ];
     # What a base file must not contain outside a comment (link-modes checks it): one of the
     # owner's directories, or a herdr-plus project or worktree entry. ERE, for grep -E.
@@ -56,7 +56,7 @@ let
     ) (fs.toList (fs.intersection fileset (root + "/${p}")))
   ) stowPackages;
 in
-runCommand "dotfiles-home-tree" { passthru = { inherit stowPackages files personal; }; } ''
+runCommand "highwind-home-tree" { passthru = { inherit stowPackages files personal; }; } ''
   mkdir -p $out
   for p in ${lib.escapeShellArgs stowPackages}; do
     # "dir/." copies the dotfiles too.
